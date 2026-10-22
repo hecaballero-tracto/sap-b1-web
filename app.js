@@ -5,6 +5,8 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const https = require('https');
+const http = require('http');
+const fs = require('fs');
 const path = require('path');
 
 const {
@@ -13,6 +15,10 @@ const {
   SAP_USER,
   SAP_PASSWORD,
   PORT = 3000,
+  HTTPS_PORT,
+  HTTP_PORT,
+  SSL_PFX_PATH,
+  SSL_PFX_PASSPHRASE,
 } = process.env;
 
 if (!SAP_URL || !SAP_COMPANY_DB || !SAP_USER || !SAP_PASSWORD) {
@@ -199,6 +205,56 @@ function handleError(res, error) {
   res.status(status).json({ error: data });
 }
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-});
+function startHttpsServer(appInstance) {
+  if (!SSL_PFX_PATH) {
+    console.error(
+      'HTTPS habilitado pero falta SSL_PFX_PATH. Defina la ruta al archivo .pfx en el .env'
+    );
+    process.exit(1);
+  }
+
+  const pfxPath = path.isAbsolute(SSL_PFX_PATH)
+    ? SSL_PFX_PATH
+    : path.join(__dirname, SSL_PFX_PATH);
+
+  if (!fs.existsSync(pfxPath)) {
+    console.error(`No se encontró el archivo .pfx en: ${pfxPath}`);
+    process.exit(1);
+  }
+
+  const options = {
+    pfx: fs.readFileSync(pfxPath),
+    passphrase: SSL_PFX_PASSPHRASE || undefined,
+  };
+
+  const httpsPort = parsePositiveInt(HTTPS_PORT, 443);
+  const httpsServer = https.createServer(options, appInstance);
+
+  httpsServer.listen(httpsPort, () => {
+    console.log(`Servidor HTTPS escuchando en https://localhost:${httpsPort}`);
+  });
+
+  // Servidor HTTP opcional que redirige a HTTPS
+  if (HTTP_PORT) {
+    const httpPort = parsePositiveInt(HTTP_PORT, 80);
+    const redirectApp = express();
+    redirectApp.use((req, res) => {
+      const host = (req.headers.host || '').split(':')[0];
+      const target = `https://${host}${req.originalUrl}`;
+      res.redirect(301, target);
+    });
+    http.createServer(redirectApp).listen(httpPort, () => {
+      console.log(`Servidor HTTP (redirección) escuchando en http://localhost:${httpPort}`);
+    });
+  }
+
+  return httpsServer;
+}
+
+if (SSL_PFX_PATH) {
+  startHttpsServer(app);
+} else {
+  app.listen(PORT, () => {
+    console.log(`Servidor escuchando en http://localhost:${PORT}`);
+  });
+}

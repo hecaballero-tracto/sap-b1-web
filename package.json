@@ -4,7 +4,8 @@
   "description": "API Node.js/Express para conectarse al Service Layer de SAP Business One",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "start:https": "node app.js"
   },
   "keywords": [
     "sap",

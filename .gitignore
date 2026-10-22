@@ -3,3 +3,11 @@
 node_modules/
 __pycache__/
 .aider*
+
+# Certificados y claves (nunca subir al repo)
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+certs/
