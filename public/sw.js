@@ -1,9 +1,10 @@
-const CACHE_NAME = 'sap-b1-clientes-v2';
+const CACHE_NAME = 'sap-b1-clientes-v3';
 
 // Solo recursos locales indispensables en el precaché inicial
 const PRECACHE_ASSETS = [
   '/',
   '/clientes.html',
+  '/articulos.html',
   '/manifest.json'
 ];
 

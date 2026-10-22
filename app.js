@@ -202,6 +202,97 @@ app.get('/api/clientes', async (req, res) => {
   }
 });
 
+function buildArticulosQuery({ page, limit, search }) {
+  const filters = ["ItemType eq 'itItems'"];
+
+  if (search) {
+    const safe = escapeODataString(search);
+    filters.push(
+      `(contains(ItemCode,'${safe}') or contains(ItemName,'${safe}'))`
+    );
+  }
+
+  const skip = (page - 1) * limit;
+  const top = limit;
+
+  const params = new URLSearchParams();
+  params.set('$filter', filters.join(' and '));
+  params.set(
+    '$select',
+    'ItemCode,ItemName,QuantityOnStock,SalesUnit,ItemWarehouseInfoCollection'
+  );
+  params.set('$orderby', 'ItemCode');
+  params.set('$top', String(top));
+  params.set('$skip', String(skip));
+  params.set('$inlinecount', 'allpages');
+
+  return `/b1s/v1/Items?${params.toString()}`;
+}
+
+app.get('/api/articulos', async (req, res) => {
+  const page = parsePositiveInt(req.query.page, 1);
+  const limit = parsePositiveInt(req.query.limit, 20, 200);
+  const search = (req.query.search || '').trim();
+
+  const query = buildArticulosQuery({ page, limit, search });
+
+  try {
+    await ensureSession();
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    return sendArticulosResponse(res, response.data, { page, limit });
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        session = { b1session: null, routeid: null };
+        await login();
+        const retry = await sapClient.get(query, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        return sendArticulosResponse(res, retry.data, { page, limit });
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+});
+
+function sendArticulosResponse(res, sapData, { page, limit }) {
+  const raw = Array.isArray(sapData.value) ? sapData.value : [];
+  const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
+  const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+  const data = raw.map((item) => {
+    const warehouses = Array.isArray(item.ItemWarehouseInfoCollection)
+      ? item.ItemWarehouseInfoCollection
+          .filter((w) => Number(w.InStock) > 0)
+          .map((w) => ({
+            WarehouseCode: w.WarehouseCode,
+            InStock: Number(w.InStock) || 0,
+          }))
+      : [];
+
+    return {
+      ItemCode: item.ItemCode,
+      ItemName: item.ItemName,
+      QuantityOnStock: Number(item.QuantityOnStock) || 0,
+      SalesUnit: item.SalesUnit,
+      Warehouses: warehouses,
+    };
+  });
+
+  res.json({
+    data,
+    total,
+    page: Number(page),
+    totalPages,
+  });
+}
+
 function sendClientesResponse(res, sapData, { page, limit }) {
   const data = Array.isArray(sapData.value) ? sapData.value : [];
   const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
