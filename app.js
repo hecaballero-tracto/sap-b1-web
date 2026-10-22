@@ -5,6 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const https = require('https');
+const path = require('path');
 
 const {
   SAP_URL,
@@ -80,6 +81,7 @@ async function ensureSession() {
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/orders', async (req, res) => {
   try {
@@ -97,6 +99,37 @@ app.get('/api/orders', async (req, res) => {
         session = { b1session: null, routeid: null };
         await login();
         const retry = await sapClient.get('/b1s/v1/Orders?$top=5', {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        return res.json(retry.data);
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+});
+
+app.get('/api/clientes', async (req, res) => {
+  const query =
+    "/b1s/v1/BusinessPartners?$filter=CardType eq 'cCustomer'" +
+    '&$select=CardCode,CardName,Phone1,Cellular,E_Mail,Address,City,Country,Balance,Currency' +
+    '&$orderby=CardCode';
+
+  try {
+    await ensureSession();
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        session = { b1session: null, routeid: null };
+        await login();
+        const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
         });
         return res.json(retry.data);
