@@ -222,9 +222,14 @@ function startHttpsServer(appInstance) {
     process.exit(1);
   }
 
+  const rawPass = SSL_PFX_PASSPHRASE || '';
+  console.log(
+    `Passphrase leída: longitud=${rawPass.length}, tiene comillas=${/^["']|["']$/.test(rawPass)}, tiene espacios al inicio/fin=${rawPass !== rawPass.trim()}`
+  );
+
   const options = {
     pfx: fs.readFileSync(pfxPath),
-    passphrase: SSL_PFX_PASSPHRASE ? SSL_PFX_PASSPHRASE : undefined,
+    passphrase: rawPass ? rawPass : undefined,
   };
 
   const httpsPort = parsePositiveInt(HTTPS_PORT, 443);
