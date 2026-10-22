@@ -1,0 +1,23 @@
+{
+  "name": "sap-b1-service-layer-api",
+  "version": "1.0.0",
+  "description": "API Node.js/Express para conectarse al Service Layer de SAP Business One",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "keywords": [
+    "sap",
+    "business-one",
+    "service-layer",
+    "express",
+    "axios"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}
