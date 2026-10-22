@@ -127,7 +127,7 @@
           <td>${escapeHtml(c.CardName)}</td>
           <td>${escapeHtml(c.Phone1)}</td>
           <td>${escapeHtml(c.Cellular)}</td>
-          <td>${escapeHtml(c.E_Mail)}</td>
+          <td>${escapeHtml(c.EmailAddress)}</td>
           <td>${escapeHtml(c.Address)}</td>
           <td>${escapeHtml(c.City)}</td>
           <td>${escapeHtml(c.Country)}</td>
@@ -145,7 +145,7 @@
       if (!term) return render(clientes);
 
       const filtered = clientes.filter((c) =>
-        [c.CardCode, c.CardName, c.City, c.Country, c.E_Mail, c.Phone1, c.Cellular]
+        [c.CardCode, c.CardName, c.City, c.Country, c.EmailAddress, c.Phone1, c.Cellular]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(term))
       );
