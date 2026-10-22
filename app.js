@@ -113,7 +113,7 @@ app.get('/api/orders', async (req, res) => {
 app.get('/api/clientes', async (req, res) => {
   const query =
     "/b1s/v1/BusinessPartners?$filter=CardType eq 'cCustomer'" +
-    '&$select=CardCode,CardName,Phone1,Cellular,EmailAddress,Address,City,Country,Balance,Currency' +
+    '&$select=CardCode,CardName,Phone1,Cellular,EmailAddress,Address,City,Country,CurrentAccountBalance,Currency' +
     '&$orderby=CardCode';
 
   try {
