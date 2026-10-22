@@ -110,11 +110,48 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
+function parsePositiveInt(value, fallback, max) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return max ? Math.min(n, max) : n;
+}
+
+function escapeODataString(value) {
+  return String(value).replace(/'/g, "''");
+}
+
+function buildClientesQuery({ page, limit, search }) {
+  const filters = ["CardType eq 'cCustomer'"];
+
+  if (search) {
+    const safe = escapeODataString(search);
+    filters.push(
+      `(contains(CardCode,'${safe}') or contains(CardName,'${safe}') or contains(City,'${safe}') or contains(Country,'${safe}'))`
+    );
+  }
+
+  const skip = (page - 1) * limit;
+
+  const params = new URLSearchParams();
+  params.set('$filter', filters.join(' and '));
+  params.set(
+    '$select',
+    'CardCode,CardName,Phone1,Cellular,EmailAddress,Address,City,Country,CurrentAccountBalance,Currency'
+  );
+  params.set('$orderby', 'CardCode');
+  params.set('$top', String(limit));
+  params.set('$skip', String(skip));
+  params.set('$inlinecount', 'allpages');
+
+  return `/b1s/v1/BusinessPartners?${params.toString()}`;
+}
+
 app.get('/api/clientes', async (req, res) => {
-  const query =
-    "/b1s/v1/BusinessPartners?$filter=CardType eq 'cCustomer'" +
-    '&$select=CardCode,CardName,Phone1,Cellular,EmailAddress,Address,City,Country,CurrentAccountBalance,Currency' +
-    '&$orderby=CardCode';
+  const page = parsePositiveInt(req.query.page, 1);
+  const limit = parsePositiveInt(req.query.limit, 20, 200);
+  const search = (req.query.search || '').trim();
+
+  const query = buildClientesQuery({ page, limit, search });
 
   try {
     await ensureSession();
@@ -123,7 +160,7 @@ app.get('/api/clientes', async (req, res) => {
       headers: { Cookie: buildCookieHeader() },
     });
 
-    res.json(response.data);
+    return sendClientesResponse(res, response.data, { page, limit });
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
@@ -132,7 +169,7 @@ app.get('/api/clientes', async (req, res) => {
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
         });
-        return res.json(retry.data);
+        return sendClientesResponse(res, retry.data, { page, limit });
       } catch (retryError) {
         return handleError(res, retryError);
       }
@@ -140,6 +177,20 @@ app.get('/api/clientes', async (req, res) => {
     return handleError(res, error);
   }
 });
+
+function sendClientesResponse(res, sapData, { page, limit }) {
+  const data = Array.isArray(sapData.value) ? sapData.value : [];
+  const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? data.length);
+  const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+  res.json({
+    page,
+    limit,
+    total,
+    totalPages,
+    data,
+  });
+}
 
 function handleError(res, error) {
   const status = error.response ? error.response.status : 500;

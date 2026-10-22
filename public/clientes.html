@@ -108,7 +108,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     let clientes = [];
-    let paging = { top: 20, skip: 0, count: null, hasMore: false };
+    let paging = { page: 1, limit: 20, total: 0, totalPages: 0 };
 
     const body = document.getElementById('clientesBody');
     const counter = document.getElementById('counter');
@@ -173,29 +173,22 @@
     }
 
     function updatePagingControls() {
-      const { top, skip, count, hasMore } = paging;
-      const from = count === 0 ? 0 : skip + 1;
-      const to = skip + clientes.length;
-      pageInfo.textContent = count !== null
-        ? `Mostrando ${from}-${to} de ${count}`
-        : `Mostrando ${from}-${to}`;
-      btnPrev.disabled = skip <= 0;
-      btnNext.disabled = !hasMore;
+      const { page, limit, total, totalPages } = paging;
+      const from = total === 0 ? 0 : (page - 1) * limit + 1;
+      const to = Math.min(page * limit, total);
+      pageInfo.textContent = `Mostrando ${from}-${to} de ${total} (página ${page} de ${totalPages || 1})`;
+      btnPrev.disabled = page <= 1;
+      btnNext.disabled = page >= totalPages;
     }
 
     function buildQuery() {
       const params = new URLSearchParams();
-      params.set('$top', String(paging.top));
-      params.set('$skip', String(paging.skip));
+      params.set('page', String(paging.page));
+      params.set('limit', String(paging.limit));
 
       const term = searchInput.value.trim();
-      if (term) {
-        const safe = term.replace(/'/g, "''");
-        params.set(
-          '$filter',
-          `(contains(CardCode,'${safe}') or contains(CardName,'${safe}') or contains(City,'${safe}') or contains(Country,'${safe}'))`
-        );
-      }
+      if (term) params.set('search', term);
+
       return params.toString();
     }
 
@@ -220,12 +213,12 @@
           );
         }
 
-        clientes = data.value || [];
+        clientes = data.data || [];
         paging = {
-          top: data.top ?? paging.top,
-          skip: data.skip ?? paging.skip,
-          count: data.count ?? null,
-          hasMore: !!data.hasMore,
+          page: data.page ?? paging.page,
+          limit: data.limit ?? paging.limit,
+          total: data.total ?? 0,
+          totalPages: data.totalPages ?? 0,
         };
         render(clientes);
         updatePagingControls();
@@ -247,29 +240,29 @@
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
-        paging.skip = 0;
+        paging.page = 1;
         cargarClientes();
       }, 350);
     });
 
     pageSize.addEventListener('change', () => {
-      paging.top = parseInt(pageSize.value, 10) || 20;
-      paging.skip = 0;
+      paging.limit = parseInt(pageSize.value, 10) || 20;
+      paging.page = 1;
       cargarClientes();
     });
 
     btnPrev.addEventListener('click', () => {
-      paging.skip = Math.max(0, paging.skip - paging.top);
+      paging.page = Math.max(1, paging.page - 1);
       cargarClientes();
     });
 
     btnNext.addEventListener('click', () => {
-      paging.skip = paging.skip + paging.top;
+      paging.page = paging.page + 1;
       cargarClientes();
     });
 
     btnRefresh.addEventListener('click', () => {
-      paging.skip = 0;
+      paging.page = 1;
       cargarClientes();
     });
 
