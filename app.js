@@ -224,11 +224,29 @@ function startHttpsServer(appInstance) {
 
   const options = {
     pfx: fs.readFileSync(pfxPath),
-    passphrase: SSL_PFX_PASSPHRASE || undefined,
+    passphrase: SSL_PFX_PASSPHRASE ? SSL_PFX_PASSPHRASE : undefined,
   };
 
   const httpsPort = parsePositiveInt(HTTPS_PORT, 443);
-  const httpsServer = https.createServer(options, appInstance);
+
+  let httpsServer;
+  try {
+    httpsServer = https.createServer(options, appInstance);
+  } catch (err) {
+    if (err && err.message && err.message.includes('mac verify failure')) {
+      console.error(
+        'No se pudo abrir el archivo .pfx: la passphrase (SSL_PFX_PASSPHRASE) es incorrecta o el .pfx no tiene passphrase.'
+      );
+      console.error(
+        'Verifique la contraseña del certificado con: openssl pkcs12 -info -in "' +
+          pfxPath +
+          '" -noout'
+      );
+    } else {
+      console.error('Error al crear el servidor HTTPS:', err.message);
+    }
+    process.exit(1);
+  }
 
   httpsServer.listen(httpsPort, () => {
     console.log(`Servidor HTTPS escuchando en https://localhost:${httpsPort}`);
