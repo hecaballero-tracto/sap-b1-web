@@ -176,7 +176,7 @@
       const { page, limit, total, totalPages } = paging;
       const from = total === 0 ? 0 : (page - 1) * limit + 1;
       const to = Math.min(page * limit, total);
-      pageInfo.textContent = `Mostrando ${from}-${to} de ${total} (página ${page} de ${totalPages || 1})`;
+      pageInfo.textContent = `Página ${page} de ${totalPages || 1}`;
       btnPrev.disabled = page <= 1;
       btnNext.disabled = page >= totalPages;
     }
