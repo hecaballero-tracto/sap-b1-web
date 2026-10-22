@@ -232,6 +232,7 @@ function startHttpsServer(appInstance) {
 
   httpsServer.listen(httpsPort, () => {
     console.log(`Servidor HTTPS escuchando en https://localhost:${httpsPort}`);
+    console.log(`Certificado cargado desde: ${pfxPath}`);
   });
 
   // Servidor HTTP opcional que redirige a HTTPS
@@ -240,7 +241,8 @@ function startHttpsServer(appInstance) {
     const redirectApp = express();
     redirectApp.use((req, res) => {
       const host = (req.headers.host || '').split(':')[0];
-      const target = `https://${host}${req.originalUrl}`;
+      const portSuffix = httpsPort === 443 ? '' : `:${httpsPort}`;
+      const target = `https://${host}${portSuffix}${req.originalUrl}`;
       res.redirect(301, target);
     });
     http.createServer(redirectApp).listen(httpPort, () => {
@@ -256,5 +258,8 @@ if (SSL_PFX_PATH) {
 } else {
   app.listen(PORT, () => {
     console.log(`Servidor escuchando en http://localhost:${PORT}`);
+    console.log(
+      'Para habilitar HTTPS configure SSL_PFX_PATH (y opcionalmente SSL_PFX_PASSPHRASE) en el .env'
+    );
   });
 }

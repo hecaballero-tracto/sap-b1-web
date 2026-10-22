@@ -266,12 +266,16 @@
       cargarClientes();
     });
 
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && window.isSecureContext) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch((err) => {
           console.warn('No se pudo registrar el service worker:', err);
         });
       });
+    } else if ('serviceWorker' in navigator) {
+      console.warn(
+        'Service worker no registrado: se requiere contexto seguro (HTTPS o localhost).'
+      );
     }
 
     cargarClientes();

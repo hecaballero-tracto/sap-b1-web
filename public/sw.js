@@ -31,13 +31,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Network-First para la API
+  // Network-First para la API (solo cachear respuestas exitosas)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
           return response;
         })
         .catch(() => caches.match(request))
@@ -45,7 +47,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-First para assets estáticos
+  // Cache-First para assets estáticos (solo mismo origen o CDNs conocidos)
+  const isSameOrigin = url.origin === self.location.origin;
+  const isKnownCdn =
+    url.hostname === 'cdn.jsdelivr.net';
+
+  if (!isSameOrigin && !isKnownCdn) {
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
