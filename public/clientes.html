@@ -32,6 +32,9 @@
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1">
         <i class="bi bi-people-fill me-2"></i>Clientes SAP B1
+        <span id="secureBadge" class="badge bg-success ms-2 d-none" title="Conexión segura">
+          <i class="bi bi-shield-lock-fill me-1"></i>HTTPS
+        </span>
       </span>
       <button id="btnRefresh" class="btn btn-light btn-sm">
         <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
@@ -265,6 +268,12 @@
       paging.page = 1;
       cargarClientes();
     });
+
+    // Indicador visual de conexión segura
+    if (window.isSecureContext && location.protocol === 'https:') {
+      const badge = document.getElementById('secureBadge');
+      if (badge) badge.classList.remove('d-none');
+    }
 
     if ('serviceWorker' in navigator && window.isSecureContext) {
       window.addEventListener('load', () => {

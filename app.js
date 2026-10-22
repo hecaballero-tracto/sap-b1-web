@@ -87,7 +87,24 @@ async function ensureSession() {
 
 const app = express();
 app.use(express.json());
+
+// Cabeceras de seguridad (HSTS solo aplica cuando se sirve por HTTPS)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Redirigir la raíz a la página de clientes
+app.get('/', (req, res) => {
+  res.redirect('/clientes.html');
+});
 
 app.get('/api/orders', async (req, res) => {
   try {
@@ -222,9 +239,10 @@ function startHttpsServer(appInstance) {
     process.exit(1);
   }
 
-  const rawPass = SSL_PFX_PASSPHRASE || '';
+  // Limpiar comillas y espacios accidentales en la passphrase
+  const rawPass = (SSL_PFX_PASSPHRASE || '').trim().replace(/^["']|["']$/g, '');
   console.log(
-    `Passphrase leída: longitud=${rawPass.length}, tiene comillas=${/^["']|["']$/.test(rawPass)}, tiene espacios al inicio/fin=${rawPass !== rawPass.trim()}`
+    `Passphrase leída: longitud=${rawPass.length}, tiene comillas=${/^["']|["']$/.test(SSL_PFX_PASSPHRASE || '')}, tiene espacios al inicio/fin=${(SSL_PFX_PASSPHRASE || '') !== (SSL_PFX_PASSPHRASE || '').trim()}`
   );
 
   const options = {
