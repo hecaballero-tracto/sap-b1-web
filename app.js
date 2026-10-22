@@ -131,6 +131,7 @@ function buildClientesQuery({ page, limit, search }) {
   }
 
   const skip = (page - 1) * limit;
+  const top = limit;
 
   const params = new URLSearchParams();
   params.set('$filter', filters.join(' and '));
@@ -139,7 +140,7 @@ function buildClientesQuery({ page, limit, search }) {
     'CardCode,CardName,Phone1,Cellular,EmailAddress,Address,City,Country,CurrentAccountBalance,Currency'
   );
   params.set('$orderby', 'CardCode');
-  params.set('$top', String(limit));
+  params.set('$top', String(top));
   params.set('$skip', String(skip));
   params.set('$inlinecount', 'allpages');
 
@@ -180,15 +181,14 @@ app.get('/api/clientes', async (req, res) => {
 
 function sendClientesResponse(res, sapData, { page, limit }) {
   const data = Array.isArray(sapData.value) ? sapData.value : [];
-  const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? data.length);
+  const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
   const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
 
   res.json({
-    page,
-    limit,
-    total,
-    totalPages,
     data,
+    total,
+    page: Number(page),
+    totalPages,
   });
 }
 
