@@ -86,7 +86,6 @@
           />
         </div>
         <div class="d-flex align-items-center gap-2">
-          <span id="counter" class="text-muted small"></span>
           <button
             class="btn btn-outline-secondary btn-sm"
             type="button"
@@ -275,7 +274,6 @@
     const filterFabricante = document.getElementById('filterFabricante');
     const filterMarca = document.getElementById('filterMarca');
     const btnClearFilters = document.getElementById('btnClearFilters');
-    const counter = document.getElementById('counter');
     const alertBox = document.getElementById('alertBox');
     const searchInput = document.getElementById('searchInput');
     const btnRefresh = document.getElementById('btnRefresh');
@@ -389,7 +387,6 @@
               No se encontraron artículos.
             </td>
           </tr>`;
-        counter.textContent = '0 artículos';
         return;
       }
 
@@ -414,8 +411,6 @@
           openWarehouses(list[idx]);
         });
       });
-
-      counter.textContent = `${list.length} artículo(s)`;
     }
 
     function openWarehouses(item) {
@@ -477,51 +472,42 @@
       });
     }
 
-    function populateFilterOptions(list) {
-      // Rubro
-      const rubros = new Map();
-      const fabricantes = new Map();
-      const marcas = new Set();
-      for (const a of list) {
-        if (a.ItemsGroupCode !== null && a.ItemsGroupCode !== undefined && a.rubro) {
-          rubros.set(String(a.ItemsGroupCode), a.rubro);
-        }
-        if (a.Manufacturer !== null && a.Manufacturer !== undefined && a.fabricante) {
-          fabricantes.set(String(a.Manufacturer), a.fabricante);
-        }
-        if (a.U_Marca) marcas.add(a.U_Marca);
+    async function cargarCatalogos() {
+      try {
+        const res = await apiFetch('/api/articulos/catalogos');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const rubros = Array.isArray(data.rubros) ? data.rubros : [];
+        const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
+        const marcas = Array.isArray(data.marcas) ? data.marcas : [];
+
+        filterRubro.innerHTML =
+          '<option value="">Todos</option>' +
+          rubros
+            .map(
+              (r) =>
+                `<option value="${escapeHtml(String(r.code))}">${escapeHtml(r.name)}</option>`
+            )
+            .join('');
+
+        filterFabricante.innerHTML =
+          '<option value="">Todos</option>' +
+          fabricantes
+            .map(
+              (f) =>
+                `<option value="${escapeHtml(String(f.code))}">${escapeHtml(f.name)}</option>`
+            )
+            .join('');
+
+        filterMarca.innerHTML =
+          '<option value="">Todas</option>' +
+          marcas
+            .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+            .join('');
+      } catch (_) {
+        /* silencioso: si falla, los selects quedan con "Todos" */
       }
-
-      const currentRubro = filterRubro.value;
-      const currentFabricante = filterFabricante.value;
-      const currentMarca = filterMarca.value;
-
-      filterRubro.innerHTML =
-        '<option value="">Todos</option>' +
-        Array.from(rubros.entries())
-          .sort((a, b) => a[1].localeCompare(b[1]))
-          .map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)}</option>`)
-          .join('');
-
-      filterFabricante.innerHTML =
-        '<option value="">Todos</option>' +
-        Array.from(fabricantes.entries())
-          .sort((a, b) => a[1].localeCompare(b[1]))
-          .map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)}</option>`)
-          .join('');
-
-      filterMarca.innerHTML =
-        '<option value="">Todas</option>' +
-        Array.from(marcas)
-          .sort((a, b) => a.localeCompare(b))
-          .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
-          .join('');
-
-      // Restaurar selección si aún existe
-      if (currentRubro && rubros.has(currentRubro)) filterRubro.value = currentRubro;
-      if (currentFabricante && fabricantes.has(currentFabricante))
-        filterFabricante.value = currentFabricante;
-      if (currentMarca && marcas.has(currentMarca)) filterMarca.value = currentMarca;
     }
 
     async function cargarArticulos() {
@@ -552,7 +538,6 @@
           total: data.total ?? 0,
           totalPages: data.totalPages ?? 0,
         };
-        populateFilterOptions(articulos);
         render(applyClientFilters(articulos));
         updatePagingControls();
       } catch (err) {
@@ -563,7 +548,6 @@
             <i class="bi bi-exclamation-triangle-fill me-2"></i>
             ${escapeHtml(err.message)}
           </div>`;
-        counter.textContent = '';
         pageInfo.textContent = '';
         btnPrev.disabled = true;
         btnNext.disabled = true;
@@ -655,6 +639,7 @@
     renderHead();
     renderColumnsMenu();
     cargarUsuario();
+    cargarCatalogos();
     cargarArticulos();
   </script>
 </body>

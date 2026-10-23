@@ -553,6 +553,57 @@ function buildArticulosQuery({ page, limit, search }) {
   return `/b1s/v1/Items?${params.toString()}`;
 }
 
+app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
+  try {
+    await ensureSession();
+
+    const [itemGroups, manufacturers] = await Promise.all([
+      loadItemGroups().catch((err) => {
+        console.warn('No se pudo cargar el catálogo de grupos:', err.message);
+        return new Map();
+      }),
+      loadManufacturers().catch((err) => {
+        console.warn('No se pudo cargar el catálogo de fabricantes:', err.message);
+        return new Map();
+      }),
+    ]);
+
+    // Marcas únicas: consulta ligera a Items (solo U_Marca)
+    let marcas = [];
+    try {
+      const params = new URLSearchParams();
+      params.set('$filter', "ItemType eq 'itItems' and U_Marca ne null");
+      params.set('$select', 'U_Marca');
+      const response = await sapClient.get(
+        `/b1s/v1/Items?${params.toString()}`,
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      const list = Array.isArray(response.data && response.data.value)
+        ? response.data.value
+        : [];
+      const set = new Set();
+      for (const it of list) {
+        if (it && it.U_Marca) set.add(it.U_Marca);
+      }
+      marcas = Array.from(set).sort((a, b) => a.localeCompare(b));
+    } catch (err) {
+      console.warn('No se pudieron cargar las marcas:', err.message);
+    }
+
+    const rubros = Array.from(itemGroups.entries())
+      .map(([code, name]) => ({ code: Number(code), name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const fabricantes = Array.from(manufacturers.entries())
+      .map(([code, name]) => ({ code: Number(code), name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return res.json({ rubros, fabricantes, marcas });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 app.get('/api/articulos', requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query.page, 1);
   const limit = parsePositiveInt(req.query.limit, 20, 200);
