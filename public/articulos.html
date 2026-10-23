@@ -85,7 +85,59 @@
             placeholder="Buscar por código o descripción..."
           />
         </div>
-        <span id="counter" class="text-muted small"></span>
+        <div class="d-flex align-items-center gap-2">
+          <span id="counter" class="text-muted small"></span>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#filtersPanel"
+            aria-expanded="false"
+            aria-controls="filtersPanel"
+          >
+            <i class="bi bi-funnel me-1"></i>Filtros
+          </button>
+          <div class="dropdown">
+            <button
+              class="btn btn-outline-secondary btn-sm dropdown-toggle"
+              type="button"
+              id="columnsDropdown"
+              data-bs-toggle="dropdown"
+              data-bs-auto-close="outside"
+              aria-expanded="false"
+            >
+              <i class="bi bi-layout-three-columns me-1"></i>Columnas
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end p-2" id="columnsMenu" style="max-height: 320px; overflow-y: auto;"></ul>
+          </div>
+        </div>
+      </div>
+      <div class="collapse" id="filtersPanel">
+        <div class="card-body border-bottom bg-light">
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label for="filterRubro" class="form-label small mb-1">Rubro</label>
+              <select id="filterRubro" class="form-select form-select-sm">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label for="filterFabricante" class="form-label small mb-1">Fabricante</label>
+              <select id="filterFabricante" class="form-select form-select-sm">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label for="filterMarca" class="form-label small mb-1">Marca</label>
+              <select id="filterMarca" class="form-select form-select-sm">
+                <option value="">Todas</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-2 text-end">
+            <button id="btnClearFilters" class="btn btn-link btn-sm p-0">Limpiar filtros</button>
+          </div>
+        </div>
       </div>
       <div class="card-footer bg-white d-flex flex-wrap gap-2 align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-2">
@@ -112,17 +164,11 @@
         <div class="table-responsive">
           <table class="table table-hover table-striped mb-0">
             <thead class="table-light">
-              <tr>
-                <th>Código</th>
-                <th>Descripción</th>
-                <th class="text-end">Stock Total</th>
-                <th>Unidad de Medida</th>
-                <th class="text-center">Depósitos</th>
-              </tr>
+              <tr id="articulosHead"></tr>
             </thead>
             <tbody id="articulosBody">
               <tr>
-                <td colspan="5" class="text-center py-4">
+                <td colspan="20" class="text-center py-4">
                   <div class="spinner-border text-primary" role="status"></div>
                   <div class="mt-2 text-muted">Cargando artículos...</div>
                 </td>
@@ -174,7 +220,61 @@
     let articulos = [];
     let paging = { page: 1, limit: 20, total: 0, totalPages: 0 };
 
+    // Definición de columnas disponibles
+    const COLUMNS = [
+      { key: 'ItemCode', label: 'Código', align: '', default: true },
+      { key: 'ItemName', label: 'Descripción', align: '', default: true },
+      { key: 'FrgnName', label: 'Nombre Extranjero', align: '', default: false },
+      { key: 'QuantityOnStock', label: 'Stock Total', align: 'text-end', default: true, format: 'stock' },
+      { key: 'SalesUnit', label: 'Unidad', align: '', default: true },
+      { key: 'SWW', label: 'SWW', align: '', default: false },
+      { key: 'Rubro', label: 'Rubro', align: '', default: false },
+      { key: 'Fabricante', label: 'Fabricante', align: '', default: false },
+      { key: 'U_Marca', label: 'Marca', align: '', default: false },
+      { key: 'U_Modelo', label: 'Modelo', align: '', default: false },
+      { key: 'IsCommited', label: 'Comprometido', align: 'text-end', default: false, format: 'stock' },
+      { key: 'OnOrder', label: 'En Pedido', align: 'text-end', default: false, format: 'stock' },
+      { key: 'LstSalDate', label: 'Última Venta', align: '', default: false, format: 'date' },
+      { key: 'CreateDate', label: 'Fecha Creación', align: '', default: false, format: 'date' },
+      { key: 'Warehouses', label: 'Depósitos', align: 'text-center', default: true, format: 'warehouses' },
+    ];
+
+    const STORAGE_KEY = 'articulos.visibleColumns';
+
+    function loadVisibleColumns() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const valid = new Set(COLUMNS.map((c) => c.key));
+            const filtered = parsed.filter((k) => valid.has(k));
+            if (filtered.length) return new Set(filtered);
+          }
+        }
+      } catch (_) {
+        /* ignorar */
+      }
+      return new Set(COLUMNS.filter((c) => c.default).map((c) => c.key));
+    }
+
+    function saveVisibleColumns(set) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(set)));
+      } catch (_) {
+        /* ignorar */
+      }
+    }
+
+    let visibleColumns = loadVisibleColumns();
+
     const body = document.getElementById('articulosBody');
+    const head = document.getElementById('articulosHead');
+    const columnsMenu = document.getElementById('columnsMenu');
+    const filterRubro = document.getElementById('filterRubro');
+    const filterFabricante = document.getElementById('filterFabricante');
+    const filterMarca = document.getElementById('filterMarca');
+    const btnClearFilters = document.getElementById('btnClearFilters');
     const counter = document.getElementById('counter');
     const alertBox = document.getElementById('alertBox');
     const searchInput = document.getElementById('searchInput');
@@ -219,11 +319,73 @@
       })}</span>`;
     }
 
+    function formatDate(value) {
+      if (!value) return '';
+      // SAP devuelve "/Date(1234567890000)/" o ISO
+      const m = /\/Date\((\d+)\)\//.exec(String(value));
+      let d;
+      if (m) {
+        d = new Date(parseInt(m[1], 10));
+      } else {
+        d = new Date(value);
+      }
+      if (isNaN(d.getTime())) return escapeHtml(value);
+      return d.toLocaleDateString('es-MX');
+    }
+
+    function renderHead() {
+      head.innerHTML = COLUMNS.filter((c) => visibleColumns.has(c.key))
+        .map((c) => `<th class="${c.align}">${escapeHtml(c.label)}</th>`)
+        .join('');
+    }
+
+    function renderColumnsMenu() {
+      columnsMenu.innerHTML = COLUMNS.map(
+        (c) => `
+        <li>
+          <label class="dropdown-item d-flex align-items-center gap-2 mb-0">
+            <input type="checkbox" class="form-check-input mt-0" data-col="${c.key}" ${
+          visibleColumns.has(c.key) ? 'checked' : ''
+        } />
+            <span>${escapeHtml(c.label)}</span>
+          </label>
+        </li>`
+      ).join('');
+
+      columnsMenu.querySelectorAll('input[data-col]').forEach((chk) => {
+        chk.addEventListener('change', () => {
+          const key = chk.getAttribute('data-col');
+          if (chk.checked) visibleColumns.add(key);
+          else visibleColumns.delete(key);
+          saveVisibleColumns(visibleColumns);
+          renderHead();
+          render(articulos);
+        });
+      });
+    }
+
+    function renderCell(col, item) {
+      const value = item[col.key];
+      if (col.format === 'stock') return formatStock(value);
+      if (col.format === 'date') return formatDate(value);
+      if (col.format === 'warehouses') {
+        const count = Array.isArray(item.Warehouses) ? item.Warehouses.length : 0;
+        const idx = articulos.indexOf(item);
+        return `<button class="btn btn-outline-primary btn-sm" data-index="${idx}" ${
+          count === 0 ? 'disabled' : ''
+        }><i class="bi bi-building me-1"></i>${count}</button>`;
+      }
+      return escapeHtml(value);
+    }
+
     function render(list) {
+      const cols = COLUMNS.filter((c) => visibleColumns.has(c.key));
+      const colspan = Math.max(cols.length, 1);
+
       if (!list.length) {
         body.innerHTML = `
           <tr>
-            <td colspan="5" class="text-center py-4 text-muted">
+            <td colspan="${colspan}" class="text-center py-4 text-muted">
               No se encontraron artículos.
             </td>
           </tr>`;
@@ -232,24 +394,17 @@
       }
 
       body.innerHTML = list
-        .map((a, idx) => {
-          const count = Array.isArray(a.Warehouses) ? a.Warehouses.length : 0;
-          return `
-        <tr>
-          <td><strong>${escapeHtml(a.ItemCode)}</strong></td>
-          <td>${escapeHtml(a.ItemName)}</td>
-          <td class="text-end">${formatStock(a.QuantityOnStock)}</td>
-          <td>${escapeHtml(a.SalesUnit)}</td>
-          <td class="text-center">
-            <button
-              class="btn btn-outline-primary btn-sm"
-              data-index="${idx}"
-              ${count === 0 ? 'disabled' : ''}
-            >
-              <i class="bi bi-building me-1"></i>${count}
-            </button>
-          </td>
-        </tr>`;
+        .map((a) => {
+          const cells = cols
+            .map((c) => {
+              const content = renderCell(c, a);
+              const isCode = c.key === 'ItemCode';
+              return `<td class="${c.align}">${
+                isCode ? `<strong>${content}</strong>` : content
+              }</td>`;
+            })
+            .join('');
+          return `<tr>${cells}</tr>`;
         })
         .join('');
 
@@ -309,6 +464,66 @@
       return params.toString();
     }
 
+    function applyClientFilters(list) {
+      const rubro = filterRubro.value;
+      const fabricante = filterFabricante.value;
+      const marca = filterMarca.value;
+
+      return list.filter((a) => {
+        if (rubro && String(a.ItemsGroupCode) !== rubro) return false;
+        if (fabricante && String(a.Manufacturer) !== fabricante) return false;
+        if (marca && (a.U_Marca || '') !== marca) return false;
+        return true;
+      });
+    }
+
+    function populateFilterOptions(list) {
+      // Rubro
+      const rubros = new Map();
+      const fabricantes = new Map();
+      const marcas = new Set();
+      for (const a of list) {
+        if (a.ItemsGroupCode !== null && a.ItemsGroupCode !== undefined && a.Rubro) {
+          rubros.set(String(a.ItemsGroupCode), a.Rubro);
+        }
+        if (a.Manufacturer !== null && a.Manufacturer !== undefined && a.Fabricante) {
+          fabricantes.set(String(a.Manufacturer), a.Fabricante);
+        }
+        if (a.U_Marca) marcas.add(a.U_Marca);
+      }
+
+      const currentRubro = filterRubro.value;
+      const currentFabricante = filterFabricante.value;
+      const currentMarca = filterMarca.value;
+
+      filterRubro.innerHTML =
+        '<option value="">Todos</option>' +
+        Array.from(rubros.entries())
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)}</option>`)
+          .join('');
+
+      filterFabricante.innerHTML =
+        '<option value="">Todos</option>' +
+        Array.from(fabricantes.entries())
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)}</option>`)
+          .join('');
+
+      filterMarca.innerHTML =
+        '<option value="">Todas</option>' +
+        Array.from(marcas)
+          .sort((a, b) => a.localeCompare(b))
+          .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+          .join('');
+
+      // Restaurar selección si aún existe
+      if (currentRubro && rubros.has(currentRubro)) filterRubro.value = currentRubro;
+      if (currentFabricante && fabricantes.has(currentFabricante))
+        filterFabricante.value = currentFabricante;
+      if (currentMarca && marcas.has(currentMarca)) filterMarca.value = currentMarca;
+    }
+
     async function cargarArticulos() {
       alertBox.innerHTML = '';
       body.innerHTML = `
@@ -337,7 +552,8 @@
           total: data.total ?? 0,
           totalPages: data.totalPages ?? 0,
         };
-        render(articulos);
+        populateFilterOptions(articulos);
+        render(applyClientFilters(articulos));
         updatePagingControls();
       } catch (err) {
         if (err && err.message === 'Sesión expirada') return;
@@ -384,6 +600,17 @@
       cargarArticulos();
     });
 
+    filterRubro.addEventListener('change', () => render(applyClientFilters(articulos)));
+    filterFabricante.addEventListener('change', () => render(applyClientFilters(articulos)));
+    filterMarca.addEventListener('change', () => render(applyClientFilters(articulos)));
+
+    btnClearFilters.addEventListener('click', () => {
+      filterRubro.value = '';
+      filterFabricante.value = '';
+      filterMarca.value = '';
+      render(applyClientFilters(articulos));
+    });
+
     btnLogout.addEventListener('click', async () => {
       try {
         await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
@@ -425,6 +652,8 @@
       );
     }
 
+    renderHead();
+    renderColumnsMenu();
     cargarUsuario();
     cargarArticulos();
   </script>

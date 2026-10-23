@@ -94,6 +94,14 @@ let sapSession = {
 let warehousesCache = null;
 let warehousesCachePromise = null;
 
+// Caché en memoria de grupos de artículos: Map<ItemsGroupCode, GroupName>
+let itemGroupsCache = null;
+let itemGroupsCachePromise = null;
+
+// Caché en memoria de fabricantes: Map<ManufacturerCode, ManufacturerName>
+let manufacturersCache = null;
+let manufacturersCachePromise = null;
+
 async function loadWarehouses() {
   if (warehousesCache) return warehousesCache;
   if (warehousesCachePromise) return warehousesCachePromise;
@@ -124,6 +132,68 @@ async function loadWarehouses() {
   })();
 
   return warehousesCachePromise;
+}
+
+async function loadItemGroups() {
+  if (itemGroupsCache) return itemGroupsCache;
+  if (itemGroupsCachePromise) return itemGroupsCachePromise;
+
+  itemGroupsCachePromise = (async () => {
+    try {
+      await ensureSession();
+      const response = await sapClient.get(
+        "/b1s/v1/ItemGroups?$select=ItemsGroupCode,GroupName",
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      const list = Array.isArray(response.data && response.data.value)
+        ? response.data.value
+        : [];
+      const map = new Map();
+      for (const g of list) {
+        if (g && g.ItemsGroupCode !== undefined && g.ItemsGroupCode !== null) {
+          map.set(Number(g.ItemsGroupCode), g.GroupName || String(g.ItemsGroupCode));
+        }
+      }
+      itemGroupsCache = map;
+      return map;
+    } catch (err) {
+      itemGroupsCachePromise = null;
+      throw err;
+    }
+  })();
+
+  return itemGroupsCachePromise;
+}
+
+async function loadManufacturers() {
+  if (manufacturersCache) return manufacturersCache;
+  if (manufacturersCachePromise) return manufacturersCachePromise;
+
+  manufacturersCachePromise = (async () => {
+    try {
+      await ensureSession();
+      const response = await sapClient.get(
+        "/b1s/v1/Manufacturers?$select=Code,ManufacturerName",
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      const list = Array.isArray(response.data && response.data.value)
+        ? response.data.value
+        : [];
+      const map = new Map();
+      for (const m of list) {
+        if (m && m.Code !== undefined && m.Code !== null) {
+          map.set(Number(m.Code), m.ManufacturerName || String(m.Code));
+        }
+      }
+      manufacturersCache = map;
+      return map;
+    } catch (err) {
+      manufacturersCachePromise = null;
+      throw err;
+    }
+  })();
+
+  return manufacturersCachePromise;
 }
 
 function buildCookieHeader() {
@@ -473,7 +543,7 @@ function buildArticulosQuery({ page, limit, search }) {
   params.set('$filter', filters.join(' and '));
   params.set(
     '$select',
-    'ItemCode,ItemName,QuantityOnStock,SalesUnit,ItemWarehouseInfoCollection'
+    'ItemCode,ItemName,ForeignName,QuantityOnStock,SalesUnit,SWW,ItemsGroupCode,Manufacturer,LastSalesDate,CreationDate,U_Marca,U_Modelo,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection'
   );
   params.set('$orderby', 'ItemCode');
   params.set('$top', String(top));
@@ -493,9 +563,17 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   try {
     await ensureSession();
 
-    // Cargar almacenes en paralelo (si falla, se responde sin nombres)
+    // Cargar catálogos auxiliares en paralelo (si fallan, se responde sin nombres)
     const warehousesPromise = loadWarehouses().catch((err) => {
       console.warn('No se pudo cargar el catálogo de almacenes:', err.message);
+      return new Map();
+    });
+    const itemGroupsPromise = loadItemGroups().catch((err) => {
+      console.warn('No se pudo cargar el catálogo de grupos:', err.message);
+      return new Map();
+    });
+    const manufacturersPromise = loadManufacturers().catch((err) => {
+      console.warn('No se pudo cargar el catálogo de fabricantes:', err.message);
       return new Map();
     });
 
@@ -503,14 +581,28 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
       headers: { Cookie: buildCookieHeader() },
     });
 
-    const warehouses = await warehousesPromise;
-    return sendArticulosResponse(res, response.data, { page, limit, warehouses });
+    const [warehouses, itemGroups, manufacturers] = await Promise.all([
+      warehousesPromise,
+      itemGroupsPromise,
+      manufacturersPromise,
+    ]);
+    return sendArticulosResponse(res, response.data, {
+      page,
+      limit,
+      warehouses,
+      itemGroups,
+      manufacturers,
+    });
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
         sapSession = { b1session: null, routeid: null };
         await login();
-        const warehouses = await loadWarehouses().catch(() => new Map());
+        const [warehouses, itemGroups, manufacturers] = await Promise.all([
+          loadWarehouses().catch(() => new Map()),
+          loadItemGroups().catch(() => new Map()),
+          loadManufacturers().catch(() => new Map()),
+        ]);
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
         });
@@ -518,6 +610,8 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
           page,
           limit,
           warehouses,
+          itemGroups,
+          manufacturers,
         });
       } catch (retryError) {
         return handleError(res, retryError);
@@ -527,11 +621,17 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   }
 });
 
-function sendArticulosResponse(res, sapData, { page, limit, warehouses }) {
+function sendArticulosResponse(
+  res,
+  sapData,
+  { page, limit, warehouses, itemGroups, manufacturers }
+) {
   const raw = Array.isArray(sapData.value) ? sapData.value : [];
   const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
   const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
   const whMap = warehouses instanceof Map ? warehouses : new Map();
+  const groupMap = itemGroups instanceof Map ? itemGroups : new Map();
+  const manufMap = manufacturers instanceof Map ? manufacturers : new Map();
 
   const data = raw.map((item) => {
     const warehouses = Array.isArray(item.ItemWarehouseInfoCollection)
@@ -553,11 +653,32 @@ function sendArticulosResponse(res, sapData, { page, limit, warehouses }) {
           .filter((w) => w.InStock > 0 || w.Available > 0)
       : [];
 
+    const groupCode =
+      item.ItemsGroupCode !== undefined && item.ItemsGroupCode !== null
+        ? Number(item.ItemsGroupCode)
+        : null;
+    const manufCode =
+      item.Manufacturer !== undefined && item.Manufacturer !== null
+        ? Number(item.Manufacturer)
+        : null;
+
     return {
       ItemCode: item.ItemCode,
       ItemName: item.ItemName,
+      FrgnName: item.ForeignName || '',
       QuantityOnStock: Number(item.QuantityOnStock) || 0,
       SalesUnit: item.SalesUnit,
+      SWW: item.SWW || '',
+      ItemsGroupCode: groupCode,
+      Rubro: groupCode !== null ? groupMap.get(groupCode) || '' : '',
+      Manufacturer: manufCode,
+      Fabricante: manufCode !== null ? manufMap.get(manufCode) || '' : '',
+      LstSalDate: item.LastSalesDate || null,
+      CreateDate: item.CreationDate || null,
+      U_Marca: item.U_Marca || '',
+      U_Modelo: item.U_Modelo || '',
+      IsCommited: Number(item.QuantityOrderedByCustomers) || 0,
+      OnOrder: Number(item.QuantityOrderedFromVendors) || 0,
       Warehouses: warehouses,
     };
   });
