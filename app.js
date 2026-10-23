@@ -146,22 +146,75 @@ app.use((req, res, next) => {
 });
 
 // Sesiones
-const sessionMaxAge = parsePositiveInt(SESSION_MAX_AGE, 8 * 60 * 60 * 1000);
+const sessionMaxAge = parsePositiveInt(SESSION_MAX_AGE, 10 * 60 * 60 * 1000);
 app.set('trust proxy', 1);
-app.use(
-  session({
-    name: 'sapb1.sid',
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: 'auto',
-      maxAge: sessionMaxAge,
-    },
-  })
-);
+const sessionMiddleware = session({
+  name: 'sapb1.sid',
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: 'auto',
+    maxAge: sessionMaxAge,
+  },
+});
+app.use(sessionMiddleware);
+
+// Control de sesiones concurrentes por usuario (FIFO, máximo 2)
+const MAX_SESSIONS_PER_USER = 2;
+// Map<username, Array<{ sid, createdAt }>>  (orden: más antigua primero)
+const userSessions = new Map();
+
+function registerUserSession(username, sid) {
+  const list = userSessions.get(username) || [];
+  // Evitar duplicados del mismo sid
+  const filtered = list.filter((entry) => entry.sid !== sid);
+  filtered.push({ sid, createdAt: Date.now() });
+
+  // Si excede el máximo, destruir las más antiguas (FIFO)
+  while (filtered.length > MAX_SESSIONS_PER_USER) {
+    const oldest = filtered.shift();
+    if (oldest && oldest.sid) {
+      destroySessionById(oldest.sid);
+    }
+  }
+
+  userSessions.set(username, filtered);
+}
+
+function unregisterUserSession(username, sid) {
+  if (!username) return;
+  const list = userSessions.get(username);
+  if (!list) return;
+  const filtered = list.filter((entry) => entry.sid !== sid);
+  if (filtered.length) {
+    userSessions.set(username, filtered);
+  } else {
+    userSessions.delete(username);
+  }
+}
+
+// Referencia al store de sesiones (se asigna tras inicializar el middleware)
+let sessionStoreRef = null;
+app.use((req, res, next) => {
+  if (!sessionStoreRef && req.sessionStore) {
+    sessionStoreRef = req.sessionStore;
+  }
+  next();
+});
+
+function destroySessionById(sid) {
+  if (!sid) return;
+  const store = sessionStoreRef;
+  if (store && typeof store.destroy === 'function') {
+    store.destroy(sid, (err) => {
+      if (err) console.warn('No se pudo destruir sesión previa:', err.message);
+    });
+  }
+}
 
 // Middleware de autenticación
 function requireAuth(req, res, next) {
@@ -203,7 +256,17 @@ app.post('/api/login', async (req, res) => {
       loginAt: new Date().toISOString(),
     };
 
-    return res.json({ ok: true, user: req.session.user });
+    // Registrar la sesión y aplicar límite FIFO por usuario
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Error guardando sesión:', saveErr.message);
+        return res
+          .status(500)
+          .json({ error: { message: 'Error al crear la sesión' } });
+      }
+      registerUserSession(authUser, req.sessionID);
+      return res.json({ ok: true, user: req.session.user });
+    });
   } catch (err) {
     const msg = String(err && err.message ? err.message : err);
     // ldap-authentication lanza errores con "InvalidCredentialsError" cuando la clave es incorrecta
@@ -221,7 +284,10 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   if (!req.session) return res.json({ ok: true });
+  const username = req.session.user && req.session.user.username;
+  const sid = req.sessionID;
   req.session.destroy(() => {
+    unregisterUserSession(username, sid);
     res.clearCookie('sapb1.sid');
     res.json({ ok: true });
   });
