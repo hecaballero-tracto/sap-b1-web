@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-dark bg-primary mb-4">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1">
         <i class="bi bi-people-fill me-2"></i>Clientes SAP B1
@@ -36,9 +36,40 @@
           <i class="bi bi-shield-lock-fill me-1"></i>HTTPS
         </span>
       </span>
-      <button id="btnRefresh" class="btn btn-light btn-sm">
-        <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#mainNav"
+        aria-controls="mainNav"
+        aria-expanded="false"
+        aria-label="Alternar navegación"
+      >
+        <span class="navbar-toggler-icon"></span>
       </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="/clientes.html">
+              <i class="bi bi-people-fill me-1"></i>Clientes
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/articulos.html">
+              <i class="bi bi-box-seam me-1"></i>Productos
+            </a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2">
+          <span id="userName" class="text-white small"></span>
+          <button id="btnRefresh" class="btn btn-light btn-sm">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+          </button>
+          <button id="btnLogout" class="btn btn-outline-light btn-sm">
+            <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión
+          </button>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -122,6 +153,8 @@
     const pageInfo = document.getElementById('pageInfo');
     const btnPrev = document.getElementById('btnPrev');
     const btnNext = document.getElementById('btnNext');
+    const userNameEl = document.getElementById('userName');
+    const btnLogout = document.getElementById('btnLogout');
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -280,6 +313,29 @@
       cargarClientes();
     });
 
+    btnLogout.addEventListener('click', async () => {
+      try {
+        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) {
+        /* ignorar errores de red al cerrar sesión */
+      }
+      window.location.href = '/login.html';
+    });
+
+    async function cargarUsuario() {
+      try {
+        const res = await apiFetch('/api/me');
+        if (!res.ok) return;
+        const data = await res.json();
+        const user = data && data.user;
+        if (user) {
+          userNameEl.textContent = user.displayName || user.username || '';
+        }
+      } catch (_) {
+        /* silencioso: si falla, no se muestra el nombre */
+      }
+    }
+
     // Indicador visual de conexión segura
     if (window.isSecureContext && location.protocol === 'https:') {
       const badge = document.getElementById('secureBadge');
@@ -298,6 +354,7 @@
       );
     }
 
+    cargarUsuario();
     cargarClientes();
   </script>
 </body>
