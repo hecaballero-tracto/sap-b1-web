@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b5ed7" />
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --primary: #0b5ed7;
+      --primary-hover: #0a53be;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --error-bg: #fee2e2;
+      --error-text: #991b1b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      padding: 32px 28px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.4rem;
+      text-align: center;
+    }
+    p.subtitle {
+      margin: 0 0 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(11, 94, 215, 0.15);
+    }
+    button {
+      width: 100%;
+      padding: 11px 12px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover:not(:disabled) { background: var(--primary-hover); }
+    button:disabled { opacity: 0.7; cursor: not-allowed; }
+    .error {
+      display: none;
+      background: var(--error-bg);
+      color: var(--error-text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+    .error.visible { display: block; }
+  </style>
+</head>
+<body>
+  <form class="card" id="loginForm" autocomplete="on">
+    <h1>Iniciar sesión</h1>
+    <p class="subtitle">Ingrese sus credenciales de Active Directory</p>
+
+    <div class="error" id="errorBox" role="alert"></div>
+
+    <label for="username">Usuario</label>
+    <input
+      type="text"
+      id="username"
+      name="username"
+      autocomplete="username"
+      required
+      autofocus
+    />
+
+    <label for="password">Contraseña</label>
+    <input
+      type="password"
+      id="password"
+      name="password"
+      autocomplete="current-password"
+      required
+    />
+
+    <button type="submit" id="submitBtn">Ingresar</button>
+  </form>
+
+  <script>
+    (function () {
+      const form = document.getElementById('loginForm');
+      const errorBox = document.getElementById('errorBox');
+      const submitBtn = document.getElementById('submitBtn');
+
+      function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.classList.add('visible');
+      }
+
+      function clearError() {
+        errorBox.textContent = '';
+        errorBox.classList.remove('visible');
+      }
+
+      function getRedirectTarget() {
+        const params = new URLSearchParams(window.location.search);
+        const target = params.get('redirect');
+        // Solo permitir rutas relativas para evitar open redirect
+        if (target && target.startsWith('/') && !target.startsWith('//')) {
+          return target;
+        }
+        return '/clientes.html';
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError();
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!username || !password) {
+          showError('Usuario y contraseña son obligatorios');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Ingresando...';
+
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ username, password }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            const msg =
+              (data && data.error && data.error.message) ||
+              'No se pudo iniciar sesión';
+            showError(msg);
+            return;
+          }
+
+          window.location.href = getRedirectTarget();
+        } catch (err) {
+          showError('Error de conexión con el servidor');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Ingresar';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
