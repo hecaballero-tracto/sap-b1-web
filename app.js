@@ -22,10 +22,8 @@ const {
   SSL_PFX_PATH,
   SSL_PFX_PASSPHRASE,
   AD_URL,
-  AD_BASE_DN,
-  AD_USERNAME,
-  AD_PASSWORD,
   AD_DOMAIN,
+  AD_TLS_REJECT_UNAUTHORIZED,
   SESSION_SECRET,
   SESSION_MAX_AGE,
 } = process.env;
@@ -57,9 +55,15 @@ async function authenticateAD(username, password) {
     ? username
     : `${AD_DOMAIN}\\${username}`;
 
+  const rejectUnauthorized = String(AD_TLS_REJECT_UNAUTHORIZED || 'true')
+    .toLowerCase() !== 'false';
+
   try {
     const user = await authenticate({
-      ldapOpts: { url: AD_URL },
+      ldapOpts: {
+        url: AD_URL,
+        tlsOptions: { rejectUnauthorized },
+      },
       userDn,
       userPassword: password,
     });
