@@ -9,7 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
-const ActiveDirectory = require('activedirectory2');
+const { authenticate } = require('ldap-authentication');
 
 const {
   SAP_URL,
@@ -37,9 +37,9 @@ if (!SAP_URL || !SAP_COMPANY_DB || !SAP_USER || !SAP_PASSWORD) {
   process.exit(1);
 }
 
-if (!AD_URL || !AD_BASE_DN || !AD_USERNAME || !AD_PASSWORD) {
+if (!AD_URL || !AD_DOMAIN) {
   console.error(
-    'Faltan variables de entorno de Active Directory. Verifique AD_URL, AD_BASE_DN, AD_USERNAME y AD_PASSWORD en el archivo .env'
+    'Faltan variables de entorno de Active Directory. Verifique AD_URL y AD_DOMAIN en el archivo .env'
   );
   process.exit(1);
 }
@@ -51,31 +51,23 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-// Cliente Active Directory (cuenta de servicio para búsquedas)
-const ad = new ActiveDirectory({
-  url: AD_URL,
-  baseDN: AD_BASE_DN,
-  username: AD_USERNAME,
-  password: AD_PASSWORD,
-});
+// Autenticación contra Active Directory usando ldap-authentication
+async function authenticateAD(username, password) {
+  const userDn = username.includes('@')
+    ? username
+    : `${AD_DOMAIN}\\${username}`;
 
-function authenticateAD(username, password) {
-  return new Promise((resolve, reject) => {
-    ad.authenticate(username, password, (err, auth) => {
-      if (err) return reject(err);
-      if (!auth) return resolve(false);
-      return resolve(true);
+  try {
+    const user = await authenticate({
+      ldapOpts: { url: AD_URL },
+      userDn,
+      userPassword: password,
     });
-  });
-}
-
-function findADUser(username) {
-  return new Promise((resolve) => {
-    ad.findUser(username, (err, user) => {
-      if (err || !user) return resolve(null);
-      return resolve(user);
-    });
-  });
+    return user || true;
+  } catch (err) {
+    // Credenciales inválidas o error de conexión: se propaga para manejarlo arriba
+    throw err;
+  }
 }
 
 // Cliente HTTP que ignora certificados autofirmados
@@ -192,19 +184,12 @@ app.post('/api/login', async (req, res) => {
 
   // Construir el identificador de autenticación
   let authUser = String(username).trim();
-  if (AD_DOMAIN && !authUser.includes('\\') && !authUser.includes('@')) {
+  if (!authUser.includes('\\') && !authUser.includes('@')) {
     authUser = `${AD_DOMAIN}\\${authUser}`;
   }
 
   try {
-    const ok = await authenticateAD(authUser, password);
-    if (!ok) {
-      return res
-        .status(401)
-        .json({ error: { message: 'Credenciales inválidas' } });
-    }
-
-    const adUser = await findADUser(authUser);
+    const adUser = await authenticateAD(authUser, password);
 
     req.session.user = {
       username: authUser,
@@ -216,7 +201,14 @@ app.post('/api/login', async (req, res) => {
 
     return res.json({ ok: true, user: req.session.user });
   } catch (err) {
-    console.error('Error autenticando contra AD:', err.message || err);
+    const msg = String(err && err.message ? err.message : err);
+    // ldap-authentication lanza errores con "InvalidCredentialsError" cuando la clave es incorrecta
+    if (/InvalidCredentials|invalid credentials|49/i.test(msg)) {
+      return res
+        .status(401)
+        .json({ error: { message: 'Credenciales inválidas' } });
+    }
+    console.error('Error autenticando contra AD:', msg);
     return res
       .status(500)
       .json({ error: { message: 'Error al autenticar contra Active Directory' } });
