@@ -102,6 +102,10 @@ let itemGroupsCachePromise = null;
 let manufacturersCache = null;
 let manufacturersCachePromise = null;
 
+// Caché en memoria de marcas activas (tabla de usuario @MARCAS): Array<string>
+let marcasCache = null;
+let marcasCachePromise = null;
+
 async function loadWarehouses() {
   if (warehousesCache) return warehousesCache;
   if (warehousesCachePromise) return warehousesCachePromise;
@@ -194,6 +198,54 @@ async function loadManufacturers() {
   })();
 
   return manufacturersCachePromise;
+}
+
+async function loadMarcas() {
+  if (marcasCache) return marcasCache;
+  if (marcasCachePromise) return marcasCachePromise;
+
+  marcasCachePromise = (async () => {
+    try {
+      await ensureSession();
+
+      const tryFetch = async (entity) => {
+        const params = new URLSearchParams();
+        params.set('$filter', "U_Activo eq 'Y'");
+        params.set('$select', 'Code');
+        const response = await sapClient.get(
+          `/b1s/v1/${entity}?${params.toString()}`,
+          { headers: { Cookie: buildCookieHeader() } }
+        );
+        return Array.isArray(response.data && response.data.value)
+          ? response.data.value
+          : [];
+      };
+
+      let list;
+      try {
+        list = await tryFetch('MARCAS');
+      } catch (err) {
+        if (err.response && err.response.status === 404) {
+          list = await tryFetch('U_MARCAS');
+        } else {
+          throw err;
+        }
+      }
+
+      const codes = list
+        .map((m) => (m && m.Code !== undefined && m.Code !== null ? String(m.Code) : null))
+        .filter((c) => c !== null && c !== '')
+        .sort((a, b) => a.localeCompare(b));
+
+      marcasCache = codes;
+      return codes;
+    } catch (err) {
+      marcasCachePromise = null;
+      throw err;
+    }
+  })();
+
+  return marcasCachePromise;
 }
 
 function buildCookieHeader() {
@@ -587,24 +639,11 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
       }),
     ]);
 
-    // Marcas únicas: consulta ligera a Items (solo U_Marca)
+    // Marcas activas desde la tabla de usuario @MARCAS
     let marcas = [];
     try {
-      const params = new URLSearchParams();
-      params.set('$filter', "ItemType eq 'itItems' and U_Marca ne null");
-      params.set('$select', 'U_Marca');
-      const response = await sapClient.get(
-        `/b1s/v1/Items?${params.toString()}`,
-        { headers: { Cookie: buildCookieHeader() } }
-      );
-      const list = Array.isArray(response.data && response.data.value)
-        ? response.data.value
-        : [];
-      const set = new Set();
-      for (const it of list) {
-        if (it && it.U_Marca) set.add(it.U_Marca);
-      }
-      marcas = Array.from(set).sort((a, b) => a.localeCompare(b));
+      const codes = await loadMarcas();
+      marcas = codes.map((code) => ({ code, name: code }));
     } catch (err) {
       console.warn('No se pudieron cargar las marcas:', err.message);
     }

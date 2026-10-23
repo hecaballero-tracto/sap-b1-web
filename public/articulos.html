@@ -494,7 +494,11 @@
         filterMarca.innerHTML =
           '<option value="">Todas</option>' +
           marcas
-            .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+            .map((m) => {
+              const code = typeof m === 'string' ? m : m && m.code;
+              const name = typeof m === 'string' ? m : (m && m.name) || code;
+              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
+            })
             .join('');
       } catch (_) {
         /* silencioso: si falla, los selects quedan con "Todos" */
