@@ -536,12 +536,21 @@ function sendArticulosResponse(res, sapData, { page, limit, warehouses }) {
   const data = raw.map((item) => {
     const warehouses = Array.isArray(item.ItemWarehouseInfoCollection)
       ? item.ItemWarehouseInfoCollection
-          .filter((w) => Number(w.InStock) > 0)
-          .map((w) => ({
-            WarehouseCode: w.WarehouseCode,
-            WarehouseName: whMap.get(w.WarehouseCode) || w.WarehouseCode,
-            InStock: Number(w.InStock) || 0,
-          }))
+          .map((w) => {
+            const inStock = Number(w.InStock) || 0;
+            const committed = Number(w.Committed) || 0;
+            const ordered = Number(w.Ordered) || 0;
+            const available = inStock - committed + ordered;
+            return {
+              WarehouseCode: w.WarehouseCode,
+              WarehouseName: whMap.get(w.WarehouseCode) || w.WarehouseCode,
+              InStock: inStock,
+              Committed: committed,
+              Ordered: ordered,
+              Available: available,
+            };
+          })
+          .filter((w) => w.InStock > 0 || w.Available > 0)
       : [];
 
     return {

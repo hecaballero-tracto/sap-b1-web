@@ -152,7 +152,10 @@
                 <tr>
                   <th>Código</th>
                   <th>Nombre Almacén</th>
-                  <th class="text-end">Stock</th>
+                  <th class="text-end">En Stock</th>
+                  <th class="text-end">Comprometido</th>
+                  <th class="text-end">En Pedido</th>
+                  <th class="text-end">Disponible</th>
                 </tr>
               </thead>
               <tbody id="modalWarehouseBody"></tbody>
@@ -268,7 +271,7 @@
       const whs = Array.isArray(item.Warehouses) ? item.Warehouses : [];
       if (!whs.length) {
         modalWarehouseBody.innerHTML = `
-          <tr><td colspan="3" class="text-center text-muted py-3">Sin stock en depósitos.</td></tr>`;
+          <tr><td colspan="6" class="text-center text-muted py-3">Sin stock en depósitos.</td></tr>`;
       } else {
         modalWarehouseBody.innerHTML = whs
           .map(
@@ -277,6 +280,9 @@
             <td><strong>${escapeHtml(w.WarehouseCode)}</strong></td>
             <td>${escapeHtml(w.WarehouseName || w.WarehouseCode)}</td>
             <td class="text-end">${formatStock(w.InStock)}</td>
+            <td class="text-end">${formatStock(w.Committed)}</td>
+            <td class="text-end">${formatStock(w.Ordered)}</td>
+            <td class="text-end">${formatStock(w.Available)}</td>
           </tr>`
           )
           .join('');
