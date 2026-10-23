@@ -208,12 +208,12 @@ async function loadMarcas() {
     try {
       await ensureSession();
 
-      const tryFetch = async (entity) => {
+      const fetchMarcas = async (filter) => {
         const params = new URLSearchParams();
-        params.set('$filter', "U_Activo eq 'Y'");
-        params.set('$select', 'Code');
+        params.set('$filter', filter);
+        params.set('$select', 'Code,U_Activo');
         const response = await sapClient.get(
-          `/b1s/v1/${entity}?${params.toString()}`,
+          `/b1s/v1/Marcas?${params.toString()}`,
           { headers: { Cookie: buildCookieHeader() } }
         );
         return Array.isArray(response.data && response.data.value)
@@ -221,15 +221,22 @@ async function loadMarcas() {
           : [];
       };
 
-      let list;
-      try {
-        list = await tryFetch('MARCAS');
-      } catch (err) {
-        if (err.response && err.response.status === 404) {
-          list = await tryFetch('U_MARCAS');
-        } else {
-          throw err;
-        }
+      // Intento principal con 'Si'
+      let list = await fetchMarcas("U_Activo eq 'Si'");
+
+      // Fallback por variaciones de mayúsculas en el UDF
+      if (!list.length) {
+        list = await fetchMarcas("U_Activo eq 'SI'");
+      }
+
+      // Fallback final: filtrar en memoria por 'si' (case-insensitive)
+      if (!list.length) {
+        const all = await fetchMarcas("Code ne ''");
+        list = all.filter(
+          (item) =>
+            item &&
+            String(item.U_Activo || '').toLowerCase() === 'si'
+        );
       }
 
       const codes = list
