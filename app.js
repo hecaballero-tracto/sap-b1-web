@@ -526,7 +526,7 @@ app.get('/api/clientes', requireAuth, async (req, res) => {
   }
 });
 
-function buildArticulosQuery({ page, limit, search }) {
+function buildArticulosQuery({ page, limit, search, rubro, fabricante, marca }) {
   const filters = ["ItemType eq 'itItems'"];
 
   if (search) {
@@ -534,6 +534,25 @@ function buildArticulosQuery({ page, limit, search }) {
     filters.push(
       `(contains(ItemCode,'${safe}') or contains(ItemName,'${safe}'))`
     );
+  }
+
+  if (rubro !== undefined && rubro !== null && rubro !== '') {
+    const n = parseInt(rubro, 10);
+    if (Number.isFinite(n)) {
+      filters.push(`ItemsGroupCode eq ${n}`);
+    }
+  }
+
+  if (fabricante !== undefined && fabricante !== null && fabricante !== '') {
+    const n = parseInt(fabricante, 10);
+    if (Number.isFinite(n)) {
+      filters.push(`Manufacturer eq ${n}`);
+    }
+  }
+
+  if (marca !== undefined && marca !== null && marca !== '') {
+    const safe = escapeODataString(marca);
+    filters.push(`U_Marca eq '${safe}'`);
   }
 
   const skip = (page - 1) * limit;
@@ -608,8 +627,18 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query.page, 1);
   const limit = parsePositiveInt(req.query.limit, 20, 200);
   const search = (req.query.search || '').trim();
+  const rubro = (req.query.rubro || '').trim();
+  const fabricante = (req.query.fabricante || '').trim();
+  const marca = (req.query.marca || '').trim();
 
-  const query = buildArticulosQuery({ page, limit, search });
+  const query = buildArticulosQuery({
+    page,
+    limit,
+    search,
+    rubro,
+    fabricante,
+    marca,
+  });
 
   try {
     await ensureSession();

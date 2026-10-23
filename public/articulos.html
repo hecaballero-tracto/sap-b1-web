@@ -456,20 +456,11 @@
       const term = searchInput.value.trim();
       if (term) params.set('search', term);
 
+      if (filterRubro.value) params.set('rubro', filterRubro.value);
+      if (filterFabricante.value) params.set('fabricante', filterFabricante.value);
+      if (filterMarca.value) params.set('marca', filterMarca.value);
+
       return params.toString();
-    }
-
-    function applyClientFilters(list) {
-      const rubro = filterRubro.value;
-      const fabricante = filterFabricante.value;
-      const marca = filterMarca.value;
-
-      return list.filter((a) => {
-        if (rubro && String(a.ItemsGroupCode) !== rubro) return false;
-        if (fabricante && String(a.Manufacturer) !== fabricante) return false;
-        if (marca && (a.U_Marca || '') !== marca) return false;
-        return true;
-      });
     }
 
     async function cargarCatalogos() {
@@ -538,7 +529,7 @@
           total: data.total ?? 0,
           totalPages: data.totalPages ?? 0,
         };
-        render(applyClientFilters(articulos));
+        render(articulos);
         updatePagingControls();
       } catch (err) {
         if (err && err.message === 'Sesión expirada') return;
@@ -584,15 +575,25 @@
       cargarArticulos();
     });
 
-    filterRubro.addEventListener('change', () => render(applyClientFilters(articulos)));
-    filterFabricante.addEventListener('change', () => render(applyClientFilters(articulos)));
-    filterMarca.addEventListener('change', () => render(applyClientFilters(articulos)));
+    filterRubro.addEventListener('change', () => {
+      paging.page = 1;
+      cargarArticulos();
+    });
+    filterFabricante.addEventListener('change', () => {
+      paging.page = 1;
+      cargarArticulos();
+    });
+    filterMarca.addEventListener('change', () => {
+      paging.page = 1;
+      cargarArticulos();
+    });
 
     btnClearFilters.addEventListener('click', () => {
       filterRubro.value = '';
       filterFabricante.value = '';
       filterMarca.value = '';
-      render(applyClientFilters(articulos));
+      paging.page = 1;
+      cargarArticulos();
     });
 
     btnLogout.addEventListener('click', async () => {
