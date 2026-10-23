@@ -142,7 +142,7 @@ async function loadItemGroups() {
     try {
       await ensureSession();
       const response = await sapClient.get(
-        "/b1s/v1/ItemGroups?$select=ItemsGroupCode,GroupName",
+        "/b1s/v1/ItemGroups?$select=Number,GroupName",
         { headers: { Cookie: buildCookieHeader() } }
       );
       const list = Array.isArray(response.data && response.data.value)
@@ -150,8 +150,8 @@ async function loadItemGroups() {
         : [];
       const map = new Map();
       for (const g of list) {
-        if (g && g.ItemsGroupCode !== undefined && g.ItemsGroupCode !== null) {
-          map.set(Number(g.ItemsGroupCode), g.GroupName || String(g.ItemsGroupCode));
+        if (g && g.Number !== undefined && g.Number !== null) {
+          map.set(String(g.Number), g.GroupName || String(g.Number));
         }
       }
       itemGroupsCache = map;
@@ -182,7 +182,7 @@ async function loadManufacturers() {
       const map = new Map();
       for (const m of list) {
         if (m && m.Code !== undefined && m.Code !== null) {
-          map.set(Number(m.Code), m.ManufacturerName || String(m.Code));
+          map.set(String(m.Code), m.ManufacturerName || String(m.Code));
         }
       }
       manufacturersCache = map;
@@ -670,9 +670,15 @@ function sendArticulosResponse(
       SalesUnit: item.SalesUnit,
       SWW: item.SWW || '',
       ItemsGroupCode: groupCode,
-      Rubro: groupCode !== null ? groupMap.get(groupCode) || '' : '',
+      rubro:
+        item.ItemsGroupCode !== undefined && item.ItemsGroupCode !== null
+          ? groupMap.get(String(item.ItemsGroupCode)) || ''
+          : '',
       Manufacturer: manufCode,
-      Fabricante: manufCode !== null ? manufMap.get(manufCode) || '' : '',
+      fabricante:
+        item.Manufacturer !== undefined && item.Manufacturer !== null
+          ? manufMap.get(String(item.Manufacturer)) || ''
+          : '',
       LstSalDate: null,
       CreateDate: item.CreateDate || null,
       U_Marca: item.U_Marca || '',

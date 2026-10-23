@@ -224,12 +224,12 @@
     const COLUMNS = [
       { key: 'ItemCode', label: 'Código', align: '', default: true },
       { key: 'ItemName', label: 'Descripción', align: '', default: true },
-      { key: 'FrgnName', label: 'Nombre Extranjero', align: '', default: false },
+      { key: 'FrgnName', label: 'Nombre Interno', align: '', default: false },
       { key: 'QuantityOnStock', label: 'Stock Total', align: 'text-end', default: true, format: 'stock' },
       { key: 'SalesUnit', label: 'Unidad', align: '', default: true },
-      { key: 'SWW', label: 'SWW', align: '', default: false },
-      { key: 'Rubro', label: 'Rubro', align: '', default: false },
-      { key: 'Fabricante', label: 'Fabricante', align: '', default: false },
+      { key: 'SWW', label: 'Familia', align: '', default: false },
+      { key: 'rubro', label: 'Rubro', align: '', default: false },
+      { key: 'fabricante', label: 'Fabricante', align: '', default: false },
       { key: 'U_Marca', label: 'Marca', align: '', default: false },
       { key: 'U_Modelo', label: 'Modelo', align: '', default: false },
       { key: 'IsCommited', label: 'Comprometido', align: 'text-end', default: false, format: 'stock' },
@@ -483,11 +483,11 @@
       const fabricantes = new Map();
       const marcas = new Set();
       for (const a of list) {
-        if (a.ItemsGroupCode !== null && a.ItemsGroupCode !== undefined && a.Rubro) {
-          rubros.set(String(a.ItemsGroupCode), a.Rubro);
+        if (a.ItemsGroupCode !== null && a.ItemsGroupCode !== undefined && a.rubro) {
+          rubros.set(String(a.ItemsGroupCode), a.rubro);
         }
-        if (a.Manufacturer !== null && a.Manufacturer !== undefined && a.Fabricante) {
-          fabricantes.set(String(a.Manufacturer), a.Fabricante);
+        if (a.Manufacturer !== null && a.Manufacturer !== undefined && a.fabricante) {
+          fabricantes.set(String(a.Manufacturer), a.fabricante);
         }
         if (a.U_Marca) marcas.add(a.U_Marca);
       }
