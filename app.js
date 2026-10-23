@@ -90,6 +90,42 @@ let sapSession = {
   routeid: null,
 };
 
+// Caché en memoria de almacenes: Map<WarehouseCode, WarehouseName>
+let warehousesCache = null;
+let warehousesCachePromise = null;
+
+async function loadWarehouses() {
+  if (warehousesCache) return warehousesCache;
+  if (warehousesCachePromise) return warehousesCachePromise;
+
+  warehousesCachePromise = (async () => {
+    try {
+      await ensureSession();
+      const response = await sapClient.get(
+        "/b1s/v1/Warehouses?$select=WarehouseCode,WarehouseName",
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      const list = Array.isArray(response.data && response.data.value)
+        ? response.data.value
+        : [];
+      const map = new Map();
+      for (const w of list) {
+        if (w && w.WarehouseCode) {
+          map.set(w.WarehouseCode, w.WarehouseName || w.WarehouseCode);
+        }
+      }
+      warehousesCache = map;
+      return map;
+    } catch (err) {
+      // No cachear fallos: permitir reintento en la próxima llamada
+      warehousesCachePromise = null;
+      throw err;
+    }
+  })();
+
+  return warehousesCachePromise;
+}
+
 function buildCookieHeader() {
   const parts = [];
   if (sapSession.b1session) parts.push(`B1SESSION=${sapSession.b1session}`);
@@ -457,20 +493,32 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   try {
     await ensureSession();
 
+    // Cargar almacenes en paralelo (si falla, se responde sin nombres)
+    const warehousesPromise = loadWarehouses().catch((err) => {
+      console.warn('No se pudo cargar el catálogo de almacenes:', err.message);
+      return new Map();
+    });
+
     const response = await sapClient.get(query, {
       headers: { Cookie: buildCookieHeader() },
     });
 
-    return sendArticulosResponse(res, response.data, { page, limit });
+    const warehouses = await warehousesPromise;
+    return sendArticulosResponse(res, response.data, { page, limit, warehouses });
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
         sapSession = { b1session: null, routeid: null };
         await login();
+        const warehouses = await loadWarehouses().catch(() => new Map());
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
         });
-        return sendArticulosResponse(res, retry.data, { page, limit });
+        return sendArticulosResponse(res, retry.data, {
+          page,
+          limit,
+          warehouses,
+        });
       } catch (retryError) {
         return handleError(res, retryError);
       }
@@ -479,10 +527,11 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   }
 });
 
-function sendArticulosResponse(res, sapData, { page, limit }) {
+function sendArticulosResponse(res, sapData, { page, limit, warehouses }) {
   const raw = Array.isArray(sapData.value) ? sapData.value : [];
   const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
   const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+  const whMap = warehouses instanceof Map ? warehouses : new Map();
 
   const data = raw.map((item) => {
     const warehouses = Array.isArray(item.ItemWarehouseInfoCollection)
@@ -490,6 +539,7 @@ function sendArticulosResponse(res, sapData, { page, limit }) {
           .filter((w) => Number(w.InStock) > 0)
           .map((w) => ({
             WarehouseCode: w.WarehouseCode,
+            WarehouseName: whMap.get(w.WarehouseCode) || w.WarehouseCode,
             InStock: Number(w.InStock) || 0,
           }))
       : [];
