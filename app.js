@@ -8,6 +8,8 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const session = require('express-session');
+const ActiveDirectory = require('activedirectory2');
 
 const {
   SAP_URL,
@@ -19,6 +21,13 @@ const {
   HTTP_PORT,
   SSL_PFX_PATH,
   SSL_PFX_PASSPHRASE,
+  AD_URL,
+  AD_BASE_DN,
+  AD_USERNAME,
+  AD_PASSWORD,
+  AD_DOMAIN,
+  SESSION_SECRET,
+  SESSION_MAX_AGE,
 } = process.env;
 
 if (!SAP_URL || !SAP_COMPANY_DB || !SAP_USER || !SAP_PASSWORD) {
@@ -26,6 +35,47 @@ if (!SAP_URL || !SAP_COMPANY_DB || !SAP_USER || !SAP_PASSWORD) {
     'Faltan variables de entorno. Verifique SAP_URL, SAP_COMPANY_DB, SAP_USER y SAP_PASSWORD en el archivo .env'
   );
   process.exit(1);
+}
+
+if (!AD_URL || !AD_BASE_DN || !AD_USERNAME || !AD_PASSWORD) {
+  console.error(
+    'Faltan variables de entorno de Active Directory. Verifique AD_URL, AD_BASE_DN, AD_USERNAME y AD_PASSWORD en el archivo .env'
+  );
+  process.exit(1);
+}
+
+if (!SESSION_SECRET) {
+  console.error(
+    'Falta SESSION_SECRET en el archivo .env (usar una cadena larga y aleatoria).'
+  );
+  process.exit(1);
+}
+
+// Cliente Active Directory (cuenta de servicio para búsquedas)
+const ad = new ActiveDirectory({
+  url: AD_URL,
+  baseDN: AD_BASE_DN,
+  username: AD_USERNAME,
+  password: AD_PASSWORD,
+});
+
+function authenticateAD(username, password) {
+  return new Promise((resolve, reject) => {
+    ad.authenticate(username, password, (err, auth) => {
+      if (err) return reject(err);
+      if (!auth) return resolve(false);
+      return resolve(true);
+    });
+  });
+}
+
+function findADUser(username) {
+  return new Promise((resolve) => {
+    ad.findUser(username, (err, user) => {
+      if (err || !user) return resolve(null);
+      return resolve(user);
+    });
+  });
 }
 
 // Cliente HTTP que ignora certificados autofirmados
@@ -99,14 +149,119 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Sesiones
+const sessionMaxAge = parsePositiveInt(SESSION_MAX_AGE, 8 * 60 * 60 * 1000);
+app.set('trust proxy', 1);
+app.use(
+  session({
+    name: 'sapb1.sid',
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: 'auto',
+      maxAge: sessionMaxAge,
+    },
+  })
+);
+
+// Middleware de autenticación
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+
+  const isApi = req.path.startsWith('/api/');
+  if (isApi) {
+    return res.status(401).json({ error: { message: 'No autenticado' } });
+  }
+
+  const redirect = encodeURIComponent(req.originalUrl || '/');
+  return res.redirect(`/login.html?redirect=${redirect}`);
+}
+
+// Endpoints de autenticación (públicos)
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res
+      .status(400)
+      .json({ error: { message: 'Usuario y contraseña son obligatorios' } });
+  }
+
+  // Construir el identificador de autenticación
+  let authUser = String(username).trim();
+  if (AD_DOMAIN && !authUser.includes('\\') && !authUser.includes('@')) {
+    authUser = `${AD_DOMAIN}\\${authUser}`;
+  }
+
+  try {
+    const ok = await authenticateAD(authUser, password);
+    if (!ok) {
+      return res
+        .status(401)
+        .json({ error: { message: 'Credenciales inválidas' } });
+    }
+
+    const adUser = await findADUser(authUser);
+
+    req.session.user = {
+      username: authUser,
+      displayName:
+        (adUser && (adUser.displayName || adUser.cn)) || authUser,
+      email: (adUser && (adUser.mail || adUser.userPrincipalName)) || null,
+      loginAt: new Date().toISOString(),
+    };
+
+    return res.json({ ok: true, user: req.session.user });
+  } catch (err) {
+    console.error('Error autenticando contra AD:', err.message || err);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al autenticar contra Active Directory' } });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  if (!req.session) return res.json({ ok: true });
+  req.session.destroy(() => {
+    res.clearCookie('sapb1.sid');
+    res.json({ ok: true });
+  });
+});
+
+app.get('/api/me', (req, res) => {
+  if (req.session && req.session.user) {
+    return res.json({ user: req.session.user });
+  }
+  return res.status(401).json({ error: { message: 'No autenticado' } });
+});
+
+// Archivos estáticos públicos (login, logout, manifest, sw, icons)
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    index: false,
+    setHeaders: (res, filePath) => {
+      // no-cache para HTML para evitar servir vistas protegidas cacheadas
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  })
+);
 
 // Redirigir la raíz a la página de clientes
 app.get('/', (req, res) => {
   res.redirect('/clientes.html');
 });
 
-app.get('/api/orders', async (req, res) => {
+// Proteger vistas HTML (excepto login/logout)
+app.get(['/clientes.html', '/articulos.html'], requireAuth, (req, res, next) => {
+  next();
+});
+
+app.get('/api/orders', requireAuth, async (req, res) => {
   try {
     await ensureSession();
 
@@ -170,7 +325,7 @@ function buildClientesQuery({ page, limit, search }) {
   return `/b1s/v1/BusinessPartners?${params.toString()}`;
 }
 
-app.get('/api/clientes', async (req, res) => {
+app.get('/api/clientes', requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query.page, 1);
   const limit = parsePositiveInt(req.query.limit, 20, 200);
   const search = (req.query.search || '').trim();
@@ -229,7 +384,7 @@ function buildArticulosQuery({ page, limit, search }) {
   return `/b1s/v1/Items?${params.toString()}`;
 }
 
-app.get('/api/articulos', async (req, res) => {
+app.get('/api/articulos', requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query.page, 1);
   const limit = parsePositiveInt(req.query.limit, 20, 200);
   const search = (req.query.search || '').trim();
