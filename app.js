@@ -543,7 +543,7 @@ function buildArticulosQuery({ page, limit, search }) {
   params.set('$filter', filters.join(' and '));
   params.set(
     '$select',
-    'ItemCode,ItemName,ForeignName,QuantityOnStock,SalesUnit,SWW,ItemsGroupCode,Manufacturer,CreationDate,U_Marca,U_Modelo,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection'
+    'ItemCode,ItemName,ForeignName,QuantityOnStock,SalesUnit,SWW,ItemsGroupCode,Manufacturer,CreateDate,U_Marca,U_Modelo,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection'
   );
   params.set('$orderby', 'ItemCode');
   params.set('$top', String(top));
@@ -674,7 +674,7 @@ function sendArticulosResponse(
       Manufacturer: manufCode,
       Fabricante: manufCode !== null ? manufMap.get(manufCode) || '' : '',
       LstSalDate: null,
-      CreateDate: item.CreationDate || null,
+      CreateDate: item.CreateDate || null,
       U_Marca: item.U_Marca || '',
       U_Modelo: item.U_Modelo || '',
       IsCommited: Number(item.QuantityOrderedByCustomers) || 0,
