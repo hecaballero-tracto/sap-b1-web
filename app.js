@@ -234,6 +234,17 @@ app.get('/api/me', (req, res) => {
   return res.status(401).json({ error: { message: 'No autenticado' } });
 });
 
+// Redirigir la raíz a la página de clientes
+app.get('/', (req, res) => {
+  res.redirect('/clientes.html');
+});
+
+// Proteger vistas HTML ANTES de servir estáticos
+app.get(['/clientes.html', '/articulos.html'], requireAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', req.path));
+});
+
 // Archivos estáticos públicos (login, logout, manifest, sw, icons)
 app.use(
   express.static(path.join(__dirname, 'public'), {
@@ -246,16 +257,6 @@ app.use(
     },
   })
 );
-
-// Redirigir la raíz a la página de clientes
-app.get('/', (req, res) => {
-  res.redirect('/clientes.html');
-});
-
-// Proteger vistas HTML (excepto login/logout)
-app.get(['/clientes.html', '/articulos.html'], requireAuth, (req, res, next) => {
-  next();
-});
 
 app.get('/api/orders', requireAuth, async (req, res) => {
   try {

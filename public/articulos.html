@@ -178,6 +178,16 @@
     const modalWarehouseBody = document.getElementById('modalWarehouseBody');
     const warehouseModal = new bootstrap.Modal(document.getElementById('warehouseModal'));
 
+    async function apiFetch(url, options) {
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        window.location.href =
+          '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Sesión expirada');
+      }
+      return res;
+    }
+
     function escapeHtml(value) {
       if (value === null || value === undefined) return '';
       return String(value)
@@ -294,7 +304,7 @@
         </tr>`;
 
       try {
-        const res = await fetch(`/api/articulos?${buildQuery()}`);
+        const res = await apiFetch(`/api/articulos?${buildQuery()}`);
         const data = await res.json();
 
         if (!res.ok) {
@@ -314,6 +324,7 @@
         render(articulos);
         updatePagingControls();
       } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
         body.innerHTML = '';
         alertBox.innerHTML = `
           <div class="alert alert-danger m-3 mb-0">
