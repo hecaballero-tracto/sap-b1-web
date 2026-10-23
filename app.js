@@ -84,16 +84,16 @@ const sapClient = axios.create({
   timeout: 30000,
 });
 
-// Sesión en memoria
-let session = {
+// Sesión SAP B1 en memoria
+let sapSession = {
   b1session: null,
   routeid: null,
 };
 
 function buildCookieHeader() {
   const parts = [];
-  if (session.b1session) parts.push(`B1SESSION=${session.b1session}`);
-  if (session.routeid) parts.push(`ROUTEID=${session.routeid}`);
+  if (sapSession.b1session) parts.push(`B1SESSION=${sapSession.b1session}`);
+  if (sapSession.routeid) parts.push(`ROUTEID=${sapSession.routeid}`);
   return parts.join('; ');
 }
 
@@ -119,16 +119,16 @@ async function login() {
     throw new Error('No se recibió la cookie B1SESSION en el login');
   }
 
-  session = { b1session, routeid };
+  sapSession = { b1session, routeid };
   console.log('Sesión SAP B1 iniciada correctamente');
-  return session;
+  return sapSession;
 }
 
 async function ensureSession() {
-  if (!session.b1session) {
+  if (!sapSession.b1session) {
     await login();
   }
-  return session;
+  return sapSession;
 }
 
 const app = express();
@@ -270,7 +270,7 @@ app.get('/api/orders', requireAuth, async (req, res) => {
     // Si la sesión expiró, reintentar una vez
     if (error.response && error.response.status === 401) {
       try {
-        session = { b1session: null, routeid: null };
+        sapSession = { b1session: null, routeid: null };
         await login();
         const retry = await sapClient.get('/b1s/v1/Orders?$top=5', {
           headers: { Cookie: buildCookieHeader() },
@@ -339,7 +339,7 @@ app.get('/api/clientes', requireAuth, async (req, res) => {
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
-        session = { b1session: null, routeid: null };
+        sapSession = { b1session: null, routeid: null };
         await login();
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
@@ -398,7 +398,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
-        session = { b1session: null, routeid: null };
+        sapSession = { b1session: null, routeid: null };
         await login();
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
