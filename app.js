@@ -103,6 +103,9 @@ const AD_ATTRIBUTES = [
   'memberOf',
 ];
 
+// BaseDN por defecto del dominio (puede sobreescribirse con AD_BASE_DN)
+const DEFAULT_BASE_DN = 'DC=tractoagrovial,DC=com,DC=py';
+
 // Calcula el baseDN a partir de AD_BASE_DN, AD_DOMAIN o el sufijo del correo
 function resolveBaseDN(username) {
   if (process.env.AD_BASE_DN) {
@@ -129,7 +132,7 @@ function resolveBaseDN(username) {
       .join(',');
   }
 
-  return '';
+  return DEFAULT_BASE_DN;
 }
 
 // Búsqueda directa con ldapjs para obtener memberOf cuando ldap-authentication
@@ -169,7 +172,7 @@ function searchMemberOf(username, password) {
       }
 
       // Buscar por sAMAccountName en el baseDN calculado
-      const baseDN = resolveBaseDN(username);
+      const baseDN = resolveBaseDN(username) || DEFAULT_BASE_DN;
       const samAccount = username.split('@')[0].split('\\\\').pop();
       const filter = `(&(objectClass=user)(sAMAccountName=${samAccount}))`;
       const opts = {
@@ -178,6 +181,7 @@ function searchMemberOf(username, password) {
         paged: false,
         attributes: ['sAMAccountName', 'displayName', 'mail', 'userPrincipalName', 'memberOf'],
       };
+      console.log('[AUTH AD] Buscando memberOf en baseDN:', baseDN, 'filtro:', filter);
 
       client.search(baseDN, opts, (searchErr, res) => {
         if (searchErr) {
@@ -207,9 +211,14 @@ function searchMemberOf(username, password) {
           }
         });
         res.on('searchReference', () => {
-          /* ignorar referencias */
+          /* ignorar referencias (referrals) sin emitir error */
         });
         res.on('error', (err) => {
+          // Los referrals de AD no deben abortar la búsqueda
+          if (err && /referral/i.test(String(err.message || ''))) {
+            console.warn('[AUTH AD] Referral ignorado:', err.message);
+            return;
+          }
           console.warn('[AUTH AD] Error en respuesta de búsqueda:', err.message);
           done(null);
         });
@@ -660,6 +669,19 @@ app.post('/api/login', async (req, res) => {
       memberOfList.some((dn) =>
         String(dn || '').toLowerCase().includes('informatica')
       )
+    ) {
+      canConfigurePriceLists = true;
+    }
+
+    // Respaldo rápido: usuario administrador conocido
+    const samAccountLower = String(authUser || '')
+      .split('@')[0]
+      .split('\\\\')
+      .pop()
+      .toLowerCase();
+    if (
+      samAccountLower === 'hecaballero' ||
+      String(authUser || '').toLowerCase() === 'hecaballero@tracto.com.py'
     ) {
       canConfigurePriceLists = true;
     }
