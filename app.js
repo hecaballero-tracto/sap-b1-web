@@ -49,6 +49,28 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
+// Grupos de AD con permiso para configurar listas de precios
+const PRICE_LIST_ADMIN_GROUPS = ['Informatica', 'Directorio', 'Directorio_RW'];
+
+function extractGroupNames(memberOf) {
+  if (!memberOf) return [];
+  const list = Array.isArray(memberOf) ? memberOf : [memberOf];
+  const names = [];
+  for (const dn of list) {
+    if (!dn) continue;
+    // Extraer el CN del DN: "CN=Informatica,OU=...,DC=..."
+    const m = /^CN=([^,]+)/i.exec(String(dn));
+    if (m) names.push(m[1]);
+  }
+  return names;
+}
+
+function canConfigurePriceListsFromGroups(groups) {
+  if (!Array.isArray(groups)) return false;
+  const lower = groups.map((g) => String(g).toLowerCase());
+  return PRICE_LIST_ADMIN_GROUPS.some((g) => lower.includes(g.toLowerCase()));
+}
+
 // Autenticación contra Active Directory usando ldap-authentication
 async function authenticateAD(username, password) {
   const userDn = username.includes('@')
@@ -105,6 +127,10 @@ let manufacturersCachePromise = null;
 // Caché en memoria de marcas activas (tabla de usuario @MARCAS): Array<string>
 let marcasCache = null;
 let marcasCachePromise = null;
+
+// Caché en memoria de listas de precios: Map<PriceListNo, PriceListName>
+let priceListsCache = null;
+let priceListsCachePromise = null;
 
 async function loadWarehouses() {
   if (warehousesCache) return warehousesCache;
@@ -253,6 +279,40 @@ async function loadMarcas() {
   })();
 
   return marcasCachePromise;
+}
+
+async function loadPriceLists() {
+  if (priceListsCache) return priceListsCache;
+  if (priceListsCachePromise) return priceListsCachePromise;
+
+  priceListsCachePromise = (async () => {
+    try {
+      await ensureSession();
+      const response = await sapClient.get(
+        "/b1s/v1/PriceLists?$select=PriceListNo,PriceListName",
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      const list = Array.isArray(response.data && response.data.value)
+        ? response.data.value
+        : [];
+      const map = new Map();
+      for (const p of list) {
+        if (p && p.PriceListNo !== undefined && p.PriceListNo !== null) {
+          map.set(
+            Number(p.PriceListNo),
+            p.PriceListName || String(p.PriceListNo)
+          );
+        }
+      }
+      priceListsCache = map;
+      return map;
+    } catch (err) {
+      priceListsCachePromise = null;
+      throw err;
+    }
+  })();
+
+  return priceListsCachePromise;
 }
 
 function buildCookieHeader() {
@@ -413,11 +473,16 @@ app.post('/api/login', async (req, res) => {
   try {
     const adUser = await authenticateAD(authUser, password);
 
+    const groups = extractGroupNames(adUser && adUser.memberOf);
+    const canConfigurePriceLists = canConfigurePriceListsFromGroups(groups);
+
     req.session.user = {
       username: authUser,
       displayName:
         (adUser && (adUser.displayName || adUser.cn)) || authUser,
       email: (adUser && (adUser.mail || adUser.userPrincipalName)) || null,
+      groups,
+      canConfigurePriceLists,
       loginAt: new Date().toISOString(),
     };
 
@@ -653,7 +718,7 @@ function buildArticulosQuery({
   params.set('$filter', filters.join(' and '));
   params.set(
     '$select',
-    'ItemCode,ItemName,ForeignName,QuantityOnStock,SalesUnit,SWW,ItemsGroupCode,Manufacturer,CreateDate,U_Marca,U_Modelo,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection'
+    'ItemCode,ItemName,ForeignName,QuantityOnStock,SalesUnit,SWW,ItemsGroupCode,Manufacturer,CreateDate,U_Marca,U_Modelo,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection,ItemPrices'
   );
   params.set('$orderby', 'ItemCode');
   params.set('$top', String(top));
@@ -667,13 +732,17 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
   try {
     await ensureSession();
 
-    const [itemGroups, manufacturers] = await Promise.all([
+    const [itemGroups, manufacturers, priceLists] = await Promise.all([
       loadItemGroups().catch((err) => {
         console.warn('No se pudo cargar el catálogo de grupos:', err.message);
         return new Map();
       }),
       loadManufacturers().catch((err) => {
         console.warn('No se pudo cargar el catálogo de fabricantes:', err.message);
+        return new Map();
+      }),
+      loadPriceLists().catch((err) => {
+        console.warn('No se pudo cargar el catálogo de listas de precios:', err.message);
         return new Map();
       }),
     ]);
@@ -695,7 +764,11 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
       .map(([code, name]) => ({ code: Number(code), name }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    return res.json({ rubros, fabricantes, marcas });
+    const priceListsArr = Array.from(priceLists.entries())
+      .map(([code, name]) => ({ code: Number(code), name }))
+      .sort((a, b) => a.code - b.code);
+
+    return res.json({ rubros, fabricantes, marcas, priceLists: priceListsArr });
   } catch (error) {
     return handleError(res, error);
   }
@@ -736,15 +809,20 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
       console.warn('No se pudo cargar el catálogo de fabricantes:', err.message);
       return new Map();
     });
+    const priceListsPromise = loadPriceLists().catch((err) => {
+      console.warn('No se pudo cargar el catálogo de listas de precios:', err.message);
+      return new Map();
+    });
 
     const response = await sapClient.get(query, {
       headers: { Cookie: buildCookieHeader() },
     });
 
-    const [warehouses, itemGroups, manufacturers] = await Promise.all([
+    const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
       warehousesPromise,
       itemGroupsPromise,
       manufacturersPromise,
+      priceListsPromise,
     ]);
     return sendArticulosResponse(res, response.data, {
       page,
@@ -752,16 +830,18 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
       warehouses,
       itemGroups,
       manufacturers,
+      priceLists,
     });
   } catch (error) {
     if (error.response && error.response.status === 401) {
       try {
         sapSession = { b1session: null, routeid: null };
         await login();
-        const [warehouses, itemGroups, manufacturers] = await Promise.all([
+        const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
           loadWarehouses().catch(() => new Map()),
           loadItemGroups().catch(() => new Map()),
           loadManufacturers().catch(() => new Map()),
+          loadPriceLists().catch(() => new Map()),
         ]);
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
@@ -772,6 +852,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
           warehouses,
           itemGroups,
           manufacturers,
+          priceLists,
         });
       } catch (retryError) {
         return handleError(res, retryError);
@@ -784,7 +865,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
 function sendArticulosResponse(
   res,
   sapData,
-  { page, limit, warehouses, itemGroups, manufacturers }
+  { page, limit, warehouses, itemGroups, manufacturers, priceLists }
 ) {
   const raw = Array.isArray(sapData.value) ? sapData.value : [];
   const total = Number(sapData['odata.count'] ?? sapData['@odata.count'] ?? 0) || 0;
@@ -792,6 +873,7 @@ function sendArticulosResponse(
   const whMap = warehouses instanceof Map ? warehouses : new Map();
   const groupMap = itemGroups instanceof Map ? itemGroups : new Map();
   const manufMap = manufacturers instanceof Map ? manufacturers : new Map();
+  const priceMap = priceLists instanceof Map ? priceLists : new Map();
 
   const data = raw.map((item) => {
     const warehouses = Array.isArray(item.ItemWarehouseInfoCollection)
@@ -811,6 +893,18 @@ function sendArticulosResponse(
             };
           })
           .filter((w) => w.InStock > 0 || w.Available > 0)
+      : [];
+
+    const prices = Array.isArray(item.ItemPrices)
+      ? item.ItemPrices.map((p) => {
+          const code = Number(p.PriceList);
+          return {
+            PriceList: code,
+            PriceListName: priceMap.get(code) || String(p.PriceList),
+            Price: Number(p.Price) || 0,
+            Currency: p.Currency || '',
+          };
+        })
       : [];
 
     const groupCode =
@@ -850,6 +944,7 @@ function sendArticulosResponse(
         (Number(item.QuantityOrderedByCustomers) || 0) +
         (Number(item.QuantityOrderedFromVendors) || 0),
       Warehouses: warehouses,
+      Prices: prices,
     };
   });
 

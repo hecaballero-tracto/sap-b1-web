@@ -109,6 +109,14 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-end p-2" id="columnsMenu" style="max-height: 320px; overflow-y: auto;"></ul>
           </div>
+          <button
+            id="btnPriceConfig"
+            class="btn btn-outline-secondary btn-sm d-none"
+            type="button"
+            title="Configurar listas de precios visibles"
+          >
+            <i class="bi bi-gear"></i>
+          </button>
         </div>
       </div>
       <div class="collapse" id="filtersPanel">
@@ -190,6 +198,61 @@
     </div>
   </div>
 
+  <!-- Modal de precios -->
+  <div class="modal fade" id="priceModal" tabindex="-1" aria-labelledby="priceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="priceModalLabel">
+            <i class="bi bi-tags me-2"></i>Listas de precios
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2"><strong id="priceModalItemCode"></strong> - <span id="priceModalItemName"></span></p>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Código</th>
+                  <th>Lista de Precios</th>
+                  <th class="text-end">Precio</th>
+                  <th>Moneda</th>
+                </tr>
+              </thead>
+              <tbody id="priceModalBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de configuración de listas de precios -->
+  <div class="modal fade" id="priceConfigModal" tabindex="-1" aria-labelledby="priceConfigModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="priceConfigModalLabel">
+            <i class="bi bi-gear me-2"></i>Configurar listas de precios
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">Seleccione las listas de precios que desea visualizar en el detalle de cada artículo.</p>
+          <div id="priceConfigList" class="list-group"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnSavePriceConfig">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de depósitos -->
   <div class="modal fade" id="warehouseModal" tabindex="-1" aria-labelledby="warehouseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -247,9 +310,12 @@
       { key: 'Available', label: 'Disponible', align: 'text-end', default: true, format: 'stock' },
       { key: 'CreateDate', label: 'Fecha Creación', align: '', default: false, format: 'date' },
       { key: 'Warehouses', label: 'Depósitos', align: 'text-center', default: true, format: 'warehouses' },
+      { key: 'Prices', label: 'Precios', align: 'text-center', default: true, format: 'prices' },
     ];
 
     const STORAGE_KEY = 'articulos.visibleColumns';
+    const PRICE_LISTS_STORAGE_KEY = 'articulos.visiblePriceLists';
+    const PRICE_LISTS_ALL_STORAGE_KEY = 'articulos.allPriceLists';
 
     function loadVisibleColumns() {
       try {
@@ -278,6 +344,56 @@
 
     let visibleColumns = loadVisibleColumns();
 
+    // Listas de precios visibles (persistidas en localStorage)
+    function loadVisiblePriceLists() {
+      try {
+        const raw = localStorage.getItem(PRICE_LISTS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return new Set(parsed.map(Number));
+        }
+      } catch (_) {
+        /* ignorar */
+      }
+      return null; // null = mostrar todas
+    }
+
+    function saveVisiblePriceLists(set) {
+      try {
+        localStorage.setItem(
+          PRICE_LISTS_STORAGE_KEY,
+          JSON.stringify(Array.from(set))
+        );
+      } catch (_) {
+        /* ignorar */
+      }
+    }
+
+    function loadAllPriceLists() {
+      try {
+        const raw = localStorage.getItem(PRICE_LISTS_ALL_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (_) {
+        /* ignorar */
+      }
+      return [];
+    }
+
+    function saveAllPriceLists(list) {
+      try {
+        localStorage.setItem(PRICE_LISTS_ALL_STORAGE_KEY, JSON.stringify(list));
+      } catch (_) {
+        /* ignorar */
+      }
+    }
+
+    let visiblePriceLists = loadVisiblePriceLists();
+    let allPriceLists = loadAllPriceLists();
+    let currentUser = null;
+
     const body = document.getElementById('articulosBody');
     const head = document.getElementById('articulosHead');
     const columnsMenu = document.getElementById('columnsMenu');
@@ -299,6 +415,14 @@
     const warehouseModal = new bootstrap.Modal(document.getElementById('warehouseModal'));
     const userNameEl = document.getElementById('userName');
     const btnLogout = document.getElementById('btnLogout');
+    const priceModalItemCode = document.getElementById('priceModalItemCode');
+    const priceModalItemName = document.getElementById('priceModalItemName');
+    const priceModalBody = document.getElementById('priceModalBody');
+    const priceModal = new bootstrap.Modal(document.getElementById('priceModal'));
+    const priceConfigModal = new bootstrap.Modal(document.getElementById('priceConfigModal'));
+    const priceConfigList = document.getElementById('priceConfigList');
+    const btnPriceConfig = document.getElementById('btnPriceConfig');
+    const btnSavePriceConfig = document.getElementById('btnSavePriceConfig');
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -385,6 +509,16 @@
           count === 0 ? 'disabled' : ''
         }><i class="bi bi-building me-1"></i>${count}</button>`;
       }
+      if (col.format === 'prices') {
+        const prices = Array.isArray(item.Prices) ? item.Prices : [];
+        const visible = visiblePriceLists
+          ? prices.filter((p) => visiblePriceLists.has(Number(p.PriceList)))
+          : prices;
+        const idx = articulos.indexOf(item);
+        return `<button class="btn btn-outline-success btn-sm" data-price-index="${idx}" ${
+          visible.length === 0 ? 'disabled' : ''
+        }><i class="bi bi-tags me-1"></i>${visible.length}</button>`;
+      }
       return escapeHtml(value);
     }
 
@@ -423,6 +557,13 @@
           openWarehouses(list[idx]);
         });
       });
+
+      body.querySelectorAll('button[data-price-index]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.getAttribute('data-price-index'), 10);
+          openPrices(list[idx]);
+        });
+      });
     }
 
     function openWarehouses(item) {
@@ -452,6 +593,73 @@
 
       warehouseModal.show();
     }
+
+    function openPrices(item) {
+      if (!item) return;
+      priceModalItemCode.textContent = item.ItemCode || '';
+      priceModalItemName.textContent = item.ItemName || '';
+
+      const prices = Array.isArray(item.Prices) ? item.Prices : [];
+      const visible = visiblePriceLists
+        ? prices.filter((p) => visiblePriceLists.has(Number(p.PriceList)))
+        : prices;
+
+      if (!visible.length) {
+        priceModalBody.innerHTML = `
+          <tr><td colspan="4" class="text-center text-muted py-3">Sin listas de precios configuradas.</td></tr>`;
+      } else {
+        priceModalBody.innerHTML = visible
+          .map(
+            (p) => `
+          <tr>
+            <td><strong>${escapeHtml(p.PriceList)}</strong></td>
+            <td>${escapeHtml(p.PriceListName || p.PriceList)}</td>
+            <td class="text-end">${formatStock(p.Price)}</td>
+            <td>${escapeHtml(p.Currency)}</td>
+          </tr>`
+          )
+          .join('');
+      }
+
+      priceModal.show();
+    }
+
+    function openPriceConfig() {
+      if (!allPriceLists.length) {
+        priceConfigList.innerHTML = `
+          <div class="text-muted small">No hay listas de precios disponibles.</div>`;
+      } else {
+        priceConfigList.innerHTML = allPriceLists
+          .map((p) => {
+            const checked = visiblePriceLists
+              ? visiblePriceLists.has(Number(p.code))
+              : true;
+            return `
+              <label class="list-group-item d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input mt-0" data-price-code="${p.code}" ${
+              checked ? 'checked' : ''
+            } />
+                <span><strong>${escapeHtml(p.code)}</strong> - ${escapeHtml(p.name)}</span>
+              </label>`;
+          })
+          .join('');
+      }
+      priceConfigModal.show();
+    }
+
+    btnSavePriceConfig.addEventListener('click', () => {
+      const checks = priceConfigList.querySelectorAll('input[data-price-code]');
+      const selected = new Set();
+      checks.forEach((chk) => {
+        if (chk.checked) selected.add(Number(chk.getAttribute('data-price-code')));
+      });
+      visiblePriceLists = selected;
+      saveVisiblePriceLists(selected);
+      priceConfigModal.hide();
+      render(articulos);
+    });
+
+    btnPriceConfig.addEventListener('click', openPriceConfig);
 
     function updatePagingControls() {
       const { page, totalPages } = paging;
@@ -513,6 +721,11 @@
               return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
             })
             .join('');
+
+        // Listas de precios
+        const priceLists = Array.isArray(data.priceLists) ? data.priceLists : [];
+        allPriceLists = priceLists;
+        saveAllPriceLists(priceLists);
       } catch (_) {
         /* silencioso: si falla, los selects quedan con "Todos" */
       }
@@ -634,7 +847,11 @@
         const data = await res.json();
         const user = data && data.user;
         if (user) {
+          currentUser = user;
           userNameEl.textContent = user.displayName || user.username || '';
+          if (user.canConfigurePriceLists) {
+            btnPriceConfig.classList.remove('d-none');
+          }
         }
       } catch (_) {
         /* silencioso: si falla, no se muestra el nombre */
