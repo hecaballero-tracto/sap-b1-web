@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
 const { authenticate } = require('ldap-authentication');
+const ldap = require('ldapjs');
 
 const {
   SAP_URL,
@@ -93,6 +94,86 @@ function canConfigurePriceListsFromGroups(groups, rawMemberOf) {
   return false;
 }
 
+// Atributos que se solicitan explícitamente al AD
+const AD_ATTRIBUTES = [
+  'sAMAccountName',
+  'displayName',
+  'mail',
+  'userPrincipalName',
+  'memberOf',
+];
+
+// Búsqueda directa con ldapjs para obtener memberOf cuando ldap-authentication
+// no lo devuelve (por ejemplo, cuando el bind es con DOMINIO\\usuario).
+function searchMemberOf(username, password) {
+  return new Promise((resolve) => {
+    const rejectUnauthorized = String(AD_TLS_REJECT_UNAUTHORIZED || 'true')
+      .toLowerCase() !== 'false';
+
+    const client = ldap.createClient({
+      url: AD_URL,
+      tlsOptions: { rejectUnauthorized },
+    });
+
+    const done = (result) => {
+      try {
+        client.unbind(() => {});
+      } catch (_) {
+        /* ignorar */
+      }
+      resolve(result);
+    };
+
+    client.on('error', (err) => {
+      console.warn('[AUTH AD] Error de conexión LDAP en búsqueda memberOf:', err.message);
+      done(null);
+    });
+
+    const bindDn = username.includes('@')
+      ? username
+      : `${AD_DOMAIN}\\${username}`;
+
+    client.bind(bindDn, password, (bindErr) => {
+      if (bindErr) {
+        console.warn('[AUTH AD] Bind fallido en búsqueda memberOf:', bindErr.message);
+        return done(null);
+      }
+
+      // Buscar por sAMAccountName en todo el árbol (base vacía)
+      const filter = `(&(objectClass=user)(sAMAccountName=${username.split('@')[0].split('\\\\').pop()}))`;
+      const opts = {
+        filter,
+        scope: 'sub',
+        attributes: ['sAMAccountName', 'displayName', 'mail', 'userPrincipalName', 'memberOf'],
+      };
+
+      client.search('', opts, (searchErr, res) => {
+        if (searchErr) {
+          console.warn('[AUTH AD] Error en búsqueda memberOf:', searchErr.message);
+          return done(null);
+        }
+
+        let found = null;
+        res.on('searchEntry', (entry) => {
+          if (!found) {
+            const obj = entry.pojo || {};
+            const attrs = {};
+            for (const a of obj.attributes || []) {
+              attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
+            }
+            found = attrs;
+          }
+        });
+        res.on('error', (err) => {
+          console.warn('[AUTH AD] Error en respuesta de búsqueda:', err.message);
+          done(null);
+        });
+        res.on('end', () => done(found));
+      });
+    });
+  });
+}
+
 // Autenticación contra Active Directory usando ldap-authentication
 async function authenticateAD(username, password) {
   const userDn = username.includes('@')
@@ -110,7 +191,22 @@ async function authenticateAD(username, password) {
       },
       userDn,
       userPassword: password,
+      attributes: AD_ATTRIBUTES,
     });
+
+    // Si no vino memberOf, intentar búsqueda directa como fallback
+    const hasMemberOf =
+      user &&
+      ((Array.isArray(user.memberOf) && user.memberOf.length) ||
+        (typeof user.memberOf === 'string' && user.memberOf.length));
+
+    if (!hasMemberOf) {
+      const extra = await searchMemberOf(username, password);
+      if (extra) {
+        return { ...(user || {}), ...extra };
+      }
+    }
+
     return user || true;
   } catch (err) {
     // Credenciales inválidas o error de conexión: se propaga para manejarlo arriba
@@ -494,6 +590,13 @@ app.post('/api/login', async (req, res) => {
 
   try {
     const adUser = await authenticateAD(authUser, password);
+
+    console.log(
+      '[AUTH AD RAW USER KEYS]:',
+      Object.keys(adUser || {}),
+      'memberOf:',
+      adUser && (adUser.memberOf || (adUser._raw && adUser._raw.memberOf))
+    );
 
     const rawMemberOf = adUser && adUser.memberOf;
     const groups = extractGroupNames(rawMemberOf);
