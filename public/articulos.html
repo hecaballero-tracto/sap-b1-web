@@ -849,8 +849,10 @@
         if (user) {
           currentUser = user;
           userNameEl.textContent = user.displayName || user.username || '';
-          if (user.canConfigurePriceLists) {
+          if (user.canConfigurePriceLists === true) {
             btnPriceConfig.classList.remove('d-none');
+          } else {
+            btnPriceConfig.classList.add('d-none');
           }
         }
       } catch (_) {

@@ -49,8 +49,8 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-// Grupos de AD con permiso para configurar listas de precios
-const PRICE_LIST_ADMIN_GROUPS = ['Informatica', 'Directorio', 'Directorio_RW'];
+// Grupos de AD con permiso para configurar listas de precios (en minúsculas)
+const PRICE_LIST_ADMIN_GROUPS = ['informatica', 'directorio', 'directorio_rw'];
 
 function extractGroupNames(memberOf) {
   if (!memberOf) return [];
@@ -58,17 +58,39 @@ function extractGroupNames(memberOf) {
   const names = [];
   for (const dn of list) {
     if (!dn) continue;
+    const text = String(dn);
     // Extraer el CN del DN: "CN=Informatica,OU=...,DC=..."
-    const m = /^CN=([^,]+)/i.exec(String(dn));
-    if (m) names.push(m[1]);
+    const m = /CN=([^,]+)/i.exec(text);
+    if (m) {
+      names.push(m[1].trim().toLowerCase());
+    } else {
+      names.push(text.trim().toLowerCase());
+    }
   }
   return names;
 }
 
-function canConfigurePriceListsFromGroups(groups) {
-  if (!Array.isArray(groups)) return false;
-  const lower = groups.map((g) => String(g).toLowerCase());
-  return PRICE_LIST_ADMIN_GROUPS.some((g) => lower.includes(g.toLowerCase()));
+function canConfigurePriceListsFromGroups(groups, rawMemberOf) {
+  if (Array.isArray(groups)) {
+    const lower = groups.map((g) => String(g).toLowerCase());
+    if (PRICE_LIST_ADMIN_GROUPS.some((g) => lower.includes(g))) {
+      return true;
+    }
+  }
+
+  // Fallback: revisar el DN completo por si el CN no se extrajo correctamente
+  if (rawMemberOf) {
+    const list = Array.isArray(rawMemberOf) ? rawMemberOf : [rawMemberOf];
+    for (const dn of list) {
+      if (!dn) continue;
+      const text = String(dn).toLowerCase();
+      if (PRICE_LIST_ADMIN_GROUPS.some((g) => text.includes(`cn=${g}`))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 // Autenticación contra Active Directory usando ldap-authentication
@@ -473,8 +495,18 @@ app.post('/api/login', async (req, res) => {
   try {
     const adUser = await authenticateAD(authUser, password);
 
-    const groups = extractGroupNames(adUser && adUser.memberOf);
-    const canConfigurePriceLists = canConfigurePriceListsFromGroups(groups);
+    const rawMemberOf = adUser && adUser.memberOf;
+    const groups = extractGroupNames(rawMemberOf);
+    const canConfigurePriceLists = canConfigurePriceListsFromGroups(
+      groups,
+      rawMemberOf
+    );
+    console.log(
+      '[AUTH AD] Grupos detectados para el usuario:',
+      groups,
+      'canConfigure:',
+      canConfigurePriceLists
+    );
 
     req.session.user = {
       username: authUser,
