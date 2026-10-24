@@ -132,6 +132,17 @@
                 <option value="">Todas</option>
               </select>
             </div>
+            <div class="col-12 col-md-4">
+              <label for="filterStockEstado" class="form-label small mb-1">Estado de Inventario</label>
+              <select id="filterStockEstado" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                <option value="con_stock">Con Stock</option>
+                <option value="sin_stock">Sin Stock</option>
+                <option value="con_comprometido">Con Comprometido</option>
+                <option value="con_pedido">Con Pedido Pendiente</option>
+                <option value="con_disponible">Con Disponible</option>
+              </select>
+            </div>
           </div>
           <div class="mt-2 text-end">
             <button id="btnClearFilters" class="btn btn-link btn-sm p-0">Limpiar filtros</button>
@@ -273,6 +284,7 @@
     const filterRubro = document.getElementById('filterRubro');
     const filterFabricante = document.getElementById('filterFabricante');
     const filterMarca = document.getElementById('filterMarca');
+    const filterStockEstado = document.getElementById('filterStockEstado');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
     const searchInput = document.getElementById('searchInput');
@@ -459,6 +471,7 @@
       if (filterRubro.value) params.set('rubro', filterRubro.value);
       if (filterFabricante.value) params.set('fabricante', filterFabricante.value);
       if (filterMarca.value) params.set('marca', filterMarca.value);
+      if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
 
       return params.toString();
     }
@@ -591,11 +604,16 @@
       paging.page = 1;
       cargarArticulos();
     });
+    filterStockEstado.addEventListener('change', () => {
+      paging.page = 1;
+      cargarArticulos();
+    });
 
     btnClearFilters.addEventListener('click', () => {
       filterRubro.value = '';
       filterFabricante.value = '';
       filterMarca.value = '';
+      filterStockEstado.value = '';
       paging.page = 1;
       cargarArticulos();
     });

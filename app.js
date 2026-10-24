@@ -585,7 +585,15 @@ app.get('/api/clientes', requireAuth, async (req, res) => {
   }
 });
 
-function buildArticulosQuery({ page, limit, search, rubro, fabricante, marca }) {
+function buildArticulosQuery({
+  page,
+  limit,
+  search,
+  rubro,
+  fabricante,
+  marca,
+  stockEstado,
+}) {
   const filters = ["ItemType eq 'itItems'"];
 
   if (search) {
@@ -612,6 +620,30 @@ function buildArticulosQuery({ page, limit, search, rubro, fabricante, marca }) 
   if (marca !== undefined && marca !== null && marca !== '') {
     const safe = escapeODataString(marca);
     filters.push(`U_Marca eq '${safe}'`);
+  }
+
+  if (stockEstado) {
+    switch (stockEstado) {
+      case 'con_stock':
+        filters.push('QuantityOnStock gt 0');
+        break;
+      case 'sin_stock':
+        filters.push('QuantityOnStock le 0');
+        break;
+      case 'con_comprometido':
+        filters.push('QuantityOrderedByCustomers gt 0');
+        break;
+      case 'con_pedido':
+        filters.push('QuantityOrderedFromVendors gt 0');
+        break;
+      case 'con_disponible':
+        filters.push(
+          '(QuantityOnStock gt QuantityOrderedByCustomers or QuantityOrderedFromVendors gt 0)'
+        );
+        break;
+      default:
+        break;
+    }
   }
 
   const skip = (page - 1) * limit;
@@ -676,6 +708,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   const rubro = (req.query.rubro || '').trim();
   const fabricante = (req.query.fabricante || '').trim();
   const marca = (req.query.marca || '').trim();
+  const stockEstado = (req.query.stockEstado || '').trim();
 
   const query = buildArticulosQuery({
     page,
@@ -684,6 +717,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
     rubro,
     fabricante,
     marca,
+    stockEstado,
   });
 
   try {
