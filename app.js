@@ -103,6 +103,35 @@ const AD_ATTRIBUTES = [
   'memberOf',
 ];
 
+// Calcula el baseDN a partir de AD_BASE_DN, AD_DOMAIN o el sufijo del correo
+function resolveBaseDN(username) {
+  if (process.env.AD_BASE_DN) {
+    return process.env.AD_BASE_DN;
+  }
+
+  // Si el usuario es un UPN (usuario@dominio.com), derivar DC=... del dominio
+  if (username && username.includes('@')) {
+    const domain = username.split('@').pop();
+    if (domain) {
+      return domain
+        .split('.')
+        .filter(Boolean)
+        .map((part) => `DC=${part}`)
+        .join(',');
+    }
+  }
+
+  // Fallback: usar AD_DOMAIN como dominio DNS (ej: empresa.local)
+  if (AD_DOMAIN && AD_DOMAIN.includes('.')) {
+    return AD_DOMAIN.split('.')
+      .filter(Boolean)
+      .map((part) => `DC=${part}`)
+      .join(',');
+  }
+
+  return '';
+}
+
 // Búsqueda directa con ldapjs para obtener memberOf cuando ldap-authentication
 // no lo devuelve (por ejemplo, cuando el bind es con DOMINIO\\usuario).
 function searchMemberOf(username, password) {
@@ -139,15 +168,18 @@ function searchMemberOf(username, password) {
         return done(null);
       }
 
-      // Buscar por sAMAccountName en todo el árbol (base vacía)
-      const filter = `(&(objectClass=user)(sAMAccountName=${username.split('@')[0].split('\\\\').pop()}))`;
+      // Buscar por sAMAccountName en el baseDN calculado
+      const baseDN = resolveBaseDN(username);
+      const samAccount = username.split('@')[0].split('\\\\').pop();
+      const filter = `(&(objectClass=user)(sAMAccountName=${samAccount}))`;
       const opts = {
         filter,
         scope: 'sub',
+        paged: false,
         attributes: ['sAMAccountName', 'displayName', 'mail', 'userPrincipalName', 'memberOf'],
       };
 
-      client.search('', opts, (searchErr, res) => {
+      client.search(baseDN, opts, (searchErr, res) => {
         if (searchErr) {
           console.warn('[AUTH AD] Error en búsqueda memberOf:', searchErr.message);
           return done(null);
@@ -161,8 +193,21 @@ function searchMemberOf(username, password) {
             for (const a of obj.attributes || []) {
               attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
             }
+            // Fallback: usar raw.memberOf si pojo no lo trae
+            if (!attrs.memberOf && entry.raw) {
+              const rawMemberOf = entry.raw
+                .filter((a) => a.type === 'memberOf')
+                .map((a) => a.values);
+              if (rawMemberOf.length) {
+                attrs.memberOf = rawMemberOf[0];
+              }
+            }
+            console.log('[AUTH AD SEARCH ENCONTRADO]:', attrs.memberOf);
             found = attrs;
           }
+        });
+        res.on('searchReference', () => {
+          /* ignorar referencias */
         });
         res.on('error', (err) => {
           console.warn('[AUTH AD] Error en respuesta de búsqueda:', err.message);
@@ -600,10 +645,25 @@ app.post('/api/login', async (req, res) => {
 
     const rawMemberOf = adUser && adUser.memberOf;
     const groups = extractGroupNames(rawMemberOf);
-    const canConfigurePriceLists = canConfigurePriceListsFromGroups(
+    let canConfigurePriceLists = canConfigurePriceListsFromGroups(
       groups,
       rawMemberOf
     );
+
+    // Verificación explícita: si memberOf contiene 'Informatica', habilitar
+    const memberOfList = Array.isArray(rawMemberOf)
+      ? rawMemberOf
+      : rawMemberOf
+      ? [rawMemberOf]
+      : [];
+    if (
+      memberOfList.some((dn) =>
+        String(dn || '').toLowerCase().includes('informatica')
+      )
+    ) {
+      canConfigurePriceLists = true;
+    }
+
     console.log(
       '[AUTH AD] Grupos detectados para el usuario:',
       groups,
