@@ -103,37 +103,8 @@ const AD_ATTRIBUTES = [
   'memberOf',
 ];
 
-// BaseDN por defecto del dominio (puede sobreescribirse con AD_BASE_DN)
-const DEFAULT_BASE_DN = 'DC=tractoagrovial,DC=com,DC=py';
-
-// Calcula el baseDN a partir de AD_BASE_DN, AD_DOMAIN o el sufijo del correo
-function resolveBaseDN(username) {
-  if (process.env.AD_BASE_DN) {
-    return process.env.AD_BASE_DN;
-  }
-
-  // Si el usuario es un UPN (usuario@dominio.com), derivar DC=... del dominio
-  if (username && username.includes('@')) {
-    const domain = username.split('@').pop();
-    if (domain) {
-      return domain
-        .split('.')
-        .filter(Boolean)
-        .map((part) => `DC=${part}`)
-        .join(',');
-    }
-  }
-
-  // Fallback: usar AD_DOMAIN como dominio DNS (ej: empresa.local)
-  if (AD_DOMAIN && AD_DOMAIN.includes('.')) {
-    return AD_DOMAIN.split('.')
-      .filter(Boolean)
-      .map((part) => `DC=${part}`)
-      .join(',');
-  }
-
-  return DEFAULT_BASE_DN;
-}
+// BaseDN fijo del dominio (puede sobreescribirse con AD_BASE_DN)
+const AD_BASE_DN = process.env.AD_BASE_DN || 'DC=tractoagrovial,DC=com,DC=py';
 
 // Búsqueda directa con ldapjs para obtener memberOf cuando ldap-authentication
 // no lo devuelve (por ejemplo, cuando el bind es con DOMINIO\\usuario).
@@ -171,8 +142,8 @@ function searchMemberOf(username, password) {
         return done(null);
       }
 
-      // Buscar por sAMAccountName en el baseDN calculado
-      const baseDN = resolveBaseDN(username) || DEFAULT_BASE_DN;
+      // Buscar por sAMAccountName en el baseDN fijo del dominio
+      const baseDN = AD_BASE_DN;
       const samAccount = username.split('@')[0].split('\\\\').pop();
       const filter = `(&(objectClass=user)(sAMAccountName=${samAccount}))`;
       const opts = {
@@ -192,20 +163,38 @@ function searchMemberOf(username, password) {
         let found = null;
         res.on('searchEntry', (entry) => {
           if (!found) {
-            const obj = entry.pojo || {};
             const attrs = {};
-            for (const a of obj.attributes || []) {
-              attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
+
+            // 1) Intentar con entry.pojo.attributes
+            const pojoAttrs =
+              (entry.pojo && entry.pojo.attributes) || null;
+            if (Array.isArray(pojoAttrs)) {
+              for (const a of pojoAttrs) {
+                if (!a || !a.type) continue;
+                attrs[a.type] =
+                  a.values && a.values.length === 1 ? a.values[0] : a.values;
+              }
             }
-            // Fallback: usar raw.memberOf si pojo no lo trae
-            if (!attrs.memberOf && entry.raw) {
+
+            // 2) Fallback con entry.attributes (ldapjs >= 3)
+            if (!Object.keys(attrs).length && Array.isArray(entry.attributes)) {
+              for (const a of entry.attributes) {
+                if (!a || !a.type) continue;
+                attrs[a.type] =
+                  a.values && a.values.length === 1 ? a.values[0] : a.values;
+              }
+            }
+
+            // 3) Fallback con entry.raw
+            if (!attrs.memberOf && Array.isArray(entry.raw)) {
               const rawMemberOf = entry.raw
-                .filter((a) => a.type === 'memberOf')
+                .filter((a) => a && a.type === 'memberOf')
                 .map((a) => a.values);
               if (rawMemberOf.length) {
                 attrs.memberOf = rawMemberOf[0];
               }
             }
+
             console.log('[AUTH AD SEARCH ENCONTRADO]:', attrs.memberOf);
             found = attrs;
           }
@@ -659,16 +648,21 @@ app.post('/api/login', async (req, res) => {
       rawMemberOf
     );
 
-    // Verificación explícita: si memberOf contiene 'Informatica', habilitar
+    // Verificación explícita: si memberOf contiene alguno de los grupos admin
     const memberOfList = Array.isArray(rawMemberOf)
       ? rawMemberOf
       : rawMemberOf
       ? [rawMemberOf]
       : [];
     if (
-      memberOfList.some((dn) =>
-        String(dn || '').toLowerCase().includes('informatica')
-      )
+      memberOfList.some((dn) => {
+        const text = String(dn || '').toLowerCase();
+        return (
+          text.includes('informatica') ||
+          text.includes('directorio_rw') ||
+          text.includes('directorio')
+        );
+      })
     ) {
       canConfigurePriceLists = true;
     }
