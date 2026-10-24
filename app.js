@@ -811,6 +811,10 @@ function sendArticulosResponse(
       U_Modelo: item.U_Modelo || '',
       IsCommited: Number(item.QuantityOrderedByCustomers) || 0,
       OnOrder: Number(item.QuantityOrderedFromVendors) || 0,
+      Available:
+        (Number(item.QuantityOnStock) || 0) -
+        (Number(item.QuantityOrderedByCustomers) || 0) +
+        (Number(item.QuantityOrderedFromVendors) || 0),
       Warehouses: warehouses,
     };
   });
