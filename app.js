@@ -293,6 +293,47 @@ let marcasCachePromise = null;
 let priceListsCache = null;
 let priceListsCachePromise = null;
 
+// Configuración global persistente de listas de precios visibles
+const PRICE_LISTS_CONFIG_DIR = path.join(__dirname, 'config');
+const PRICE_LISTS_CONFIG_FILE = path.join(
+  PRICE_LISTS_CONFIG_DIR,
+  'price_lists_config.json'
+);
+
+function readPriceListsConfig() {
+  try {
+    if (!fs.existsSync(PRICE_LISTS_CONFIG_FILE)) {
+      return { visibleLists: [] };
+    }
+    const raw = fs.readFileSync(PRICE_LISTS_CONFIG_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const visibleLists = Array.isArray(parsed && parsed.visibleLists)
+      ? parsed.visibleLists.map(Number).filter((n) => Number.isFinite(n))
+      : [];
+    return { visibleLists };
+  } catch (err) {
+    console.warn('No se pudo leer la configuración de listas de precios:', err.message);
+    return { visibleLists: [] };
+  }
+}
+
+function writePriceListsConfig(config) {
+  try {
+    if (!fs.existsSync(PRICE_LISTS_CONFIG_DIR)) {
+      fs.mkdirSync(PRICE_LISTS_CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(
+      PRICE_LISTS_CONFIG_FILE,
+      JSON.stringify(config, null, 2),
+      'utf8'
+    );
+    return true;
+  } catch (err) {
+    console.error('No se pudo guardar la configuración de listas de precios:', err.message);
+    return false;
+  }
+}
+
 async function loadWarehouses() {
   if (warehousesCache) return warehousesCache;
   if (warehousesCachePromise) return warehousesCachePromise;
@@ -938,6 +979,34 @@ function buildArticulosQuery({
 
   return `/b1s/v1/Items?${params.toString()}`;
 }
+
+app.get('/api/articulos/config-precios', requireAuth, (req, res) => {
+  const config = readPriceListsConfig();
+  return res.json(config);
+});
+
+app.post('/api/articulos/config-precios', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user || user.canConfigurePriceLists !== true) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para configurar listas de precios' } });
+  }
+
+  const body = req.body || {};
+  const visibleLists = Array.isArray(body.visibleLists)
+    ? body.visibleLists.map(Number).filter((n) => Number.isFinite(n))
+    : [];
+
+  const ok = writePriceListsConfig({ visibleLists });
+  if (!ok) {
+    return res
+      .status(500)
+      .json({ error: { message: 'No se pudo guardar la configuración' } });
+  }
+
+  return res.json({ ok: true, visibleLists });
+});
 
 app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
   try {

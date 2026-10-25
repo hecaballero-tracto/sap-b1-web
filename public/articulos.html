@@ -314,7 +314,6 @@
     ];
 
     const STORAGE_KEY = 'articulos.visibleColumns';
-    const PRICE_LISTS_STORAGE_KEY = 'articulos.visiblePriceLists';
     const PRICE_LISTS_ALL_STORAGE_KEY = 'articulos.allPriceLists';
 
     function loadVisibleColumns() {
@@ -344,31 +343,6 @@
 
     let visibleColumns = loadVisibleColumns();
 
-    // Listas de precios visibles (persistidas en localStorage)
-    function loadVisiblePriceLists() {
-      try {
-        const raw = localStorage.getItem(PRICE_LISTS_STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return new Set(parsed.map(Number));
-        }
-      } catch (_) {
-        /* ignorar */
-      }
-      return null; // null = mostrar todas
-    }
-
-    function saveVisiblePriceLists(set) {
-      try {
-        localStorage.setItem(
-          PRICE_LISTS_STORAGE_KEY,
-          JSON.stringify(Array.from(set))
-        );
-      } catch (_) {
-        /* ignorar */
-      }
-    }
-
     function loadAllPriceLists() {
       try {
         const raw = localStorage.getItem(PRICE_LISTS_ALL_STORAGE_KEY);
@@ -390,7 +364,8 @@
       }
     }
 
-    let visiblePriceLists = loadVisiblePriceLists();
+    // null = mostrar todas; Set<number> = solo las seleccionadas
+    let visiblePriceLists = null;
     let allPriceLists = loadAllPriceLists();
     let currentUser = null;
 
@@ -647,16 +622,39 @@
       priceConfigModal.show();
     }
 
-    btnSavePriceConfig.addEventListener('click', () => {
+    btnSavePriceConfig.addEventListener('click', async () => {
       const checks = priceConfigList.querySelectorAll('input[data-price-code]');
-      const selected = new Set();
+      const selected = [];
       checks.forEach((chk) => {
-        if (chk.checked) selected.add(Number(chk.getAttribute('data-price-code')));
+        if (chk.checked) selected.push(Number(chk.getAttribute('data-price-code')));
       });
-      visiblePriceLists = selected;
-      saveVisiblePriceLists(selected);
-      priceConfigModal.hide();
-      render(articulos);
+
+      btnSavePriceConfig.disabled = true;
+      try {
+        const res = await apiFetch('/api/articulos/config-precios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ visibleLists: selected }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudo guardar la configuración';
+          alert(msg);
+          return;
+        }
+        const saved = Array.isArray(data.visibleLists) ? data.visibleLists : selected;
+        visiblePriceLists = new Set(saved.map(Number));
+        priceConfigModal.hide();
+        render(articulos);
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
+        alert('Error de conexión al guardar la configuración');
+      } finally {
+        btnSavePriceConfig.disabled = false;
+      }
     });
 
     btnPriceConfig.addEventListener('click', openPriceConfig);
@@ -682,6 +680,20 @@
       if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
 
       return params.toString();
+    }
+
+    async function cargarConfigPrecios() {
+      try {
+        const res = await apiFetch('/api/articulos/config-precios');
+        if (!res.ok) return;
+        const data = await res.json();
+        const visible = Array.isArray(data && data.visibleLists)
+          ? data.visibleLists.map(Number)
+          : [];
+        visiblePriceLists = visible.length ? new Set(visible) : null;
+      } catch (_) {
+        /* silencioso: si falla, se muestran todas */
+      }
     }
 
     async function cargarCatalogos() {
@@ -881,6 +893,7 @@
     renderHead();
     renderColumnsMenu();
     cargarUsuario();
+    cargarConfigPrecios();
     cargarCatalogos();
     cargarArticulos();
   </script>
