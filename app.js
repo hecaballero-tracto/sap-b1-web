@@ -902,6 +902,84 @@ app.get('/api/clientes', requireAuth, async (req, res) => {
   }
 });
 
+// Mapeo de columnas filtrables a propiedades OData
+const COLUMN_FILTER_MAP = {
+  Stock: 'QuantityOnStock',
+  Comprometido: 'QuantityOrderedByCustomers',
+  Pedido: 'QuantityOrderedFromVendors',
+  Disponible: null, // se calcula en memoria; no se filtra en SAP
+  Fecha: 'CreateDate',
+};
+
+const NUMERIC_OPERATORS = new Set(['eq', 'gt', 'ge', 'lt', 'le', 'ne']);
+
+function parseColumnFilters(query) {
+  const result = {};
+  for (const key of Object.keys(query || {})) {
+    const m = /^colFilter_([A-Za-z]+)_(.+)$/.exec(key);
+    if (!m) continue;
+    const col = m[1];
+    const field = m[2];
+    const value = query[key];
+    if (value === undefined || value === null || value === '') continue;
+    if (!result[col]) result[col] = {};
+    result[col][field] = value;
+  }
+  return result;
+}
+
+function buildColumnFilterConditions(colFilters) {
+  const conditions = [];
+
+  for (const [col, spec] of Object.entries(colFilters || {})) {
+    const prop = COLUMN_FILTER_MAP[col];
+    if (!prop) continue;
+
+    if (col === 'Fecha') {
+      // Fecha específica: colFilter_Fecha_date=YYYY-MM-DD
+      if (spec.date) {
+        const d = String(spec.date);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          conditions.push(`CreateDate ge '${d}T00:00:00'`);
+          conditions.push(`CreateDate le '${d}T23:59:59'`);
+        }
+      }
+      // Año: colFilter_Fecha_year=YYYY
+      if (spec.year) {
+        const y = parseInt(spec.year, 10);
+        if (Number.isFinite(y) && y >= 1900 && y <= 9999) {
+          conditions.push(`CreateDate ge '${y}-01-01T00:00:00'`);
+          conditions.push(`CreateDate le '${y}-12-31T23:59:59'`);
+        }
+      }
+      // Mes: colFilter_Fecha_month=1..12 (requiere year)
+      if (spec.month) {
+        const mo = parseInt(spec.month, 10);
+        const y = spec.year ? parseInt(spec.year, 10) : null;
+        if (Number.isFinite(mo) && mo >= 1 && mo <= 12 && Number.isFinite(y)) {
+          const start = new Date(Date.UTC(y, mo - 1, 1));
+          const end = new Date(Date.UTC(y, mo, 0, 23, 59, 59));
+          const fmt = (dt) => dt.toISOString().slice(0, 19);
+          conditions.push(`CreateDate ge '${fmt(start)}'`);
+          conditions.push(`CreateDate le '${fmt(end)}'`);
+        }
+      }
+      continue;
+    }
+
+    // Numéricas
+    const op = String(spec.op || 'eq').toLowerCase();
+    if (!NUMERIC_OPERATORS.has(op)) continue;
+    const raw = spec.val;
+    if (raw === undefined || raw === null || raw === '') continue;
+    const num = Number(raw);
+    if (!Number.isFinite(num)) continue;
+    conditions.push(`${prop} ${op} ${num}`);
+  }
+
+  return conditions;
+}
+
 function buildArticulosQuery({
   page,
   limit,
@@ -910,8 +988,14 @@ function buildArticulosQuery({
   fabricante,
   marca,
   stockEstado,
+  colFilters,
 }) {
   const filters = ["ItemType eq 'itItems'"];
+
+  const columnConditions = buildColumnFilterConditions(colFilters);
+  for (const cond of columnConditions) {
+    filters.push(cond);
+  }
 
   if (search) {
     const safe = escapeODataString(search);
@@ -1067,12 +1151,21 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   const fabricante = (req.query.fabricante || '').trim();
   const marca = (req.query.marca || '').trim();
   const stockEstado = (req.query.stockEstado || '').trim();
+  const colFilters = parseColumnFilters(req.query);
 
   // Fallback para 'faltante': Service Layer puede rechazar expresiones
   // aritméticas en $filter, por lo que se consulta con un filtro simple
   // y se filtra/pagina en memoria.
   if (stockEstado === 'faltante') {
-    return handleFaltante(req, res, { page, limit, search, rubro, fabricante, marca });
+    return handleFaltante(req, res, {
+      page,
+      limit,
+      search,
+      rubro,
+      fabricante,
+      marca,
+      colFilters,
+    });
   }
 
   const query = buildArticulosQuery({
@@ -1083,6 +1176,7 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
     fabricante,
     marca,
     stockEstado,
+    colFilters,
   });
 
   try {
@@ -1154,7 +1248,11 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   }
 });
 
-async function handleFaltante(req, res, { page, limit, search, rubro, fabricante, marca }) {
+async function handleFaltante(
+  req,
+  res,
+  { page, limit, search, rubro, fabricante, marca, colFilters }
+) {
   // Construir query sin paginación y con filtro simple soportado por SAP
   const baseQuery = buildArticulosQuery({
     page: 1,
@@ -1164,6 +1262,7 @@ async function handleFaltante(req, res, { page, limit, search, rubro, fabricante
     fabricante,
     marca,
     stockEstado: '',
+    colFilters,
   });
 
   // Reemplazar el filtro de stock por uno simple y quitar paginación

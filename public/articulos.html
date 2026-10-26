@@ -25,6 +25,18 @@
     .table td { vertical-align: middle; }
     .stock-positive { color: #198754; font-weight: 600; }
     .stock-zero { color: #6c757d; font-weight: 600; }
+    .th-filter-btn {
+      border: none;
+      background: transparent;
+      padding: 0 2px;
+      margin-left: 4px;
+      color: #6c757d;
+      font-size: 0.75rem;
+      vertical-align: middle;
+    }
+    .th-filter-btn.active { color: #0d6efd; }
+    .th-filter-btn:hover { color: #0a58ca; }
+    .col-filter-popover { min-width: 240px; }
   </style>
 </head>
 <body>
@@ -305,14 +317,18 @@
       { key: 'fabricante', label: 'Fabricante', align: '', default: false },
       { key: 'U_Marca', label: 'Marca', align: '', default: false },
       { key: 'U_Modelo', label: 'Modelo', align: '', default: false },
-      { key: 'QuantityOnStock', label: 'Stock Total', align: 'text-end', default: true, format: 'stock' },
-      { key: 'IsCommited', label: 'Comprometido', align: 'text-end', default: false, format: 'stock' },
-      { key: 'OnOrder', label: 'En Pedido', align: 'text-end', default: false, format: 'stock' },
-      { key: 'Available', label: 'Disponible', align: 'text-end', default: true, format: 'stock' },
-      { key: 'CreateDate', label: 'Fecha Creación', align: '', default: false, format: 'date' },
+      { key: 'QuantityOnStock', label: 'Stock Total', align: 'text-end', default: true, format: 'stock', filter: 'numeric', filterKey: 'Stock' },
+      { key: 'IsCommited', label: 'Comprometido', align: 'text-end', default: false, format: 'stock', filter: 'numeric', filterKey: 'Comprometido' },
+      { key: 'OnOrder', label: 'En Pedido', align: 'text-end', default: false, format: 'stock', filter: 'numeric', filterKey: 'Pedido' },
+      { key: 'Available', label: 'Disponible', align: 'text-end', default: true, format: 'stock', filter: 'numeric', filterKey: 'Disponible' },
+      { key: 'CreateDate', label: 'Fecha Creación', align: '', default: false, format: 'date', filter: 'date', filterKey: 'Fecha' },
       { key: 'Warehouses', label: 'Depósitos', align: 'text-center', default: true, format: 'warehouses' },
       { key: 'Prices', label: 'Precios', align: 'text-center', default: true, format: 'prices' },
     ];
+
+    // Estado de filtros por columna: { Stock: {op, val}, Fecha: {date|year|month} }
+    const columnFilters = {};
+    let activePopover = null;
 
     const STORAGE_KEY = 'articulos.visibleColumns';
     const PRICE_LISTS_ALL_STORAGE_KEY = 'articulos.allPriceLists';
@@ -446,10 +462,199 @@
       return d.toLocaleDateString('es-MX');
     }
 
+    function hasActiveFilter(col) {
+      const f = columnFilters[col.filterKey];
+      if (!f) return false;
+      if (col.filter === 'numeric') {
+        return f.val !== undefined && f.val !== null && f.val !== '';
+      }
+      if (col.filter === 'date') {
+        return Boolean(f.date || f.year || f.month);
+      }
+      return false;
+    }
+
     function renderHead() {
       head.innerHTML = COLUMNS.filter((c) => visibleColumns.has(c.key))
-        .map((c) => `<th class="${c.align}">${escapeHtml(c.label)}</th>`)
+        .map((c) => {
+          const filterBtn = c.filter
+            ? `<button type="button" class="th-filter-btn ${
+                hasActiveFilter(c) ? 'active' : ''
+              }" data-filter-col="${c.filterKey}" data-filter-type="${c.filter}" title="Filtrar ${
+                escapeHtml(c.label)
+              }"><i class="bi bi-funnel${
+                hasActiveFilter(c) ? '-fill' : ''
+              }"></i></button>`
+            : '';
+          return `<th class="${c.align}">${escapeHtml(c.label)}${filterBtn}</th>`;
+        })
         .join('');
+
+      head.querySelectorAll('button[data-filter-col]').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openColumnFilterPopover(btn);
+        });
+      });
+    }
+
+    function buildNumericPopoverHtml(colKey) {
+      const f = columnFilters[colKey] || {};
+      const op = f.op || 'eq';
+      const val = f.val !== undefined && f.val !== null ? f.val : '';
+      const ops = [
+        ['eq', '='],
+        ['gt', '>'],
+        ['ge', '>='],
+        ['lt', '<'],
+        ['le', '<='],
+        ['ne', '<>'],
+      ];
+      return `
+        <div class="col-filter-popover">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Operador</label>
+            <select class="form-select form-select-sm" data-cf-op>
+              ${ops
+                .map(
+                  ([v, l]) =>
+                    `<option value="${v}" ${v === op ? 'selected' : ''}>${l}</option>`
+                )
+                .join('')}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Valor</label>
+            <input type="number" step="any" class="form-control form-control-sm" data-cf-val value="${escapeHtml(
+              String(val)
+            )}" />
+          </div>
+          <div class="d-flex justify-content-between gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-cf-clear>Limpiar</button>
+            <button type="button" class="btn btn-primary btn-sm" data-cf-apply>Aplicar</button>
+          </div>
+        </div>`;
+    }
+
+    function buildDatePopoverHtml(colKey) {
+      const f = columnFilters[colKey] || {};
+      const dateVal = f.date || '';
+      const yearVal = f.year || '';
+      const monthVal = f.month || '';
+      const months = [
+        'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+      ];
+      return `
+        <div class="col-filter-popover">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Fecha específica</label>
+            <input type="date" class="form-control form-control-sm" data-cf-date value="${escapeHtml(
+              dateVal
+            )}" />
+          </div>
+          <hr class="my-2" />
+          <div class="mb-2">
+            <label class="form-label small mb-1">Año</label>
+            <input type="number" min="1900" max="9999" class="form-control form-control-sm" data-cf-year value="${escapeHtml(
+              String(yearVal)
+            )}" placeholder="Ej: 2021" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Mes (opcional)</label>
+            <select class="form-select form-select-sm" data-cf-month>
+              <option value="">Todos</option>
+              ${months
+                .map(
+                  (m, i) =>
+                    `<option value="${i + 1}" ${
+                      String(monthVal) === String(i + 1) ? 'selected' : ''
+                    }>${m}</option>`
+                )
+                .join('')}
+            </select>
+          </div>
+          <div class="d-flex justify-content-between gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-cf-clear>Limpiar</button>
+            <button type="button" class="btn btn-primary btn-sm" data-cf-apply>Aplicar</button>
+          </div>
+        </div>`;
+    }
+
+    function openColumnFilterPopover(btn) {
+      const colKey = btn.getAttribute('data-filter-col');
+      const type = btn.getAttribute('data-filter-type');
+
+      if (activePopover) {
+        activePopover.dispose();
+        activePopover = null;
+      }
+
+      const html =
+        type === 'numeric'
+          ? buildNumericPopoverHtml(colKey)
+          : buildDatePopoverHtml(colKey);
+
+      const pop = new bootstrap.Popover(btn, {
+        html: true,
+        sanitize: false,
+        trigger: 'manual',
+        placement: 'bottom',
+        container: 'body',
+        content: html,
+      });
+      pop.show();
+      activePopover = pop;
+
+      // Esperar a que el DOM del popover esté disponible
+      setTimeout(() => {
+        const popEl = document.querySelector('.popover');
+        if (!popEl) return;
+
+        const applyBtn = popEl.querySelector('[data-cf-apply]');
+        const clearBtn = popEl.querySelector('[data-cf-clear]');
+
+        if (applyBtn) {
+          applyBtn.addEventListener('click', () => {
+            if (type === 'numeric') {
+              const op = popEl.querySelector('[data-cf-op]').value;
+              const val = popEl.querySelector('[data-cf-val]').value;
+              if (val === '' || val === null) {
+                delete columnFilters[colKey];
+              } else {
+                columnFilters[colKey] = { op, val };
+              }
+            } else {
+              const date = popEl.querySelector('[data-cf-date]').value;
+              const year = popEl.querySelector('[data-cf-year]').value;
+              const month = popEl.querySelector('[data-cf-month]').value;
+              const spec = {};
+              if (date) spec.date = date;
+              if (year) spec.year = year;
+              if (month && year) spec.month = month;
+              if (Object.keys(spec).length) {
+                columnFilters[colKey] = spec;
+              } else {
+                delete columnFilters[colKey];
+              }
+            }
+            pop.hide();
+            renderHead();
+            paging.page = 1;
+            cargarArticulos();
+          });
+        }
+
+        if (clearBtn) {
+          clearBtn.addEventListener('click', () => {
+            delete columnFilters[colKey];
+            pop.hide();
+            renderHead();
+            paging.page = 1;
+            cargarArticulos();
+          });
+        }
+      }, 50);
     }
 
     function renderColumnsMenu() {
@@ -683,6 +888,14 @@
       if (filterMarca.value) params.set('marca', filterMarca.value);
       if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
 
+      // Filtros por columna
+      for (const [colKey, spec] of Object.entries(columnFilters)) {
+        for (const [field, value] of Object.entries(spec)) {
+          if (value === undefined || value === null || value === '') continue;
+          params.set(`colFilter_${colKey}_${field}`, String(value));
+        }
+      }
+
       return params.toString();
     }
 
@@ -843,6 +1056,8 @@
       filterFabricante.value = '';
       filterMarca.value = '';
       filterStockEstado.value = '';
+      for (const k of Object.keys(columnFilters)) delete columnFilters[k];
+      renderHead();
       paging.page = 1;
       cargarArticulos();
     });
