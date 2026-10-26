@@ -958,6 +958,11 @@ function buildArticulosQuery({
           '(QuantityOnStock gt QuantityOrderedByCustomers or QuantityOrderedFromVendors gt 0)'
         );
         break;
+      case 'faltante':
+        filters.push(
+          '(QuantityOrderedByCustomers gt (QuantityOnStock add QuantityOrderedFromVendors))'
+        );
+        break;
       default:
         break;
     }
