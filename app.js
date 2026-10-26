@@ -960,7 +960,7 @@ function buildArticulosQuery({
         break;
       case 'faltante':
         filters.push(
-          '(QuantityOrderedByCustomers gt (QuantityOnStock add QuantityOrderedFromVendors))'
+          'QuantityOnStock sub QuantityOrderedByCustomers add QuantityOrderedFromVendors lt 0'
         );
         break;
       default:
@@ -1068,6 +1068,13 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   const marca = (req.query.marca || '').trim();
   const stockEstado = (req.query.stockEstado || '').trim();
 
+  // Fallback para 'faltante': Service Layer puede rechazar expresiones
+  // aritméticas en $filter, por lo que se consulta con un filtro simple
+  // y se filtra/pagina en memoria.
+  if (stockEstado === 'faltante') {
+    return handleFaltante(req, res, { page, limit, search, rubro, fabricante, marca });
+  }
+
   const query = buildArticulosQuery({
     page,
     limit,
@@ -1146,6 +1153,107 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
     return handleError(res, error);
   }
 });
+
+async function handleFaltante(req, res, { page, limit, search, rubro, fabricante, marca }) {
+  // Construir query sin paginación y con filtro simple soportado por SAP
+  const baseQuery = buildArticulosQuery({
+    page: 1,
+    limit: 200,
+    search,
+    rubro,
+    fabricante,
+    marca,
+    stockEstado: '',
+  });
+
+  // Reemplazar el filtro de stock por uno simple y quitar paginación
+  const url = new URL(baseQuery, 'http://localhost');
+  const params = url.searchParams;
+  const existingFilter = params.get('$filter') || '';
+  const simpleFilter = existingFilter
+    ? `${existingFilter} and QuantityOrderedByCustomers gt 0`
+    : 'QuantityOrderedByCustomers gt 0';
+  params.set('$filter', simpleFilter);
+  params.delete('$top');
+  params.delete('$skip');
+  params.delete('$inlinecount');
+  const query = `${url.pathname}?${params.toString()}`;
+
+  try {
+    await ensureSession();
+
+    const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
+      loadWarehouses().catch(() => new Map()),
+      loadItemGroups().catch(() => new Map()),
+      loadManufacturers().catch(() => new Map()),
+      loadPriceLists().catch(() => new Map()),
+    ]);
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    const raw = Array.isArray(response.data && response.data.value)
+      ? response.data.value
+      : [];
+
+    const faltantes = raw.filter((item) => {
+      const disponible =
+        (Number(item.QuantityOnStock) || 0) -
+        (Number(item.QuantityOrderedByCustomers) || 0) +
+        (Number(item.QuantityOrderedFromVendors) || 0);
+      return disponible < 0;
+    });
+
+    const total = faltantes.length;
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+    const start = (page - 1) * limit;
+    const pageItems = faltantes.slice(start, start + limit);
+
+    return sendArticulosResponse(
+      res,
+      { value: pageItems, 'odata.count': total },
+      { page, limit, warehouses, itemGroups, manufacturers, priceLists }
+    );
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
+          loadWarehouses().catch(() => new Map()),
+          loadItemGroups().catch(() => new Map()),
+          loadManufacturers().catch(() => new Map()),
+          loadPriceLists().catch(() => new Map()),
+        ]);
+        const retry = await sapClient.get(query, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        const raw = Array.isArray(retry.data && retry.data.value)
+          ? retry.data.value
+          : [];
+        const faltantes = raw.filter((item) => {
+          const disponible =
+            (Number(item.QuantityOnStock) || 0) -
+            (Number(item.QuantityOrderedByCustomers) || 0) +
+            (Number(item.QuantityOrderedFromVendors) || 0);
+          return disponible < 0;
+        });
+        const total = faltantes.length;
+        const start = (page - 1) * limit;
+        const pageItems = faltantes.slice(start, start + limit);
+        return sendArticulosResponse(
+          res,
+          { value: pageItems, 'odata.count': total },
+          { page, limit, warehouses, itemGroups, manufacturers, priceLists }
+        );
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+}
 
 function sendArticulosResponse(
   res,
