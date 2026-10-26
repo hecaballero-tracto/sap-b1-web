@@ -1168,6 +1168,21 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
     });
   }
 
+  // Filtro por columna 'Disponible': es un valor calculado, no filtrable en SAP.
+  // Se resuelve en memoria (similar a 'faltante').
+  if (colFilters && colFilters.Disponible) {
+    return handleDisponible(req, res, {
+      page,
+      limit,
+      search,
+      rubro,
+      fabricante,
+      marca,
+      stockEstado,
+      colFilters,
+    });
+  }
+
   const query = buildArticulosQuery({
     page,
     limit,
@@ -1341,6 +1356,162 @@ async function handleFaltante(
         const total = faltantes.length;
         const start = (page - 1) * limit;
         const pageItems = faltantes.slice(start, start + limit);
+        return sendArticulosResponse(
+          res,
+          { value: pageItems, 'odata.count': total },
+          { page, limit, warehouses, itemGroups, manufacturers, priceLists }
+        );
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+}
+
+function applyNumericOperator(value, op, target) {
+  switch (op) {
+    case 'eq':
+      return value === target;
+    case 'gt':
+      return value > target;
+    case 'ge':
+      return value >= target;
+    case 'lt':
+      return value < target;
+    case 'le':
+      return value <= target;
+    case 'ne':
+      return value !== target;
+    default:
+      return true;
+  }
+}
+
+async function handleDisponible(
+  req,
+  res,
+  { page, limit, search, rubro, fabricante, marca, stockEstado, colFilters }
+) {
+  const spec = (colFilters && colFilters.Disponible) || {};
+  const op = String(spec.op || 'eq').toLowerCase();
+  const rawVal = spec.val;
+  const target = Number(rawVal);
+  if (!Number.isFinite(target)) {
+    // Sin valor válido: no aplicar filtro en memoria, delegar al flujo normal
+    const query = buildArticulosQuery({
+      page,
+      limit,
+      search,
+      rubro,
+      fabricante,
+      marca,
+      stockEstado,
+      colFilters: { ...colFilters, Disponible: undefined },
+    });
+    try {
+      await ensureSession();
+      const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
+        loadWarehouses().catch(() => new Map()),
+        loadItemGroups().catch(() => new Map()),
+        loadManufacturers().catch(() => new Map()),
+        loadPriceLists().catch(() => new Map()),
+      ]);
+      const response = await sapClient.get(query, {
+        headers: { Cookie: buildCookieHeader() },
+      });
+      return sendArticulosResponse(res, response.data, {
+        page,
+        limit,
+        warehouses,
+        itemGroups,
+        manufacturers,
+        priceLists,
+      });
+    } catch (error) {
+      return handleError(res, error);
+    }
+  }
+
+  // Construir query sin el filtro de Disponible y sin paginación
+  const colFiltersSinDisponible = { ...colFilters };
+  delete colFiltersSinDisponible.Disponible;
+
+  const baseQuery = buildArticulosQuery({
+    page: 1,
+    limit: 200,
+    search,
+    rubro,
+    fabricante,
+    marca,
+    stockEstado,
+    colFilters: colFiltersSinDisponible,
+  });
+
+  const url = new URL(baseQuery, 'http://localhost');
+  const params = url.searchParams;
+  params.delete('$top');
+  params.delete('$skip');
+  params.delete('$inlinecount');
+  const query = `${url.pathname}?${params.toString()}`;
+
+  const computeDisponible = (item) =>
+    (Number(item.QuantityOnStock) || 0) -
+    (Number(item.QuantityOrderedByCustomers) || 0) +
+    (Number(item.QuantityOrderedFromVendors) || 0);
+
+  const filterAndPaginate = (raw) => {
+    const filtrados = raw.filter((item) =>
+      applyNumericOperator(computeDisponible(item), op, target)
+    );
+    const total = filtrados.length;
+    const start = (page - 1) * limit;
+    const pageItems = filtrados.slice(start, start + limit);
+    return { pageItems, total };
+  };
+
+  try {
+    await ensureSession();
+
+    const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
+      loadWarehouses().catch(() => new Map()),
+      loadItemGroups().catch(() => new Map()),
+      loadManufacturers().catch(() => new Map()),
+      loadPriceLists().catch(() => new Map()),
+    ]);
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    const raw = Array.isArray(response.data && response.data.value)
+      ? response.data.value
+      : [];
+    const { pageItems, total } = filterAndPaginate(raw);
+
+    return sendArticulosResponse(
+      res,
+      { value: pageItems, 'odata.count': total },
+      { page, limit, warehouses, itemGroups, manufacturers, priceLists }
+    );
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
+          loadWarehouses().catch(() => new Map()),
+          loadItemGroups().catch(() => new Map()),
+          loadManufacturers().catch(() => new Map()),
+          loadPriceLists().catch(() => new Map()),
+        ]);
+        const retry = await sapClient.get(query, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        const raw = Array.isArray(retry.data && retry.data.value)
+          ? retry.data.value
+          : [];
+        const { pageItems, total } = filterAndPaginate(raw);
         return sendArticulosResponse(
           res,
           { value: pageItems, 'odata.count': total },
