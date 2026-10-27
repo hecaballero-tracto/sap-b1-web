@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0a6ed1" />
+  <meta name="theme-color" content="#f6c343" />
   <meta name="description" content="Consulta de clientes desde SAP Business One Service Layer" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -26,10 +26,38 @@
     .table td { vertical-align: middle; }
     .balance-positive { color: #198754; font-weight: 600; }
     .balance-negative { color: #dc3545; font-weight: 600; }
+    .navbar-tracto {
+      background-color: #f6c343 !important;
+      color: #1a1a1a;
+    }
+    .navbar-tracto .navbar-brand,
+    .navbar-tracto .nav-link,
+    .navbar-tracto .navbar-text,
+    .navbar-tracto .navbar-toggler,
+    .navbar-tracto .navbar-toggler-icon,
+    .navbar-tracto i {
+      color: #1a1a1a !important;
+    }
+    .navbar-tracto .nav-link:hover,
+    .navbar-tracto .nav-link:focus,
+    .navbar-tracto .navbar-brand:hover,
+    .navbar-tracto .navbar-brand:focus {
+      color: #000000 !important;
+    }
+    .navbar-tracto .nav-link.active {
+      color: #000000 !important;
+      font-weight: 600;
+    }
+    .navbar-tracto .navbar-toggler {
+      border-color: rgba(0, 0, 0, 0.35);
+    }
+    .navbar-tracto .navbar-toggler-icon {
+      background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='%231a1a1a' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
+    }
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+  <nav class="navbar navbar-expand-lg navbar-tracto mb-4">
     <div class="container-fluid">
       <span class="navbar-brand mb-0 h1 d-flex align-items-center gap-2">
         <img
@@ -37,7 +65,7 @@
           alt="Tracto"
           style="height: 36px; width: auto; vertical-align: middle;"
         />
-        <span class="badge bg-light text-primary fw-semibold">SAP B1</span>
+        <span class="badge bg-white text-dark fw-semibold">SAP B1</span>
         <span id="secureBadge" class="badge bg-success ms-2 d-none" title="Conexión segura">
           <i class="bi bi-shield-lock-fill me-1"></i>HTTPS
         </span>
@@ -67,11 +95,11 @@
           </li>
         </ul>
         <div class="d-flex align-items-center gap-2">
-          <span id="userName" class="text-white small"></span>
-          <button id="btnRefresh" class="btn btn-light btn-sm">
+          <span id="userName" class="small" style="color: #1a1a1a;"></span>
+          <button id="btnRefresh" class="btn btn-dark btn-sm">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
           </button>
-          <button id="btnLogout" class="btn btn-outline-light btn-sm">
+          <button id="btnLogout" class="btn btn-outline-dark btn-sm">
             <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión
           </button>
         </div>

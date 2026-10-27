@@ -2,7 +2,7 @@
   "name": "SAP B1 Clientes",
   "short_name": "B1 Clientes",
   "display": "standalone",
-  "theme_color": "#0d6efd",
+  "theme_color": "#f6c343",
   "background_color": "#ffffff",
   "start_url": "/clientes.html",
   "scope": "/",
