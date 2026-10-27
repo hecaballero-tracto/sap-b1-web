@@ -1,6 +1,6 @@
 {
-  "name": "SAP B1 Clientes",
-  "short_name": "B1 Clientes",
+  "name": "Addon de Consultas",
+  "short_name": "Addon Consultas",
   "display": "standalone",
   "theme_color": "#f6c343",
   "background_color": "#ffffff",

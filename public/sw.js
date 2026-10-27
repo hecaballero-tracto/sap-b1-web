@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tracto-sap-v2';
+const CACHE_NAME = 'tracto-sap-v3';
 
 // Solo recursos locales indispensables en el precaché inicial
 const PRECACHE_ASSETS = [
