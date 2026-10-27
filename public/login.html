@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Iniciar sesión</title>
   <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/img/tractor-icon.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <meta name="theme-color" content="#0b5ed7" />
   <style>
     :root {
@@ -94,10 +96,17 @@
       margin-bottom: 16px;
     }
     .error.visible { display: block; }
+    .brand-logo {
+      display: block;
+      margin: 0 auto 16px;
+      height: 56px;
+      width: auto;
+    }
   </style>
 </head>
 <body>
   <form class="card" id="loginForm" autocomplete="on">
+    <img src="/img/logo-tracto.png" alt="Tracto" class="brand-logo" />
     <h1>Iniciar sesión</h1>
     <p class="subtitle">Ingrese sus credenciales de Active Directory</p>
 

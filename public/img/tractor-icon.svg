@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Tracto">
+  <rect width="512" height="512" rx="96" fill="#ffffff"/>
+  <!-- Silueta de tractor negro -->
+  <g fill="#111111">
+    <!-- Rueda trasera grande -->
+    <circle cx="360" cy="360" r="96"/>
+    <circle cx="360" cy="360" r="44" fill="#ffffff"/>
+    <!-- Rueda delantera pequeña -->
+    <circle cx="140" cy="392" r="60"/>
+    <circle cx="140" cy="392" r="26" fill="#ffffff"/>
+    <!-- Cuerpo del tractor -->
+    <path d="M96 300 L96 220 Q96 200 116 200 L220 200 L260 260 L360 260 Q380 260 380 280 L380 300 Z"/>
+    <!-- Cabina -->
+    <path d="M220 200 L220 140 Q220 120 240 120 L320 120 Q340 120 340 140 L340 200 Z"/>
+    <!-- Ventana de cabina -->
+    <rect x="240" y="140" width="80" height="50" fill="#ffffff"/>
+    <!-- Tubo de escape -->
+    <rect x="150" y="150" width="16" height="60" rx="4"/>
+  </g>
+</svg>
