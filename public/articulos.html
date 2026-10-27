@@ -1132,10 +1132,25 @@
     }
 
     if ('serviceWorker' in navigator && window.isSecureContext) {
+      // Recargar una sola vez cuando un nuevo SW tome el control
+      let swRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        window.location.reload();
+      });
+
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-          console.warn('No se pudo registrar el service worker:', err);
-        });
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => {
+            // Buscar actualizaciones al cargar y periódicamente
+            reg.update().catch(() => {});
+            setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+          })
+          .catch((err) => {
+            console.warn('No se pudo registrar el service worker:', err);
+          });
       });
     } else if ('serviceWorker' in navigator) {
       console.warn(

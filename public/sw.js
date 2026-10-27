@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sap-b1-clientes-v4';
+const CACHE_NAME = 'tracto-sap-v2';
 
 // Solo recursos locales indispensables en el precaché inicial
 const PRECACHE_ASSETS = [
@@ -17,18 +17,21 @@ self.addEventListener('install', (event) => {
       );
     })
   );
+  // Activar el nuevo SW de inmediato, sin esperar a que se cierren las pestañas
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      )
-    )
+      );
+      // Tomar control de las pestañas abiertas inmediatamente
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -36,6 +39,29 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+
+  // Network-First para navegación y documentos HTML:
+  // siempre intenta la red y solo cae al cache si falla la conexión.
+  const isNavigation =
+    request.mode === 'navigate' ||
+    (request.headers.get('accept') || '').includes('text/html') ||
+    url.pathname.endsWith('.html') ||
+    url.pathname === '/';
+
+  if (isNavigation) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
 
   // Network-First para la API de SAP B1 (solo cachear respuestas HTTP 200)
   if (url.pathname.startsWith('/api/')) {
