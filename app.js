@@ -1340,10 +1340,23 @@ IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
   * "ventas de la marca Lovol" => UPPER("MARCA") LIKE '%LOVOL%'
   * "ventas a clientes de Asunción" => UPPER("CLIENTE") LIKE '%ASUNCION%'
   No uses comparaciones exactas (=) para estos campos de texto libre.
+- IMPORTANTE — Tolerancia a acentos en LIKE (SAP HANA): en SAP HANA las búsquedas con LIKE deben ser tolerantes a acentos en vocales. Para palabras con vocales acentuadas (á, é, í, ó, ú, Á, É, Í, Ó, Ú), reemplaza la vocal acentuada por el comodín de un carácter '_' para que coincida tanto con la vocal sin acento como con la acentuada. Ejemplos:
+  * "agrícola" => UPPER("RUBRO") LIKE '%AGR_COLA%' o UPPER("RUBRO") LIKE '%AGRIC%LA%'
+  * "mecánica" => UPPER("RUBRO") LIKE '%MEC_NICA%'
+  * "eléctrico" => UPPER("RUBRO") LIKE '%EL_CTRICO%'
+  * "neumáticos" => UPPER("NOMBRE") LIKE '%NEUM_TICOS%'
+  * "Asunción" => UPPER("CLIENTE") LIKE '%ASUNCI_N%'
+  Aplica esta regla SIEMPRE que la palabra del usuario contenga vocales acentuadas.
 - IMPORTANTE — "lo que va del año" / año actual: cuando el usuario pida "lo que va del año", "este año", "año actual", "YTD" o similar, filtra por el año en curso usando "ANIO" = YEAR(CURRENT_DATE) o, alternativamente, "FECHA_VENTA" >= TO_DATE(CONCAT(YEAR(CURRENT_DATE), '-01-01'), 'YYYY-MM-DD'). Ejemplo:
   SELECT SUM("TOTAL_GS") AS "VENTAS_ANIO_ACTUAL"
   FROM "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA"
   WHERE "ANIO" = YEAR(CURRENT_DATE)
+- IMPORTANTE — "último año" / fechas relativas sin año fijo: cuando el usuario pida "último año", "últimos 12 meses", "último período" o similar SIN especificar un año fijo, NO uses YEAR(CURRENT_DATE) directamente (la base puede tener fechas desfasadas y devolver conjuntos vacíos). En su lugar, usa una de estas estrategias:
+  * Filtrar por el año máximo disponible en la vista:
+    WHERE "ANIO" = (SELECT MAX("ANIO") FROM "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA")
+  * O filtrar por los últimos 365 días:
+    WHERE "FECHA_VENTA" >= ADD_DAYS(CURRENT_DATE, -365)
+  Elige la estrategia que mejor se ajuste a la intención del usuario y evita retornar conjuntos vacíos por desfase de fechas.
 
 Clasifica la consulta del usuario en uno de dos modos:
 

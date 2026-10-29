@@ -1459,7 +1459,14 @@
         const row = rows[0] || {};
         const entries = Object.entries(row);
         if (!entries.length) {
-          iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin datos para mostrar.')}</div>`;
+          iaResponseText.innerHTML = `
+            <div class="d-flex align-items-center gap-2 text-muted">
+              <i class="bi bi-info-circle"></i>
+              <span>${escapeHtml(
+                explicacion ||
+                  'No se encontraron registros de ventas para los criterios seleccionados.'
+              )}</span>
+            </div>`;
           if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
           iaQuickFilterState = null;
           return;
@@ -1489,7 +1496,16 @@
 
       if (tipo === 'grafico_barra' || tipo === 'grafico_pie') {
         if (!rows.length) {
-          iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin datos para mostrar.')}</div>`;
+          iaResponseText.innerHTML = `
+            <div class="d-flex align-items-center gap-2 text-muted">
+              <i class="bi bi-info-circle"></i>
+              <span>${escapeHtml(
+                explicacion ||
+                  'No se encontraron registros de ventas para los criterios seleccionados.'
+              )}</span>
+            </div>`;
+          if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
+          iaQuickFilterState = null;
           return;
         }
         const keys = Object.keys(rows[0]);
@@ -1615,7 +1631,14 @@
 
       // tipo === 'texto'
       if (!rows.length) {
-        iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin resultados.')}</div>`;
+        iaResponseText.innerHTML = `
+          <div class="d-flex align-items-center gap-2 text-muted">
+            <i class="bi bi-info-circle"></i>
+            <span>${escapeHtml(
+              explicacion ||
+                'No se encontraron registros de ventas para los criterios seleccionados.'
+            )}</span>
+          </div>`;
         if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
         iaQuickFilterState = null;
         return;
