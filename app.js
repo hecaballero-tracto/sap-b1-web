@@ -1305,6 +1305,29 @@ Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
 - FECHA_ULT_ACT (date)
 - COSTO_PROM (decimal)
 
+Esquema de la vista "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA" (para consultas de ventas, rotación, facturación y devoluciones):
+- TIPO_DOCUMENTO (nvarchar) — valores posibles: 'Factura', 'Factura Reserva', 'Nota de Credito'
+- CODIGO_TRACTO (nvarchar) — código del artículo
+- NOMBRE (nvarchar) — descripción del artículo
+- RUBRO (nvarchar)
+- MARCA (nvarchar)
+- FAMILIA (nvarchar)
+- FABRICANTE (nvarchar)
+- CANTIDAD (decimal) — cantidad vendida (negativa en notas de crédito)
+- TOTAL_GS (decimal) — importe en guaraníes (negativo en notas de crédito)
+- TOTAL_USD (decimal) — importe en dólares (negativo en notas de crédito)
+- FECHA (date) — fecha del documento
+- CLIENTE (nvarchar)
+- VENDEDOR (nvarchar)
+
+IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
+- La vista YA descuenta automáticamente las notas de crédito: las cantidades e importes de las notas de crédito vienen con signo negativo.
+- También incluye las facturas de reserva bajo TIPO_DOCUMENTO = 'Factura Reserva'.
+- Por lo tanto, para calcular ventas netas, rotación o facturación SIEMPRE usa SUM("CANTIDAD"), SUM("TOTAL_GS") o SUM("TOTAL_USD") directamente, SIN restar ni filtrar notas de crédito manualmente.
+- Si el usuario pregunta por ventas netas o devoluciones, puedes filtrar o desglosar por TIPO_DOCUMENTO ('Factura', 'Factura Reserva', 'Nota de Credito') usando GROUP BY "TIPO_DOCUMENTO" o una condición WHERE "TIPO_DOCUMENTO" = '...'.
+- Cuando el usuario pida "ventas", "facturación", "rotación", "más vendidos", "top vendidos", "ventas por rubro/marca/familia", "ventas del mes/año", etc., usa esta vista (NO "V_PRODUCTOS").
+- Cuando el usuario pida stock, inventario, existencias, quiebres o valorización, usa "V_PRODUCTOS".
+
 Clasifica la consulta del usuario en uno de dos modos:
 
 MODO "lista": cuando el usuario quiere ver registros/artículos concretos (listados, búsquedas, "muéstrame los...", "qué artículos...", "cuáles tienen...").
@@ -1398,6 +1421,7 @@ Reglas ESTRICTAS:
    - En modo "resumen", "explicacion" debe ser un ENCABEZADO DESCRIPTIVO del análisis, NO un resumen con cifras.
    - PROHIBIDO inventar cifras, totales, porcentajes o valores numéricos en "explicacion" antes de ejecutar el SQL. La IA no conoce los resultados reales.
    - Ejemplos válidos: "Resumen consolidado de inventario", "Distribución de valorización por rubro", "Ranking de stock por marca", "Comparativa de comprometido por familia".
+   - Cuando la consulta sea sobre ventas, facturación, rotación o devoluciones (usando "V_VENTAS_ARTICULOS_ANALITICA"), la "explicacion" DEBE indicar claramente que los montos representan VENTAS NETAS ya descontadas las notas de crédito. Ejemplos válidos: "Ventas netas por rubro (notas de crédito ya descontadas)", "Ranking de artículos más vendidos — ventas netas", "Facturación neta mensual (incluye facturas de reserva, notas de crédito descontadas)".
    - No incluyas markdown ni saltos de línea en "explicacion".
 
 11. Devuelve SOLO el objeto JSON, sin explicaciones adicionales ni bloques de código.`;
