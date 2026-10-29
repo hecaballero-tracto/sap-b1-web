@@ -139,17 +139,20 @@
               placeholder="Buscar por código o descripción..."
             />
           </div>
-          <div class="input-group" style="max-width: 520px;">
-            <span class="input-group-text"><i class="bi bi-stars"></i></span>
-            <input
-              id="inputIaPrompt"
-              type="text"
-              class="form-control"
-              placeholder="Consultar con IA (ej: Tractores Lovol con stock > 2)..."
-            />
-            <button id="btnIaPrompt" class="btn btn-primary" type="button">
-              <i class="bi bi-stars me-1"></i>Consultar IA
-            </button>
+          <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="input-group" style="max-width: 520px;">
+              <span class="input-group-text"><i class="bi bi-stars"></i></span>
+              <input
+                id="inputIaPrompt"
+                type="text"
+                class="form-control"
+                placeholder="Consultar con IA (ej: Tractores Lovol con stock > 2)..."
+              />
+              <button id="btnIaPrompt" class="btn btn-primary" type="button">
+                <i class="bi bi-stars me-1"></i>Consultar IA
+              </button>
+            </div>
+            <small id="iaUsageBadge" class="text-muted ms-2 d-none"></small>
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -472,6 +475,7 @@
     const btnSavePriceConfig = document.getElementById('btnSavePriceConfig');
     const inputIaPrompt = document.getElementById('inputIaPrompt');
     const btnIaPrompt = document.getElementById('btnIaPrompt');
+    const iaUsageBadge = document.getElementById('iaUsageBadge');
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -1284,6 +1288,12 @@
             'No se pudo interpretar la consulta';
           alert(msg);
           return;
+        }
+        if (data && data.usage && iaUsageBadge) {
+          const u = data.usage;
+          iaUsageBadge.classList.remove('d-none');
+          iaUsageBadge.innerHTML =
+            `<span class="badge bg-secondary">Tokens: ${u.total_tokens} (Entrada: ${u.prompt_tokens}, Salida: ${u.completion_tokens})</span>`;
         }
         applyIaFilters(data);
       } catch (err) {

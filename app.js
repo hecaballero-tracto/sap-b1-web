@@ -1420,6 +1420,14 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
       data.choices[0].message &&
       data.choices[0].message.content;
 
+    const usage = (data && data.usage) || {};
+    const promptTokens = Number(usage.prompt_tokens) || 0;
+    const completionTokens = Number(usage.completion_tokens) || 0;
+    const totalTokens = Number(usage.total_tokens) || 0;
+    console.log(
+      `[DEEPSEEK USAGE] Tokens usados: ${totalTokens} (Prompt: ${promptTokens}, Resp: ${completionTokens})`
+    );
+
     if (!content) {
       return res
         .status(502)
@@ -1436,7 +1444,14 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
     }
 
     const sanitized = sanitizeIaResponse(parsed);
-    return res.json(sanitized);
+    return res.json({
+      ...sanitized,
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+      },
+    });
   } catch (err) {
     console.error('Error en /api/articulos/ia-prompt:', err.message);
     return res
