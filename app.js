@@ -1273,6 +1273,30 @@ Reglas:
       * Marca => "Marca".
     - Si el usuario menciona un texto genérico sin indicar columna, colócalo en "search" y NO en colFilters.
 
+Reglas semánticas de inventario (jerga de negocio):
+- "quiebre de stock", "quiebre", "ruptura de stock", "faltantes", "faltante":
+  * NO busques la palabra "quiebre" ni "faltante" en "search".
+  * Asigna "colFilters.Stock" = { "op": "le", "val": 0 }.
+  * Si además el usuario menciona pedidos, comprometidos o "por entregar", agrega "colFilters.Comprometido" = { "op": "gt", "val": 0 }.
+  * Si el usuario no menciona pedidos, puedes usar "stockEstado" = "sinStock" como alternativa equivalente.
+- "agotados", "sin existencia", "sin stock", "no hay", "cero stock":
+  * Asigna "stockEstado" = "sinStock".
+  * NO coloques estas palabras en "search".
+- "con existencia", "disponibles", "en stock", "hay stock", "con stock":
+  * Asigna "stockEstado" = "conStock".
+  * NO coloques estas palabras en "search".
+- "por recibir", "en camino", "en tránsito", "pedidos pendientes", "por llegar":
+  * Asigna "stockEstado" = "conPedido".
+  * NO coloques estas palabras en "search".
+- "comprometidos", "reservados", "vendidos pendientes":
+  * Asigna "stockEstado" = "conComprometido".
+  * NO coloques estas palabras en "search".
+
+Reglas de limpieza de "search":
+- En "search" SOLO deben ir nombres o códigos reales de artículos (ej: "Lovol", "filtro aceite", "12345").
+- NUNCA incluyas en "search" palabras genéricas o de relleno como: "productos", "producto", "artículos", "articulos", "repuestos", "repuesto", "muéstrame", "muestrame", "mostrar", "listar", "lista", "dame", "quiero", "ver", "buscar", "busca", "quiebre", "faltante", "faltantes", "agotados", "disponibles", "existencia", "stock", "pedido", "pedidos", "comprometido", "comprometidos", "en camino", "por recibir".
+- Si después de limpiar no queda ningún término real de artículo, deja "search" como cadena vacía "".
+
 Si el usuario no especifica nada para un campo, usa cadena vacía "" o {} según corresponda. Nunca inventes valores.`;
 
 function sanitizeIaResponse(raw) {
