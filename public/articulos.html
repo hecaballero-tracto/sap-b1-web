@@ -155,7 +155,6 @@
                 <i class="bi bi-stars me-1"></i>Consultar IA
               </button>
             </div>
-            <small id="iaUsageBadge" class="text-muted ms-2 d-none"></small>
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -224,8 +223,16 @@
                 <div id="iaChartWrapper" class="d-none" style="max-width: 640px;">
                   <canvas id="iaChartCanvas" height="220"></canvas>
                 </div>
+                <div id="iaQuickActionWrapper" class="mt-2 d-none">
+                  <button type="button" id="btnIaQuickFilter" class="btn btn-sm btn-outline-dark">
+                    <i class="bi bi-funnel me-1"></i>Filtrar matriz con estos resultados
+                  </button>
+                </div>
               </div>
               <button type="button" class="btn-close" id="btnCloseIaResponse" aria-label="Cerrar"></button>
+            </div>
+            <div class="d-flex justify-content-end mt-2">
+              <small id="iaUsageBadge" class="text-muted d-none"></small>
             </div>
           </div>
         </div>
@@ -502,7 +509,10 @@
     const iaChartWrapper = document.getElementById('iaChartWrapper');
     const iaChartCanvas = document.getElementById('iaChartCanvas');
     const btnCloseIaResponse = document.getElementById('btnCloseIaResponse');
+    const iaQuickActionWrapper = document.getElementById('iaQuickActionWrapper');
+    const btnIaQuickFilter = document.getElementById('btnIaQuickFilter');
     let iaChartInstance = null;
+    let iaQuickFilterState = null;
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -1227,10 +1237,86 @@
     function hideIaResponse() {
       if (iaResponseCard) iaResponseCard.classList.add('d-none');
       if (iaChartWrapper) iaChartWrapper.classList.add('d-none');
+      if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
       if (iaChartInstance) {
         iaChartInstance.destroy();
         iaChartInstance = null;
       }
+      iaQuickFilterState = null;
+    }
+
+    // Tarifas aproximadas DeepSeek (USD por 1M tokens)
+    const DEEPSEEK_PRICE_INPUT_PER_M = 0.27;
+    const DEEPSEEK_PRICE_OUTPUT_PER_M = 1.1;
+
+    function formatUsageBadge(usage) {
+      if (!usage) return '';
+      const total = Number(usage.total_tokens) || 0;
+      const prompt = Number(usage.prompt_tokens) || 0;
+      const completion = Number(usage.completion_tokens) || 0;
+      const cost =
+        (prompt / 1_000_000) * DEEPSEEK_PRICE_INPUT_PER_M +
+        (completion / 1_000_000) * DEEPSEEK_PRICE_OUTPUT_PER_M;
+      const costStr = cost < 0.0001 ? '<0.0001' : cost.toFixed(4);
+      return `Tokens: ${total} (Entrada: ${prompt}, Salida: ${completion}) · Costo aprox: $${costStr} USD`;
+    }
+
+    const numberFmtPy = new Intl.NumberFormat('es-PY', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+
+    function detectQuickFilterColumn(rows) {
+      if (!Array.isArray(rows) || !rows.length) return null;
+      const keys = Object.keys(rows[0]);
+      if (!keys.length) return null;
+      const labelKey = keys[0];
+      const upper = String(labelKey).toUpperCase();
+      if (upper.includes('MARCA')) return { key: labelKey, filterKey: 'Marca' };
+      if (upper.includes('RUBRO')) return { key: labelKey, filterKey: 'Rubro' };
+      if (upper.includes('FAMILIA')) return { key: labelKey, filterKey: 'Familia' };
+      if (upper.includes('FABRICANTE')) return { key: labelKey, filterKey: 'Fabricante' };
+      return null;
+    }
+
+    function setupQuickFilter(rows) {
+      if (!iaQuickActionWrapper || !btnIaQuickFilter) return;
+      const detected = detectQuickFilterColumn(rows);
+      if (!detected) {
+        iaQuickActionWrapper.classList.add('d-none');
+        iaQuickFilterState = null;
+        return;
+      }
+      const values = rows
+        .map((r) => String(r[detected.key] ?? '').trim())
+        .filter((v) => v !== '');
+      if (!values.length) {
+        iaQuickActionWrapper.classList.add('d-none');
+        iaQuickFilterState = null;
+        return;
+      }
+      iaQuickFilterState = { filterKey: detected.filterKey, values };
+      iaQuickActionWrapper.classList.remove('d-none');
+    }
+
+    if (btnIaQuickFilter) {
+      btnIaQuickFilter.addEventListener('click', () => {
+        if (!iaQuickFilterState) return;
+        const { filterKey, values } = iaQuickFilterState;
+        // Aplicar como filtro de texto "eq" solo si hay un único valor;
+        // si hay varios, usar el primero como "contains" no es viable,
+        // por lo que se aplica el primero y se informa.
+        if (values.length === 1) {
+          columnFilters[filterKey] = { op: 'eq', val: values[0] };
+        } else {
+          // Múltiples valores: aplicar el primero como eq (limitación del filtro OData actual)
+          columnFilters[filterKey] = { op: 'eq', val: values[0] };
+        }
+        hideIaResponse();
+        renderHead();
+        paging.page = 1;
+        cargarArticulos();
+      });
     }
 
     function formatNumberEs(value) {
@@ -1267,6 +1353,8 @@
             <span class="display-6 fw-bold">${escapeHtml(formatNumberEs(value))}</span>
             <span class="text-muted small">${escapeHtml(String(label || ''))}</span>
           </div>`;
+        if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
+        iaQuickFilterState = null;
         return;
       }
 
@@ -1313,19 +1401,45 @@
             maintainAspectRatio: false,
             plugins: {
               legend: { display: tipo === 'grafico_pie' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const raw =
+                      ctx.parsed && typeof ctx.parsed === 'object'
+                        ? ctx.parsed.y !== undefined
+                          ? ctx.parsed.y
+                          : ctx.parsed
+                        : ctx.parsed;
+                    const num = Number(raw) || 0;
+                    const label = ctx.label ? `${ctx.label}: ` : '';
+                    return `${label}${numberFmtPy.format(num)}`;
+                  },
+                },
+              },
             },
             scales:
               tipo === 'grafico_pie'
                 ? undefined
-                : { y: { beginAtZero: true } },
+                : {
+                    y: {
+                      beginAtZero: true,
+                      ticks: {
+                        callback: (value) => numberFmtPy.format(Number(value) || 0),
+                      },
+                    },
+                  },
           },
         });
+
+        setupQuickFilter(rows);
         return;
       }
 
       // tipo === 'texto'
       if (!rows.length) {
         iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin resultados.')}</div>`;
+        if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
+        iaQuickFilterState = null;
         return;
       }
       const keys = Object.keys(rows[0]);
@@ -1351,6 +1465,8 @@
         (explicacion
           ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>`
           : '') + tableHtml;
+
+      setupQuickFilter(rows);
     }
 
     function applyIaFilters(result) {
@@ -1410,10 +1526,8 @@
           return;
         }
         if (data && data.usage && iaUsageBadge) {
-          const u = data.usage;
           iaUsageBadge.classList.remove('d-none');
-          iaUsageBadge.innerHTML =
-            `<span class="badge bg-secondary">Tokens: ${u.total_tokens} (Entrada: ${u.prompt_tokens}, Salida: ${u.completion_tokens})</span>`;
+          iaUsageBadge.textContent = formatUsageBadge(data.usage);
         }
 
         // Modo resumen: mostrar tarjeta con KPI/gráfico/texto, sin tocar la tabla
