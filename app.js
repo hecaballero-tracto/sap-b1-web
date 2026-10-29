@@ -1772,6 +1772,52 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/articulos/ia-pagina', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const whereClauseRaw = typeof body.whereClause === 'string' ? body.whereClause.trim() : '';
+  const whereClause = whereClauseRaw.replace(/^WHERE\s+/i, '').trim();
+
+  if (!isSafeWhereClause(whereClause)) {
+    return res.status(400).json({
+      error: { message: 'La cláusula de filtro no es segura o no es válida' },
+    });
+  }
+
+  const page = parsePositiveInt(body.page, 1);
+  const limit = parsePositiveInt(body.limit, 20, 200);
+  const offset = (page - 1) * limit;
+
+  const baseSelect = `SELECT "ACTIVO","CODIGO_TRACTO","NOMBRE","NOMBRE_INTERNO","CODIGO_FABRICA","RUBRO","MARCA","MODELO","FABRICANTE","FAMILIA","UNIDAD","STOCK_TOTAL","COMPROMETIDO","EN_PEDIDO","DISPONIBLE","FECHA_CREACION","FECHA_ULT_VENTA","PRECIO_ULT_COMPRA","MONEDA_ULT_COMPRA","FECHA_ULT_COMPRA","FECHA_ULT_ACT","COSTO_PROM" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE `;
+
+  const countSql = `SELECT COUNT(*) AS "TOTAL" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE ${whereClause}`;
+  const dataSql = `${baseSelect}${whereClause} ORDER BY "CODIGO_TRACTO" LIMIT ${limit} OFFSET ${offset}`;
+
+  try {
+    console.log('[IA PAGINA SQL]', dataSql);
+    const [countRows, dataRows] = await Promise.all([
+      hanaExec(countSql),
+      hanaExec(dataSql),
+    ]);
+    const total = countRows && countRows[0] ? Number(countRows[0].TOTAL) || 0 : 0;
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+    return res.json({
+      modo: 'lista',
+      data: dataRows || [],
+      total,
+      page,
+      limit,
+      totalPages,
+      whereClause,
+    });
+  } catch (err) {
+    console.error('Error en /api/articulos/ia-pagina:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al paginar resultados de IA en HANA' } });
+  }
+});
+
 app.get('/api/articulos/:codigo/series', requireAuth, async (req, res) => {
   const codigo = String(req.params.codigo || '').trim();
   if (!codigo) {

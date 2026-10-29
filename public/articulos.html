@@ -513,6 +513,8 @@
     const btnIaQuickFilter = document.getElementById('btnIaQuickFilter');
     let iaChartInstance = null;
     let iaQuickFilterState = null;
+    // Filtro activo de IA en modo lista: { whereClause, total, totalPages }
+    let currentIaFilter = null;
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -1098,6 +1100,75 @@
       btnNext.disabled = page >= totalPages;
     }
 
+    function mapIaRowsToArticulos(rows) {
+      return (rows || []).map((r) => ({
+        ItemCode: r.CODIGO_TRACTO,
+        ItemName: r.NOMBRE,
+        FrgnName: r.NOMBRE_INTERNO,
+        SalesUnit: r.UNIDAD,
+        SWW: r.FAMILIA,
+        rubro: r.RUBRO,
+        fabricante: r.FABRICANTE,
+        U_Marca: r.MARCA,
+        U_Modelo: r.MODELO,
+        QuantityOnStock: Number(r.STOCK_TOTAL) || 0,
+        IsCommited: Number(r.COMPROMETIDO) || 0,
+        OnOrder: Number(r.EN_PEDIDO) || 0,
+        Available: Number(r.DISPONIBLE) || 0,
+        CreateDate: r.FECHA_CREACION,
+        FechaUltVenta: r.FECHA_ULT_VENTA,
+        FechaUltCompra: r.FECHA_ULT_COMPRA,
+        CostoProm: Number(r.COSTO_PROM) || 0,
+        Warehouses: [],
+        Prices: [],
+      }));
+    }
+
+    async function cargarPaginaIa() {
+      if (!currentIaFilter) return;
+      body.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2 text-muted">Cargando artículos...</div>
+          </td>
+        </tr>`;
+      try {
+        const res = await apiFetch('/api/articulos/ia-pagina', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            whereClause: currentIaFilter.whereClause,
+            page: paging.page,
+            limit: paging.limit,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudo paginar el resultado de IA';
+          alert(msg);
+          return;
+        }
+        articulos = mapIaRowsToArticulos(data.data);
+        paging = {
+          page: data.page || paging.page,
+          limit: data.limit || paging.limit,
+          total: data.total || 0,
+          totalPages: data.totalPages || 0,
+        };
+        currentIaFilter.total = paging.total;
+        currentIaFilter.totalPages = paging.totalPages;
+        render(articulos);
+        updatePagingControls();
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
+        alert('Error de conexión al paginar resultados de IA');
+      }
+    }
+
     function buildQuery() {
       const params = new URLSearchParams();
       params.set('page', String(paging.page));
@@ -1203,17 +1274,29 @@
     pageSize.addEventListener('change', () => {
       paging.limit = parseInt(pageSize.value, 10) || 20;
       paging.page = 1;
-      cargarArticulos();
+      if (currentIaFilter) {
+        cargarPaginaIa();
+      } else {
+        cargarArticulos();
+      }
     });
 
     btnPrev.addEventListener('click', () => {
       paging.page = Math.max(1, paging.page - 1);
-      cargarArticulos();
+      if (currentIaFilter) {
+        cargarPaginaIa();
+      } else {
+        cargarArticulos();
+      }
     });
 
     btnNext.addEventListener('click', () => {
       paging.page = paging.page + 1;
-      cargarArticulos();
+      if (currentIaFilter) {
+        cargarPaginaIa();
+      } else {
+        cargarArticulos();
+      }
     });
 
     btnRefresh.addEventListener('click', () => {
@@ -1228,6 +1311,7 @@
         activePopover.dispose();
         activePopover = null;
       }
+      currentIaFilter = null;
       renderHead();
       paging.page = 1;
       cargarArticulos();
@@ -1584,32 +1668,17 @@
         // Modo lista: ocultar tarjeta y reemplazar la matriz
         hideIaResponse();
         if (data && data.modo === 'lista' && Array.isArray(data.data)) {
-          articulos = data.data.map((r) => ({
-            ItemCode: r.CODIGO_TRACTO,
-            ItemName: r.NOMBRE,
-            FrgnName: r.NOMBRE_INTERNO,
-            SalesUnit: r.UNIDAD,
-            SWW: r.FAMILIA,
-            rubro: r.RUBRO,
-            fabricante: r.FABRICANTE,
-            U_Marca: r.MARCA,
-            U_Modelo: r.MODELO,
-            QuantityOnStock: Number(r.STOCK_TOTAL) || 0,
-            IsCommited: Number(r.COMPROMETIDO) || 0,
-            OnOrder: Number(r.EN_PEDIDO) || 0,
-            Available: Number(r.DISPONIBLE) || 0,
-            CreateDate: r.FECHA_CREACION,
-            FechaUltVenta: r.FECHA_ULT_VENTA,
-            FechaUltCompra: r.FECHA_ULT_COMPRA,
-            CostoProm: Number(r.COSTO_PROM) || 0,
-            Warehouses: [],
-            Prices: [],
-          }));
+          articulos = mapIaRowsToArticulos(data.data);
           paging = {
             page: data.page || 1,
             limit: data.limit || 20,
             total: data.total || 0,
             totalPages: data.totalPages || 0,
+          };
+          currentIaFilter = {
+            whereClause: data.whereClause || '1=1',
+            total: paging.total,
+            totalPages: paging.totalPages,
           };
           render(articulos);
           updatePagingControls();
