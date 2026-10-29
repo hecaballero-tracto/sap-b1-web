@@ -1341,7 +1341,46 @@ Reglas ESTRICTAS:
    - "con stock", "disponibles", "con existencia" => STOCK_TOTAL > 0
    - "por recibir", "en camino", "pedidos pendientes" => EN_PEDIDO > 0
    - "comprometidos", "reservados" => COMPROMETIDO > 0
-8. Devuelve SOLO el objeto JSON, sin explicaciones adicionales ni bloques de código.`;
+
+8. Resúmenes de inventario (modo "resumen"):
+   - Si el usuario pide "resumen de inventario", "estado general", "reporte de stock", "panorama de inventario" o similar, genera una consulta SQL que devuelva métricas consolidadas en una sola fila:
+     SELECT
+       COUNT(CASE WHEN "STOCK_TOTAL" > 0 THEN 1 END) AS "ITEMS_CON_STOCK",
+       SUM("STOCK_TOTAL") AS "TOTAL_STOCK",
+       SUM("COMPROMETIDO") AS "TOTAL_COMPROMETIDO",
+       SUM("EN_PEDIDO") AS "TOTAL_EN_PEDIDO"
+     FROM "TRACTOAGRO"."V_PRODUCTOS"
+     WHERE "ACTIVO" = 'Y'
+     Usa "tipoVisual": "kpi".
+   - Si el usuario pide "valorización por rubro", "valor de inventario por rubro", "top rubros por valor" o similar, genera:
+     SELECT "RUBRO", SUM("STOCK_TOTAL" * "COSTO_PROM") AS "VALORIZACION"
+     FROM "TRACTOAGRO"."V_PRODUCTOS"
+     WHERE "ACTIVO" = 'Y'
+       AND "COSTO_PROM" IS NOT NULL
+       AND "COSTO_PROM" > 0
+       AND "STOCK_TOTAL" > 0
+     GROUP BY "RUBRO"
+     ORDER BY "VALORIZACION" DESC
+     LIMIT 5
+     Usa "tipoVisual": "grafico_barra".
+
+9. Valorización monetaria:
+   - Siempre calcula la valorización como SUM("STOCK_TOTAL" * "COSTO_PROM").
+   - Excluye registros con "COSTO_PROM" IS NULL o "COSTO_PROM" <= 0.
+   - Si el usuario pide valorización total, usa:
+     SELECT SUM("STOCK_TOTAL" * "COSTO_PROM") AS "VALORIZACION_TOTAL"
+     FROM "TRACTOAGRO"."V_PRODUCTOS"
+     WHERE "ACTIVO" = 'Y'
+       AND "COSTO_PROM" IS NOT NULL
+       AND "COSTO_PROM" > 0
+       AND "STOCK_TOTAL" > 0
+     Usa "tipoVisual": "kpi".
+
+10. Explicación ejecutiva:
+   - En modo "resumen", "explicacion" debe ser un resumen ejecutivo claro en español (1-3 frases) que describa el resultado antes de dibujar el gráfico o KPI. Ejemplo: "El inventario activo tiene 1.245 ítems con stock, un total de 8.320 unidades y una valorización estimada de USD 1.250.000."
+   - No incluyas markdown ni saltos de línea en "explicacion".
+
+11. Devuelve SOLO el objeto JSON, sin explicaciones adicionales ni bloques de código.`;
 
 const IA_SYSTEM_PROMPT = `Eres un asistente que traduce consultas en lenguaje natural sobre artículos (repuestos, tractores, maquinaria agrícola) a un objeto JSON de filtros para un sistema SAP Business One.
 
