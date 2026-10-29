@@ -31,6 +31,8 @@
       box-shadow: inset 0 -2px 0 #dee2e6;
     }
     .table td { vertical-align: middle; }
+    .table tbody tr:nth-child(odd) { background-color: #fbfbfb; }
+    .table tbody tr:hover { background-color: #fff9e6 !important; }
     .table-responsive {
       max-height: calc(100vh - 220px);
       overflow-y: auto;
@@ -157,14 +159,12 @@
         </div>
         <div class="d-flex align-items-center gap-2">
           <button
-            class="btn btn-outline-secondary btn-sm"
+            id="btnClearFilters"
+            class="btn btn-outline-danger btn-sm d-none"
             type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#filtersPanel"
-            aria-expanded="false"
-            aria-controls="filtersPanel"
+            title="Limpiar todos los filtros"
           >
-            <i class="bi bi-funnel me-1"></i>Filtros
+            <i class="bi bi-x-circle me-1"></i>Limpiar filtros
           </button>
           <div class="dropdown">
             <button
@@ -187,45 +187,6 @@
           >
             <i class="bi bi-gear"></i>
           </button>
-        </div>
-      </div>
-      <div class="collapse" id="filtersPanel">
-        <div class="card-body border-bottom bg-light">
-          <div class="row g-2">
-            <div class="col-12 col-md-4">
-              <label for="filterRubro" class="form-label small mb-1">Rubro</label>
-              <select id="filterRubro" class="form-select form-select-sm">
-                <option value="">Todos</option>
-              </select>
-            </div>
-            <div class="col-12 col-md-4">
-              <label for="filterFabricante" class="form-label small mb-1">Fabricante</label>
-              <select id="filterFabricante" class="form-select form-select-sm">
-                <option value="">Todos</option>
-              </select>
-            </div>
-            <div class="col-12 col-md-4">
-              <label for="filterMarca" class="form-label small mb-1">Marca</label>
-              <select id="filterMarca" class="form-select form-select-sm">
-                <option value="">Todas</option>
-              </select>
-            </div>
-            <div class="col-12 col-md-4">
-              <label for="filterStockEstado" class="form-label small mb-1">Estado de Inventario</label>
-              <select id="filterStockEstado" class="form-select form-select-sm">
-                <option value="">Todos</option>
-                <option value="con_stock">Con Stock</option>
-                <option value="sin_stock">Sin Stock</option>
-                <option value="con_comprometido">Con Comprometido</option>
-                <option value="con_pedido">Con Pedido Pendiente</option>
-                <option value="con_disponible">Con Disponible</option>
-                <option value="faltante">Faltante</option>
-              </select>
-            </div>
-          </div>
-          <div class="mt-2 text-end">
-            <button id="btnClearFilters" class="btn btn-link btn-sm p-0">Limpiar filtros</button>
-          </div>
         </div>
       </div>
       <div class="card-footer bg-white d-flex flex-wrap gap-2 align-items-center justify-content-between">
@@ -447,10 +408,6 @@
     const body = document.getElementById('articulosBody');
     const head = document.getElementById('articulosHead');
     const columnsMenu = document.getElementById('columnsMenu');
-    const filterRubro = document.getElementById('filterRubro');
-    const filterFabricante = document.getElementById('filterFabricante');
-    const filterMarca = document.getElementById('filterMarca');
-    const filterStockEstado = document.getElementById('filterStockEstado');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
     const searchInput = document.getElementById('searchInput');
@@ -538,6 +495,20 @@
       return false;
     }
 
+    function hasAnyActiveFilter() {
+      if (searchInput.value.trim() !== '') return true;
+      return Object.keys(columnFilters).length > 0;
+    }
+
+    function updateClearFiltersVisibility() {
+      if (!btnClearFilters) return;
+      if (hasAnyActiveFilter()) {
+        btnClearFilters.classList.remove('d-none');
+      } else {
+        btnClearFilters.classList.add('d-none');
+      }
+    }
+
     function renderHead() {
       head.innerHTML = COLUMNS.filter((c) => visibleColumns.has(c.key))
         .map((c) => {
@@ -560,6 +531,8 @@
           openColumnFilterPopover(btn);
         });
       });
+
+      updateClearFiltersVisibility();
     }
 
     function buildNumericPopoverHtml(colKey) {
@@ -990,11 +963,6 @@
       const term = searchInput.value.trim();
       if (term) params.set('search', term);
 
-      if (filterRubro.value) params.set('rubro', filterRubro.value);
-      if (filterFabricante.value) params.set('fabricante', filterFabricante.value);
-      if (filterMarca.value) params.set('marca', filterMarca.value);
-      if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
-
       // Filtros por columna
       for (const [colKey, spec] of Object.entries(columnFilters)) {
         for (const [field, value] of Object.entries(spec)) {
@@ -1020,53 +988,11 @@
       }
     }
 
-    async function cargarMarcas() {
-      try {
-        const res = await apiFetch('/api/marcas');
-        if (!res.ok) return;
-        const marcas = await res.json();
-        if (!Array.isArray(marcas)) return;
-
-        filterMarca.innerHTML =
-          '<option value="">Todas</option>' +
-          marcas
-            .map((m) => {
-              const code = typeof m === 'string' ? m : m && m.code;
-              const name = typeof m === 'string' ? m : (m && m.name) || code;
-              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
-            })
-            .join('');
-      } catch (_) {
-        /* silencioso: si falla, el select queda con "Todas" */
-      }
-    }
-
     async function cargarCatalogos() {
       try {
         const res = await apiFetch('/api/articulos/catalogos');
         if (!res.ok) return;
         const data = await res.json();
-
-        const rubros = Array.isArray(data.rubros) ? data.rubros : [];
-        const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
-
-        filterRubro.innerHTML =
-          '<option value="">Todos</option>' +
-          rubros
-            .map(
-              (r) =>
-                `<option value="${escapeHtml(String(r.code))}">${escapeHtml(r.name)}</option>`
-            )
-            .join('');
-
-        filterFabricante.innerHTML =
-          '<option value="">Todos</option>' +
-          fabricantes
-            .map(
-              (f) =>
-                `<option value="${escapeHtml(String(f.code))}">${escapeHtml(f.name)}</option>`
-            )
-            .join('');
 
         // Listas de precios
         const priceLists = Array.isArray(data.priceLists) ? data.priceLists : [];
@@ -1123,6 +1049,7 @@
 
     let searchTimer = null;
     searchInput.addEventListener('input', () => {
+      updateClearFiltersVisibility();
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
         paging.page = 1;
@@ -1151,93 +1078,24 @@
       cargarArticulos();
     });
 
-    filterRubro.addEventListener('change', () => {
-      paging.page = 1;
-      cargarArticulos();
-    });
-    filterFabricante.addEventListener('change', () => {
-      paging.page = 1;
-      cargarArticulos();
-    });
-    filterMarca.addEventListener('change', () => {
-      paging.page = 1;
-      cargarArticulos();
-    });
-    filterStockEstado.addEventListener('change', () => {
-      paging.page = 1;
-      cargarArticulos();
-    });
-
     btnClearFilters.addEventListener('click', () => {
-      filterRubro.value = '';
-      filterFabricante.value = '';
-      filterMarca.value = '';
-      filterStockEstado.value = '';
+      searchInput.value = '';
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
+      if (activePopover) {
+        activePopover.dispose();
+        activePopover = null;
+      }
       renderHead();
       paging.page = 1;
       cargarArticulos();
     });
 
-    function mapStockEstadoFromIa(value) {
-      switch (value) {
-        case 'conStock':
-          return 'con_stock';
-        case 'sinStock':
-          return 'sin_stock';
-        case 'conComprometido':
-          return 'con_comprometido';
-        case 'conPedido':
-          return 'con_pedido';
-        default:
-          return '';
-      }
-    }
-
-    function selectOptionByTextOrValue(selectEl, value) {
-      if (!selectEl) return;
-      const target = String(value || '').trim().toLowerCase();
-      if (!target) {
-        selectEl.value = '';
-        return;
-      }
-      // 1) Coincidencia exacta por value
-      for (const opt of selectEl.options) {
-        if (String(opt.value).toLowerCase() === target) {
-          selectEl.value = opt.value;
-          return;
-        }
-      }
-      // 2) Coincidencia por texto (case-insensitive)
-      for (const opt of selectEl.options) {
-        if (String(opt.textContent || '').trim().toLowerCase() === target) {
-          selectEl.value = opt.value;
-          return;
-        }
-      }
-      // 3) Coincidencia parcial por texto
-      for (const opt of selectEl.options) {
-        if (String(opt.textContent || '').toLowerCase().includes(target)) {
-          selectEl.value = opt.value;
-          return;
-        }
-      }
-      selectEl.value = '';
-    }
 
     function applyIaFilters(result) {
       if (!result || typeof result !== 'object') return;
 
       // search
       searchInput.value = typeof result.search === 'string' ? result.search : '';
-
-      // rubro / fabricante / marca
-      selectOptionByTextOrValue(filterRubro, result.rubro);
-      selectOptionByTextOrValue(filterFabricante, result.fabricante);
-      selectOptionByTextOrValue(filterMarca, result.marca);
-
-      // stockEstado
-      filterStockEstado.value = mapStockEstadoFromIa(result.stockEstado);
 
       // columnFilters: asignar directamente lo que devolvió la IA
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
@@ -1374,7 +1232,6 @@
     cargarUsuario();
     cargarConfigPrecios();
     cargarCatalogos();
-    cargarMarcas();
     cargarArticulos();
   </script>
 </body>
