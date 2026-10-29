@@ -1171,10 +1171,44 @@ function buildArticulosQuery({
   marca,
   stockEstado,
   colFilters,
+  itemGroups,
 }) {
   const filters = ["ItemType eq 'itItems'"];
 
-  const columnConditions = buildColumnFilterConditions(colFilters);
+  // Resolver filtro de texto de Rubro (nombre de grupo) a ItemsGroupCode
+  let effectiveColFilters = colFilters;
+  if (colFilters && colFilters.Rubro && itemGroups instanceof Map) {
+    const spec = colFilters.Rubro;
+    const rawVal = spec && spec.val !== undefined && spec.val !== null
+      ? String(spec.val).trim()
+      : '';
+    if (rawVal) {
+      const op = String(spec.op || 'contains').toLowerCase();
+      const needle = rawVal.toLowerCase();
+      const matchedCodes = [];
+      for (const [code, name] of itemGroups.entries()) {
+        const groupName = String(name || '').toLowerCase();
+        let match = false;
+        if (op === 'eq') match = groupName === needle;
+        else if (op === 'startswith') match = groupName.startsWith(needle);
+        else match = groupName.includes(needle);
+        if (match) {
+          const n = parseInt(code, 10);
+          if (Number.isFinite(n)) matchedCodes.push(n);
+        }
+      }
+      effectiveColFilters = { ...colFilters };
+      delete effectiveColFilters.Rubro;
+      if (matchedCodes.length) {
+        filters.push(`(${matchedCodes.map((c) => `ItemsGroupCode eq ${c}`).join(' or ')})`);
+      } else {
+        // Sin coincidencias: forzar resultado vacío
+        filters.push('ItemsGroupCode eq -1');
+      }
+    }
+  }
+
+  const columnConditions = buildColumnFilterConditions(effectiveColFilters);
   for (const cond of columnConditions) {
     filters.push(cond);
   }
@@ -1188,8 +1222,23 @@ function buildArticulosQuery({
 
   if (rubro !== undefined && rubro !== null && rubro !== '') {
     const n = parseInt(rubro, 10);
-    if (Number.isFinite(n)) {
+    if (Number.isFinite(n) && String(n) === String(rubro).trim()) {
       filters.push(`ItemsGroupCode eq ${n}`);
+    } else if (itemGroups instanceof Map) {
+      // Texto: resolver contra el nombre del grupo (case-insensitive)
+      const needle = String(rubro).trim().toLowerCase();
+      const matchedCodes = [];
+      for (const [code, name] of itemGroups.entries()) {
+        if (String(name || '').toLowerCase().includes(needle)) {
+          const c = parseInt(code, 10);
+          if (Number.isFinite(c)) matchedCodes.push(c);
+        }
+      }
+      if (matchedCodes.length) {
+        filters.push(`(${matchedCodes.map((c) => `ItemsGroupCode eq ${c}`).join(' or ')})`);
+      } else {
+        filters.push('ItemsGroupCode eq -1');
+      }
     }
   }
 
@@ -1983,17 +2032,6 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
     });
   }
 
-  const query = buildArticulosQuery({
-    page,
-    limit,
-    search,
-    rubro,
-    fabricante,
-    marca,
-    stockEstado,
-    colFilters,
-  });
-
   try {
     await ensureSession();
 
@@ -2015,16 +2053,29 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
       return new Map();
     });
 
-    const response = await sapClient.get(query, {
-      headers: { Cookie: buildCookieHeader() },
-    });
-
     const [warehouses, itemGroups, manufacturers, priceLists] = await Promise.all([
       warehousesPromise,
       itemGroupsPromise,
       manufacturersPromise,
       priceListsPromise,
     ]);
+
+    const query = buildArticulosQuery({
+      page,
+      limit,
+      search,
+      rubro,
+      fabricante,
+      marca,
+      stockEstado,
+      colFilters,
+      itemGroups,
+    });
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
     return sendArticulosResponse(res, response.data, {
       page,
       limit,
@@ -2044,6 +2095,17 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
           loadManufacturers().catch(() => new Map()),
           loadPriceLists().catch(() => new Map()),
         ]);
+        const query = buildArticulosQuery({
+          page,
+          limit,
+          search,
+          rubro,
+          fabricante,
+          marca,
+          stockEstado,
+          colFilters,
+          itemGroups,
+        });
         const retry = await sapClient.get(query, {
           headers: { Cookie: buildCookieHeader() },
         });

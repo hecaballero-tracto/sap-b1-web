@@ -804,6 +804,7 @@
             pop.hide();
             renderHead();
             paging.page = 1;
+            currentIaFilter = null;
             cargarArticulos();
           });
         }
@@ -814,6 +815,7 @@
             pop.hide();
             renderHead();
             paging.page = 1;
+            currentIaFilter = null;
             cargarArticulos();
           });
         }
@@ -1265,6 +1267,7 @@
         };
         render(articulos);
         updatePagingControls();
+        updateClearFiltersVisibility();
       } catch (err) {
         if (err && err.message === 'Sesión expirada') return;
         body.innerHTML = '';
