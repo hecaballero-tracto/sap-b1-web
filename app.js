@@ -257,6 +257,9 @@ async function authenticateAD(username, password) {
   }
 }
 
+// Endpoint de DeepSeek para interpretación de consultas en lenguaje natural
+const DEEPSEEK_ENDPOINT = 'https' + '://api.deepseek.com/chat/completions';
+
 // Cliente HTTP que ignora certificados autofirmados
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -1094,6 +1097,167 @@ app.post('/api/articulos/config-precios', requireAuth, (req, res) => {
   }
 
   return res.json({ ok: true, visibleLists });
+});
+
+const IA_SYSTEM_PROMPT = `Eres un asistente que traduce consultas en lenguaje natural sobre artículos (repuestos, tractores, maquinaria agrícola) a un objeto JSON de filtros para un sistema SAP Business One.
+
+Debes responder SIEMPRE y ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones.
+
+El JSON debe tener EXACTAMENTE esta forma:
+{
+  "search": string,
+  "rubro": string,
+  "fabricante": string,
+  "marca": string,
+  "stockEstado": "conStock" | "sinStock" | "conComprometido" | "conPedido" | "",
+  "colFilters": {
+    "Stock": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
+    "Comprometido": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
+    "Pedido": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
+    "Fecha": { "year": number, "month": number, "date": "YYYY-MM-DD" }
+  }
+}
+
+Reglas:
+- "search": texto libre para buscar por código o descripción (ej: "Lovol", "filtro aceite"). Cadena vacía si no aplica.
+- "rubro": nombre del rubro/grupo de artículos si el usuario lo menciona (ej: "Repuestos", "Tractores"). Cadena vacía si no aplica.
+- "fabricante": nombre del fabricante si se menciona (ej: "Lovol", "John Deere"). Cadena vacía si no aplica.
+- "marca": marca del artículo si se menciona. Cadena vacía si no aplica.
+- "stockEstado": 
+  * "conStock" si pide artículos con stock disponible (> 0).
+  * "sinStock" si pide artículos sin stock.
+  * "conComprometido" si pide artículos con cantidad comprometida.
+  * "conPedido" si pide artículos con pedidos pendientes.
+  * "" si no aplica.
+- "colFilters": solo incluye las claves que el usuario mencione explícitamente. Omite las que no apliquen.
+  * "Stock", "Comprometido", "Pedido": usan "op" y "val" numérico. Ej: "stock > 2" => { "op": "gt", "val": 2 }.
+  * "Fecha": usa "year" (número), "month" (1-12) y/o "date" ("YYYY-MM-DD"). Omite los campos no mencionados.
+
+Si el usuario no especifica nada para un campo, usa cadena vacía "" o {} según corresponda. Nunca inventes valores.`;
+
+function sanitizeIaResponse(raw) {
+  const out = {
+    search: '',
+    rubro: '',
+    fabricante: '',
+    marca: '',
+    stockEstado: '',
+    colFilters: {},
+  };
+  if (!raw || typeof raw !== 'object') return out;
+
+  if (typeof raw.search === 'string') out.search = raw.search.trim();
+  if (typeof raw.rubro === 'string') out.rubro = raw.rubro.trim();
+  if (typeof raw.fabricante === 'string') out.fabricante = raw.fabricante.trim();
+  if (typeof raw.marca === 'string') out.marca = raw.marca.trim();
+
+  const validStock = new Set(['conStock', 'sinStock', 'conComprometido', 'conPedido', '']);
+  if (typeof raw.stockEstado === 'string' && validStock.has(raw.stockEstado)) {
+    out.stockEstado = raw.stockEstado;
+  }
+
+  const validOps = new Set(['eq', 'gt', 'ge', 'lt', 'le', 'ne']);
+  const cf = raw.colFilters && typeof raw.colFilters === 'object' ? raw.colFilters : {};
+
+  for (const key of ['Stock', 'Comprometido', 'Pedido']) {
+    const spec = cf[key];
+    if (spec && typeof spec === 'object') {
+      const op = String(spec.op || '').toLowerCase();
+      const val = Number(spec.val);
+      if (validOps.has(op) && Number.isFinite(val)) {
+        out.colFilters[key] = { op, val };
+      }
+    }
+  }
+
+  const fecha = cf.Fecha;
+  if (fecha && typeof fecha === 'object') {
+    const f = {};
+    const y = parseInt(fecha.year, 10);
+    if (Number.isFinite(y) && y >= 1900 && y <= 9999) f.year = y;
+    const m = parseInt(fecha.month, 10);
+    if (Number.isFinite(m) && m >= 1 && m <= 12) f.month = m;
+    if (typeof fecha.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha.date)) {
+      f.date = fecha.date;
+    }
+    if (Object.keys(f).length) out.colFilters.Fecha = f;
+  }
+
+  return out;
+}
+
+app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
+  const prompt = (req.body && req.body.prompt ? String(req.body.prompt) : '').trim();
+  if (!prompt) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El prompt es obligatorio' } });
+  }
+
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    return res
+      .status(500)
+      .json({ error: { message: 'Falta DEEPSEEK_API_KEY en el entorno' } });
+  }
+
+  try {
+    const response = await fetch(DEEPSEEK_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: IA_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.error('Error DeepSeek:', response.status, text);
+      return res.status(502).json({
+        error: { message: 'Error al consultar el servicio de IA' },
+      });
+    }
+
+    const data = await response.json();
+    const content =
+      data &&
+      data.choices &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      data.choices[0].message.content;
+
+    if (!content) {
+      return res
+        .status(502)
+        .json({ error: { message: 'Respuesta vacía del servicio de IA' } });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (_) {
+      return res
+        .status(502)
+        .json({ error: { message: 'La IA no devolvió un JSON válido' } });
+    }
+
+    const sanitized = sanitizeIaResponse(parsed);
+    return res.json(sanitized);
+  } catch (err) {
+    console.error('Error en /api/articulos/ia-prompt:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al procesar la consulta de IA' } });
+  }
 });
 
 app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
