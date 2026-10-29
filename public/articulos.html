@@ -189,7 +189,7 @@
           </button>
         </div>
       </div>
-      <div class="card-footer bg-white d-flex flex-wrap gap-2 align-items-center justify-content-between">
+      <div id="pagingFooter" class="card-footer bg-white d-flex flex-wrap gap-2 align-items-center justify-content-between d-none">
         <div class="d-flex align-items-center gap-2">
           <label for="pageSize" class="form-label mb-0 small text-muted">Filas por página:</label>
           <select id="pageSize" class="form-select form-select-sm" style="width: auto;">
@@ -243,9 +243,9 @@
             </thead>
             <tbody id="articulosBody">
               <tr>
-                <td colspan="20" class="text-center py-4">
-                  <div class="spinner-border text-primary" role="status"></div>
-                  <div class="mt-2 text-muted">Cargando artículos...</div>
+                <td colspan="20" class="text-center py-5 text-muted">
+                  <i class="bi bi-search fs-3 d-block mb-2 opacity-50"></i>
+                  Utilice la barra de búsqueda, los filtros de columna o la consulta IA para explorar artículos
                 </td>
               </tr>
             </tbody>
@@ -483,6 +483,7 @@
     const pageInfo = document.getElementById('pageInfo');
     const btnPrev = document.getElementById('btnPrev');
     const btnNext = document.getElementById('btnNext');
+    const pagingFooter = document.getElementById('pagingFooter');
     const modalItemCode = document.getElementById('modalItemCode');
     const modalItemName = document.getElementById('modalItemName');
     const modalWarehouseBody = document.getElementById('modalWarehouseBody');
@@ -1100,6 +1101,22 @@
       btnNext.disabled = page >= totalPages;
     }
 
+    function showPagingFooter() {
+      if (pagingFooter) pagingFooter.classList.remove('d-none');
+    }
+
+    function renderEmptyState() {
+      const cols = COLUMNS.filter((c) => visibleColumns.has(c.key));
+      const colspan = Math.max(cols.length, 1);
+      body.innerHTML = `
+        <tr>
+          <td colspan="${colspan}" class="text-center py-5 text-muted">
+            <i class="bi bi-search fs-3 d-block mb-2 opacity-50"></i>
+            Utilice la barra de búsqueda, los filtros de columna o la consulta IA para explorar artículos
+          </td>
+        </tr>`;
+    }
+
     function mapIaRowsToArticulos(rows) {
       return (rows || []).map((r) => ({
         ItemCode: r.CODIGO_TRACTO,
@@ -1219,6 +1236,7 @@
 
     async function cargarArticulos() {
       alertBox.innerHTML = '';
+      showPagingFooter();
       body.innerHTML = `
         <tr>
           <td colspan="5" class="text-center py-4">
@@ -1265,10 +1283,22 @@
     searchInput.addEventListener('input', () => {
       updateClearFiltersVisibility();
       clearTimeout(searchTimer);
+      const term = searchInput.value.trim();
+      if (term.length < 2) return;
       searchTimer = setTimeout(() => {
         paging.page = 1;
         cargarArticulos();
       }, 350);
+    });
+
+    searchInput.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      clearTimeout(searchTimer);
+      const term = searchInput.value.trim();
+      if (term.length < 2) return;
+      paging.page = 1;
+      cargarArticulos();
     });
 
     pageSize.addEventListener('change', () => {
@@ -1837,10 +1867,10 @@
 
     renderHead();
     renderColumnsMenu();
+    renderEmptyState();
     cargarUsuario();
     cargarConfigPrecios();
     cargarCatalogos();
-    cargarArticulos();
   </script>
 </body>
 </html>
