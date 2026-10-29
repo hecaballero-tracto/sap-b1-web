@@ -292,6 +292,12 @@ let manufacturersCachePromise = null;
 let marcasCache = null;
 let marcasCachePromise = null;
 
+// Caché en memoria de marcas únicas (para el filtro del cliente): Array<string>
+// TTL de 12 horas
+const MARCAS_UNICAS_TTL_MS = 12 * 60 * 60 * 1000;
+let marcasUnicasCache = null; // { data: string[], expiresAt: number }
+let marcasUnicasCachePromise = null;
+
 // Caché en memoria de listas de precios: Map<PriceListNo, PriceListName>
 let priceListsCache = null;
 let priceListsCachePromise = null;
@@ -484,6 +490,85 @@ async function loadMarcas() {
   })();
 
   return marcasCachePromise;
+}
+
+async function loadMarcasUnicas() {
+  const now = Date.now();
+  if (marcasUnicasCache && marcasUnicasCache.expiresAt > now) {
+    return marcasUnicasCache.data;
+  }
+  if (marcasUnicasCachePromise) return marcasUnicasCachePromise;
+
+  marcasUnicasCachePromise = (async () => {
+    try {
+      await ensureSession();
+
+      const set = new Set();
+
+      // 1) Intentar con la tabla de usuario @MARCAS (si existe)
+      try {
+        const params = new URLSearchParams();
+        params.set('$select', 'Code');
+        params.set('$top', '5000');
+        const resp = await sapClient.get(
+          `/b1s/v1/Marcas?${params.toString()}`,
+          { headers: { Cookie: buildCookieHeader() } }
+        );
+        const list = Array.isArray(resp.data && resp.data.value)
+          ? resp.data.value
+          : [];
+        for (const m of list) {
+          if (m && m.Code !== undefined && m.Code !== null) {
+            const code = String(m.Code).trim();
+            if (code) set.add(code);
+          }
+        }
+      } catch (err) {
+        console.warn(
+          'No se pudo consultar @MARCAS, se usará fallback desde Items:',
+          err.message
+        );
+      }
+
+      // 2) Fallback: extraer marcas únicas desde Items
+      if (set.size === 0) {
+        const params = new URLSearchParams();
+        params.set('$select', 'U_Marca');
+        params.set('$filter', "U_Marca ne null and U_Marca ne ''");
+        params.set('$top', '5000');
+        const resp = await sapClient.get(
+          `/b1s/v1/Items?${params.toString()}`,
+          { headers: { Cookie: buildCookieHeader() } }
+        );
+        const list = Array.isArray(resp.data && resp.data.value)
+          ? resp.data.value
+          : [];
+        for (const item of list) {
+          if (item && item.U_Marca !== undefined && item.U_Marca !== null) {
+            const marca = String(item.U_Marca).trim();
+            if (marca) set.add(marca);
+          }
+        }
+      }
+
+      const data = Array.from(set).sort((a, b) =>
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+      );
+
+      marcasUnicasCache = {
+        data,
+        expiresAt: Date.now() + MARCAS_UNICAS_TTL_MS,
+      };
+      return data;
+    } catch (err) {
+      marcasUnicasCachePromise = null;
+      throw err;
+    } finally {
+      marcasUnicasCachePromise = null;
+    }
+  })();
+
+  return marcasUnicasCachePromise;
 }
 
 async function loadPriceLists() {
@@ -1257,6 +1342,25 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ error: { message: 'Error al procesar la consulta de IA' } });
+  }
+});
+
+app.get('/api/marcas', requireAuth, async (req, res) => {
+  try {
+    const marcas = await loadMarcasUnicas();
+    return res.json(marcas);
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const marcas = await loadMarcasUnicas();
+        return res.json(marcas);
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
   }
 });
 

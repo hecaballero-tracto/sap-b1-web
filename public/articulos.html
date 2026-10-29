@@ -970,6 +970,27 @@
       }
     }
 
+    async function cargarMarcas() {
+      try {
+        const res = await apiFetch('/api/marcas');
+        if (!res.ok) return;
+        const marcas = await res.json();
+        if (!Array.isArray(marcas)) return;
+
+        filterMarca.innerHTML =
+          '<option value="">Todas</option>' +
+          marcas
+            .map((m) => {
+              const code = typeof m === 'string' ? m : m && m.code;
+              const name = typeof m === 'string' ? m : (m && m.name) || code;
+              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
+            })
+            .join('');
+      } catch (_) {
+        /* silencioso: si falla, el select queda con "Todas" */
+      }
+    }
+
     async function cargarCatalogos() {
       try {
         const res = await apiFetch('/api/articulos/catalogos');
@@ -978,7 +999,6 @@
 
         const rubros = Array.isArray(data.rubros) ? data.rubros : [];
         const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
-        const marcas = Array.isArray(data.marcas) ? data.marcas : [];
 
         filterRubro.innerHTML =
           '<option value="">Todos</option>' +
@@ -996,16 +1016,6 @@
               (f) =>
                 `<option value="${escapeHtml(String(f.code))}">${escapeHtml(f.name)}</option>`
             )
-            .join('');
-
-        filterMarca.innerHTML =
-          '<option value="">Todas</option>' +
-          marcas
-            .map((m) => {
-              const code = typeof m === 'string' ? m : m && m.code;
-              const name = typeof m === 'string' ? m : (m && m.name) || code;
-              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
-            })
             .join('');
 
         // Listas de precios
@@ -1309,6 +1319,7 @@
     cargarUsuario();
     cargarConfigPrecios();
     cargarCatalogos();
+    cargarMarcas();
     cargarArticulos();
   </script>
 </body>
