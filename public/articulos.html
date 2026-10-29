@@ -20,6 +20,7 @@
     href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
     rel="stylesheet"
   />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     body { background-color: #f8f9fa; }
     .table thead th {
@@ -211,6 +212,23 @@
       </div>
       <div class="card-body p-0">
         <div id="alertBox"></div>
+        <div id="iaResponseCard" class="d-none m-3 mb-0">
+          <div class="alert mb-0" style="background-color: #fff9e6; border: 1px solid #f6c343;">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-stars text-warning"></i>
+                  <strong>Respuesta de la IA</strong>
+                </div>
+                <div id="iaResponseText" class="mb-2"></div>
+                <div id="iaChartWrapper" class="d-none" style="max-width: 640px;">
+                  <canvas id="iaChartCanvas" height="220"></canvas>
+                </div>
+              </div>
+              <button type="button" class="btn-close" id="btnCloseIaResponse" aria-label="Cerrar"></button>
+            </div>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-hover table-striped mb-0">
             <thead class="table-light">
@@ -479,6 +497,12 @@
     const inputIaPrompt = document.getElementById('inputIaPrompt');
     const btnIaPrompt = document.getElementById('btnIaPrompt');
     const iaUsageBadge = document.getElementById('iaUsageBadge');
+    const iaResponseCard = document.getElementById('iaResponseCard');
+    const iaResponseText = document.getElementById('iaResponseText');
+    const iaChartWrapper = document.getElementById('iaChartWrapper');
+    const iaChartCanvas = document.getElementById('iaChartCanvas');
+    const btnCloseIaResponse = document.getElementById('btnCloseIaResponse');
+    let iaChartInstance = null;
 
     async function apiFetch(url, options) {
       const res = await fetch(url, options);
@@ -1200,6 +1224,135 @@
     });
 
 
+    function hideIaResponse() {
+      if (iaResponseCard) iaResponseCard.classList.add('d-none');
+      if (iaChartWrapper) iaChartWrapper.classList.add('d-none');
+      if (iaChartInstance) {
+        iaChartInstance.destroy();
+        iaChartInstance = null;
+      }
+    }
+
+    function formatNumberEs(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return String(value ?? '');
+      return n.toLocaleString('es-MX', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function renderIaResumen(data) {
+      if (!iaResponseCard) return;
+      iaResponseCard.classList.remove('d-none');
+      if (iaChartInstance) {
+        iaChartInstance.destroy();
+        iaChartInstance = null;
+      }
+      if (iaChartWrapper) iaChartWrapper.classList.add('d-none');
+
+      const rows = Array.isArray(data.data) ? data.data : [];
+      const tipo = data.tipoVisual || 'texto';
+      const explicacion = data.explicacion || '';
+
+      if (tipo === 'kpi') {
+        const row = rows[0] || {};
+        const keys = Object.keys(row);
+        const valKey = keys.find((k) => k !== keys[0]) || keys[0];
+        const label = keys[0];
+        const value = row[valKey];
+        iaResponseText.innerHTML = `
+          ${explicacion ? `<div class="text-muted small mb-1">${escapeHtml(explicacion)}</div>` : ''}
+          <div class="d-flex align-items-baseline gap-2">
+            <span class="display-6 fw-bold">${escapeHtml(formatNumberEs(value))}</span>
+            <span class="text-muted small">${escapeHtml(String(label || ''))}</span>
+          </div>`;
+        return;
+      }
+
+      if (tipo === 'grafico_barra' || tipo === 'grafico_pie') {
+        if (!rows.length) {
+          iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin datos para mostrar.')}</div>`;
+          return;
+        }
+        const keys = Object.keys(rows[0]);
+        const labelKey = keys[0];
+        const valueKey = keys[1] || keys[0];
+        const labels = rows.map((r) => String(r[labelKey] ?? ''));
+        const values = rows.map((r) => Number(r[valueKey]) || 0);
+
+        iaResponseText.innerHTML = explicacion
+          ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>`
+          : '';
+        if (iaChartWrapper) iaChartWrapper.classList.remove('d-none');
+
+        const palette = [
+          '#f6c343', '#0d6efd', '#198754', '#dc3545', '#6f42c1',
+          '#fd7e14', '#20c997', '#6610f2', '#e83e8c', '#6c757d',
+        ];
+
+        iaChartInstance = new Chart(iaChartCanvas, {
+          type: tipo === 'grafico_pie' ? 'pie' : 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: String(valueKey),
+                data: values,
+                backgroundColor:
+                  tipo === 'grafico_pie'
+                    ? labels.map((_, i) => palette[i % palette.length])
+                    : '#f6c343',
+                borderColor: '#c99a1a',
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: tipo === 'grafico_pie' },
+            },
+            scales:
+              tipo === 'grafico_pie'
+                ? undefined
+                : { y: { beginAtZero: true } },
+          },
+        });
+        return;
+      }
+
+      // tipo === 'texto'
+      if (!rows.length) {
+        iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin resultados.')}</div>`;
+        return;
+      }
+      const keys = Object.keys(rows[0]);
+      const tableHtml = `
+        <div class="table-responsive" style="max-height: 260px;">
+          <table class="table table-sm table-striped mb-0">
+            <thead class="table-light">
+              <tr>${keys.map((k) => `<th>${escapeHtml(k)}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) =>
+                    `<tr>${keys
+                      .map((k) => `<td>${escapeHtml(String(r[k] ?? ''))}</td>`)
+                      .join('')}</tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>`;
+      iaResponseText.innerHTML =
+        (explicacion
+          ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>`
+          : '') + tableHtml;
+    }
+
     function applyIaFilters(result) {
       if (!result || typeof result !== 'object') return;
 
@@ -1262,8 +1415,16 @@
           iaUsageBadge.innerHTML =
             `<span class="badge bg-secondary">Tokens: ${u.total_tokens} (Entrada: ${u.prompt_tokens}, Salida: ${u.completion_tokens})</span>`;
         }
-        // El endpoint ahora devuelve resultados directos desde HANA
-        if (data && Array.isArray(data.data)) {
+
+        // Modo resumen: mostrar tarjeta con KPI/gráfico/texto, sin tocar la tabla
+        if (data && data.modo === 'resumen') {
+          renderIaResumen(data);
+          return;
+        }
+
+        // Modo lista: ocultar tarjeta y reemplazar la matriz
+        hideIaResponse();
+        if (data && data.modo === 'lista' && Array.isArray(data.data)) {
           articulos = data.data.map((r) => ({
             ItemCode: r.CODIGO_TRACTO,
             ItemName: r.NOMBRE,
@@ -1313,6 +1474,10 @@
         consultarIA();
       }
     });
+
+    if (btnCloseIaResponse) {
+      btnCloseIaResponse.addEventListener('click', hideIaResponse);
+    }
 
     btnLogout.addEventListener('click', async () => {
       try {

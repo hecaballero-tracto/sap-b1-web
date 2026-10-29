@@ -1279,7 +1279,7 @@ app.post('/api/articulos/config-precios', requireAuth, (req, res) => {
   return res.json({ ok: true, visibleLists });
 });
 
-const IA_SQL_SYSTEM_PROMPT = `Eres un experto en SAP HANA SQL. Tu tarea es traducir consultas en lenguaje natural sobre productos/artículos a una cláusula WHERE válida para la vista "TRACTOAGRO"."V_PRODUCTOS".
+const IA_SQL_SYSTEM_PROMPT = `Eres un experto en SAP HANA SQL. Tu tarea es interpretar consultas en lenguaje natural sobre productos/artículos de la vista "TRACTOAGRO"."V_PRODUCTOS" y responder SIEMPRE con un objeto JSON válido, sin texto adicional, sin markdown, sin bloques de código.
 
 Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
 - ACTIVO (char 'Y'/'N')
@@ -1305,21 +1305,43 @@ Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
 - FECHA_ULT_ACT (date)
 - COSTO_PROM (decimal)
 
+Clasifica la consulta del usuario en uno de dos modos:
+
+MODO "lista": cuando el usuario quiere ver registros/artículos concretos (listados, búsquedas, "muéstrame los...", "qué artículos...", "cuáles tienen...").
+Devuelve EXACTAMENTE:
+{
+  "modo": "lista",
+  "whereClause": "condicion_sql_hana_sin_la_palabra_WHERE",
+  "explicacion": "texto breve en español describiendo el filtro aplicado"
+}
+
+MODO "resumen": cuando el usuario pide totales, sumas, promedios, conteos, agrupaciones, comparaciones o KPIs ("cuántos", "total de", "suma de", "promedio", "por rubro", "por marca", "top 5", etc.).
+Devuelve EXACTAMENTE:
+{
+  "modo": "resumen",
+  "sql": "sentencia_select_completa_sobre_TRACTOAGRO.V_PRODUCTOS",
+  "tipoVisual": "kpi" | "grafico_barra" | "grafico_pie" | "texto",
+  "explicacion": "texto breve en español describiendo el resultado"
+}
+
 Reglas ESTRICTAS:
-1. Devuelve ÚNICAMENTE la cláusula WHERE (sin la palabra WHERE, sin SELECT, sin ORDER BY, sin LIMIT, sin punto y coma).
-2. Usa sintaxis SQL de SAP HANA. Para texto usa LIKE con comodines '%' o comparaciones '='.
-3. Usa comillas simples para strings. Escapa comillas simples internas duplicándolas ('').
+1. En modo "lista", "whereClause" NO debe incluir la palabra WHERE, ni SELECT, ni ORDER BY, ni LIMIT, ni punto y coma. Si no hay filtros, usa "1=1".
+2. En modo "resumen", "sql" debe ser una sentencia SELECT completa y válida en SAP HANA sobre "TRACTOAGRO"."V_PRODUCTOS". Puede incluir GROUP BY, ORDER BY, agregaciones (SUM, COUNT, AVG, MIN, MAX) y LIMIT. NO incluyas punto y coma final.
+3. Usa comillas dobles para identificadores y comillas simples para strings. Escapa comillas simples internas duplicándolas ('').
 4. Para fechas usa TO_DATE('YYYY-MM-DD','YYYY-MM-DD').
-5. Combina condiciones con AND / OR y paréntesis cuando sea necesario.
-6. Si la consulta no requiere filtros, devuelve "1=1".
-7. NUNCA uses DROP, INSERT, UPDATE, DELETE, ALTER, CREATE, TRUNCATE, MERGE, GRANT, REVOKE, CALL, EXEC ni punto y coma.
-8. Interpreta jerga de inventario:
+5. NUNCA uses DROP, INSERT, UPDATE, DELETE, ALTER, CREATE, TRUNCATE, MERGE, GRANT, REVOKE, CALL, EXEC, ATTACH, DETACH, RENAME ni punto y coma.
+6. Elige "tipoVisual":
+   - "kpi" para un único valor numérico (un total, un conteo, un promedio).
+   - "grafico_barra" para agrupaciones por categoría con valores comparables (por rubro, por marca, top N).
+   - "grafico_pie" para distribuciones porcentuales (participación por rubro, por familia).
+   - "texto" para resultados que no son numéricos o no aplican gráfico.
+7. Interpreta jerga de inventario:
    - "quiebre", "faltantes", "ruptura de stock" => STOCK_TOTAL <= 0
    - "agotados", "sin stock", "sin existencia" => STOCK_TOTAL <= 0
    - "con stock", "disponibles", "con existencia" => STOCK_TOTAL > 0
    - "por recibir", "en camino", "pedidos pendientes" => EN_PEDIDO > 0
    - "comprometidos", "reservados" => COMPROMETIDO > 0
-9. Devuelve SOLO el texto de la cláusula WHERE, sin explicaciones, sin markdown, sin bloques de código.`;
+8. Devuelve SOLO el objeto JSON, sin explicaciones adicionales ni bloques de código.`;
 
 const IA_SYSTEM_PROMPT = `Eres un asistente que traduce consultas en lenguaje natural sobre artículos (repuestos, tractores, maquinaria agrícola) a un objeto JSON de filtros para un sistema SAP Business One.
 
@@ -1506,6 +1528,21 @@ function isSafeWhereClause(clause) {
   return true;
 }
 
+function isSafeSelectSql(sql) {
+  if (typeof sql !== 'string') return false;
+  const trimmed = sql.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes(';')) return false;
+  if (/--|\/\*/.test(trimmed)) return false;
+  const upper = trimmed.toUpperCase();
+  if (!/^SELECT\b/.test(upper)) return false;
+  for (const word of FORBIDDEN_SQL_WORDS) {
+    const re = new RegExp(`\\b${word}\\b`);
+    if (re.test(upper)) return false;
+  }
+  return true;
+}
+
 app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
   const prompt = (req.body && req.body.prompt ? String(req.body.prompt) : '').trim();
   if (!prompt) {
@@ -1573,43 +1610,92 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
     }
 
     // Limpiar posibles bloques de código o prefijos
-    let whereClause = String(content).trim();
-    whereClause = whereClause.replace(/^```[a-zA-Z]*\s*/i, '').replace(/```$/i, '').trim();
-    whereClause = whereClause.replace(/^WHERE\s+/i, '').trim();
+    let cleaned = String(content).trim();
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\s*/i, '').replace(/```$/i, '').trim();
 
-    if (!isSafeWhereClause(whereClause)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (_) {
+      return res.status(502).json({
+        error: { message: 'La IA no devolvió un JSON válido' },
+      });
+    }
+
+    const modo = parsed && parsed.modo === 'resumen' ? 'resumen' : 'lista';
+    const explicacion =
+      parsed && typeof parsed.explicacion === 'string'
+        ? parsed.explicacion.trim()
+        : '';
+
+    const usageOut = {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+    };
+
+    if (modo === 'lista') {
+      let whereClause = parsed && typeof parsed.whereClause === 'string'
+        ? parsed.whereClause.trim()
+        : '';
+      whereClause = whereClause.replace(/^WHERE\s+/i, '').trim();
+
+      if (!isSafeWhereClause(whereClause)) {
+        return res.status(400).json({
+          error: {
+            message: 'La cláusula generada por la IA no es segura o no es válida',
+          },
+        });
+      }
+
+      const baseSelect = `SELECT "ACTIVO","CODIGO_TRACTO","NOMBRE","NOMBRE_INTERNO","CODIGO_FABRICA","RUBRO","MARCA","MODELO","FABRICANTE","FAMILIA","UNIDAD","STOCK_TOTAL","COMPROMETIDO","EN_PEDIDO","DISPONIBLE","FECHA_CREACION","FECHA_ULT_VENTA","PRECIO_ULT_COMPRA","MONEDA_ULT_COMPRA","FECHA_ULT_COMPRA","FECHA_ULT_ACT","COSTO_PROM" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE `;
+
+      const countSql = `SELECT COUNT(*) AS "TOTAL" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE ${whereClause}`;
+      const dataSql = `${baseSelect}${whereClause} ORDER BY "CODIGO_TRACTO" LIMIT ${limit} OFFSET ${offset}`;
+
+      const [countRows, dataRows] = await Promise.all([
+        hanaExec(countSql),
+        hanaExec(dataSql),
+      ]);
+
+      const total = countRows && countRows[0] ? Number(countRows[0].TOTAL) || 0 : 0;
+      const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+      return res.json({
+        modo: 'lista',
+        explicacion,
+        data: dataRows || [],
+        total,
+        page,
+        limit,
+        totalPages,
+        whereClause,
+        usage: usageOut,
+      });
+    }
+
+    // modo === 'resumen'
+    const sql = parsed && typeof parsed.sql === 'string' ? parsed.sql.trim() : '';
+    if (!isSafeSelectSql(sql)) {
       return res.status(400).json({
         error: {
-          message: 'La cláusula generada por la IA no es segura o no es válida',
+          message: 'La sentencia SQL generada por la IA no es segura o no es válida',
         },
       });
     }
 
-    const baseSelect = `SELECT "ACTIVO","CODIGO_TRACTO","NOMBRE","NOMBRE_INTERNO","CODIGO_FABRICA","RUBRO","MARCA","MODELO","FABRICANTE","FAMILIA","UNIDAD","STOCK_TOTAL","COMPROMETIDO","EN_PEDIDO","DISPONIBLE","FECHA_CREACION","FECHA_ULT_VENTA","PRECIO_ULT_COMPRA","MONEDA_ULT_COMPRA","FECHA_ULT_COMPRA","FECHA_ULT_ACT","COSTO_PROM" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE `;
+    const validVisual = new Set(['kpi', 'grafico_barra', 'grafico_pie', 'texto']);
+    const tipoVisual =
+      parsed && validVisual.has(parsed.tipoVisual) ? parsed.tipoVisual : 'texto';
 
-    const countSql = `SELECT COUNT(*) AS "TOTAL" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE ${whereClause}`;
-    const dataSql = `${baseSelect}${whereClause} ORDER BY "CODIGO_TRACTO" LIMIT ${limit} OFFSET ${offset}`;
-
-    const [countRows, dataRows] = await Promise.all([
-      hanaExec(countSql),
-      hanaExec(dataSql),
-    ]);
-
-    const total = countRows && countRows[0] ? Number(countRows[0].TOTAL) || 0 : 0;
-    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+    const rows = await hanaExec(sql);
 
     return res.json({
-      data: dataRows || [],
-      total,
-      page,
-      limit,
-      totalPages,
-      whereClause,
-      usage: {
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
-      },
+      modo: 'resumen',
+      explicacion,
+      tipoVisual,
+      data: rows || [],
+      usage: usageOut,
     });
   } catch (err) {
     console.error('Error en /api/articulos/ia-prompt:', err.message);
