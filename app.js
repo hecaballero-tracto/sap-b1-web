@@ -1308,6 +1308,8 @@ Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
 Esquema de la vista "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA" (para consultas de ventas, rotación, facturación y devoluciones):
 - CODIGO_TRACTO (nvarchar) — código del artículo
 - NOMBRE (nvarchar) — descripción del artículo
+- RUBRO (nvarchar) — rubro/grupo del artículo
+- MARCA (nvarchar) — marca del artículo
 - FECHA_VENTA (date) — fecha del documento de venta
 - ANIO (integer) — año de la venta
 - MES (integer) — mes de la venta (1-12)
@@ -1333,6 +1335,15 @@ IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
   ORDER BY "TOTAL_GS" DESC
   LIMIT 10
   Usa "tipoVisual": "grafico_barra" (o "texto" si el usuario pide un listado detallado).
+- IMPORTANTE — Filtros de texto en ventas (RUBRO, MARCA, NOMBRE, CLIENTE, etc.): usa SIEMPRE comparaciones insensibles a mayúsculas y acentos con UPPER(...) LIKE y comodines '%'. Ejemplos:
+  * "ventas de repuestos agrícolas" => UPPER("RUBRO") LIKE '%REPUESTO%AGRICOLA%' o UPPER("RUBRO") LIKE '%AGRICOLA%'
+  * "ventas de la marca Lovol" => UPPER("MARCA") LIKE '%LOVOL%'
+  * "ventas a clientes de Asunción" => UPPER("CLIENTE") LIKE '%ASUNCION%'
+  No uses comparaciones exactas (=) para estos campos de texto libre.
+- IMPORTANTE — "lo que va del año" / año actual: cuando el usuario pida "lo que va del año", "este año", "año actual", "YTD" o similar, filtra por el año en curso usando "ANIO" = YEAR(CURRENT_DATE) o, alternativamente, "FECHA_VENTA" >= TO_DATE(CONCAT(YEAR(CURRENT_DATE), '-01-01'), 'YYYY-MM-DD'). Ejemplo:
+  SELECT SUM("TOTAL_GS") AS "VENTAS_ANIO_ACTUAL"
+  FROM "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA"
+  WHERE "ANIO" = YEAR(CURRENT_DATE)
 
 Clasifica la consulta del usuario en uno de dos modos:
 
