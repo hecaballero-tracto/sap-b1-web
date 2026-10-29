@@ -1493,10 +1493,49 @@
           return;
         }
         const keys = Object.keys(rows[0]);
-        const labelKey = keys[0];
-        const valueKey = keys[1] || keys[0];
-        const labels = rows.map((r) => String(r[labelKey] ?? ''));
-        const values = rows.map((r) => Number(r[valueKey]) || 0);
+
+        // 1) Detectar columna de etiqueta: NOMBRE > CODIGO_TRACTO > primera columna
+        const upperKeys = keys.map((k) => String(k).toUpperCase());
+        const nombreIdx = upperKeys.indexOf('NOMBRE');
+        const codigoIdx = upperKeys.indexOf('CODIGO_TRACTO');
+        const labelKey =
+          nombreIdx >= 0
+            ? keys[nombreIdx]
+            : codigoIdx >= 0
+            ? keys[codigoIdx]
+            : keys[0];
+
+        // 2) Detectar columna de valor: TOTAL_GS > VALORIZACION > TOTAL > última numérica
+        const preferredValueNames = ['TOTAL_GS', 'VALORIZACION', 'TOTAL'];
+        let valueKey = null;
+        for (const name of preferredValueNames) {
+          const idx = upperKeys.indexOf(name);
+          if (idx >= 0) {
+            valueKey = keys[idx];
+            break;
+          }
+        }
+        if (!valueKey) {
+          // Última columna numérica devuelta
+          for (let i = keys.length - 1; i >= 0; i -= 1) {
+            if (keys[i] === labelKey) continue;
+            const sample = rows.find((r) => r[keys[i]] !== null && r[keys[i]] !== undefined);
+            if (sample && Number.isFinite(parseFloat(sample[keys[i]]))) {
+              valueKey = keys[i];
+              break;
+            }
+          }
+        }
+        if (!valueKey) valueKey = keys[1] || keys[0];
+
+        // 3) Construir labels (recortados a 25 caracteres) y valores numéricos
+        const labels = rows.map((r) => {
+          let text = String(r[labelKey] ?? '').trim();
+          if (!text && codigoIdx >= 0) text = String(r[keys[codigoIdx]] ?? '').trim();
+          if (text.length > 25) text = text.slice(0, 22) + '...';
+          return text;
+        });
+        const values = rows.map((r) => parseFloat(r[valueKey]) || 0);
 
         iaResponseText.innerHTML = explicacion
           ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>`
@@ -1507,6 +1546,16 @@
           '#f6c343', '#0d6efd', '#198754', '#dc3545', '#6f42c1',
           '#fd7e14', '#20c997', '#6610f2', '#e83e8c', '#6c757d',
         ];
+
+        // Formato simplificado para ticks del eje Y (millones / miles)
+        const formatAxisTick = (value) => {
+          const n = Number(value) || 0;
+          const abs = Math.abs(n);
+          if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+          if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+          if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+          return numberFmtPy.format(n);
+        };
 
         iaChartInstance = new Chart(iaChartCanvas, {
           type: tipo === 'grafico_pie' ? 'pie' : 'bar',
@@ -1519,8 +1568,8 @@
                 backgroundColor:
                   tipo === 'grafico_pie'
                     ? labels.map((_, i) => palette[i % palette.length])
-                    : '#f6c343',
-                borderColor: '#c99a1a',
+                    : 'rgba(255, 193, 7, 0.85)',
+                borderColor: tipo === 'grafico_pie' ? '#c99a1a' : '#e0a800',
                 borderWidth: 1,
               },
             ],
@@ -1539,7 +1588,7 @@
                           ? ctx.parsed.y
                           : ctx.parsed
                         : ctx.parsed;
-                    const num = Number(raw) || 0;
+                    const num = parseFloat(raw) || 0;
                     const label = ctx.label ? `${ctx.label}: ` : '';
                     return `${label}${numberFmtPy.format(num)}`;
                   },
@@ -1553,7 +1602,7 @@
                     y: {
                       beginAtZero: true,
                       ticks: {
-                        callback: (value) => numberFmtPy.format(Number(value) || 0),
+                        callback: (value) => formatAxisTick(value),
                       },
                     },
                   },
