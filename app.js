@@ -1234,7 +1234,14 @@ El JSON debe tener EXACTAMENTE esta forma:
     "Stock": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
     "Comprometido": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
     "Pedido": { "op": "eq" | "gt" | "ge" | "lt" | "le" | "ne", "val": number },
-    "Fecha": { "year": number, "month": number, "date": "YYYY-MM-DD" }
+    "Fecha": { "year": number, "month": number, "date": "YYYY-MM-DD" },
+    "Codigo": { "op": "contains" | "startswith" | "eq", "val": string },
+    "Descripcion": { "op": "contains" | "startswith" | "eq", "val": string },
+    "NombreInterno": { "op": "contains" | "startswith" | "eq", "val": string },
+    "Familia": { "op": "contains" | "startswith" | "eq", "val": string },
+    "Rubro": { "op": "contains" | "startswith" | "eq", "val": string },
+    "Fabricante": { "op": "contains" | "startswith" | "eq", "val": string },
+    "Marca": { "op": "contains" | "startswith" | "eq", "val": string }
   }
 }
 
@@ -1252,6 +1259,19 @@ Reglas:
 - "colFilters": solo incluye las claves que el usuario mencione explícitamente. Omite las que no apliquen.
   * "Stock", "Comprometido", "Pedido": usan "op" y "val" numérico. Ej: "stock > 2" => { "op": "gt", "val": 2 }.
   * "Fecha": usa "year" (número), "month" (1-12) y/o "date" ("YYYY-MM-DD"). Omite los campos no mencionados.
+  * Columnas de texto ("Codigo", "Descripcion", "NombreInterno", "Familia", "Rubro", "Fabricante", "Marca"): usan "op" ("contains" | "startswith" | "eq") y "val" (string).
+    - Usa "contains" cuando el usuario diga "contiene", "que incluya", "con la palabra", o simplemente mencione un fragmento (ej: "código que contenga 123" => { "op": "contains", "val": "123" }).
+    - Usa "startswith" cuando diga "empieza con", "comienza con", "inicia con".
+    - Usa "eq" cuando diga "es igual a", "exactamente", "código X" (valor exacto).
+    - Distribuye las intenciones de texto del usuario en la propiedad más adecuada:
+      * Código de artículo => "Codigo".
+      * Descripción/nombre del artículo => "Descripcion".
+      * Nombre interno / nombre extranjero => "NombreInterno".
+      * Familia / subfamilia / SWW => "Familia".
+      * Rubro / grupo de artículos => "Rubro".
+      * Fabricante => "Fabricante".
+      * Marca => "Marca".
+    - Si el usuario menciona un texto genérico sin indicar columna, colócalo en "search" y NO en colFilters.
 
 Si el usuario no especifica nada para un campo, usa cadena vacía "" o {} según corresponda. Nunca inventes valores.`;
 
@@ -1301,6 +1321,27 @@ function sanitizeIaResponse(raw) {
       f.date = fecha.date;
     }
     if (Object.keys(f).length) out.colFilters.Fecha = f;
+  }
+
+  const validTextOps = new Set(['contains', 'startswith', 'eq']);
+  const textCols = [
+    'Codigo',
+    'Descripcion',
+    'NombreInterno',
+    'Familia',
+    'Rubro',
+    'Fabricante',
+    'Marca',
+  ];
+  for (const key of textCols) {
+    const spec = cf[key];
+    if (spec && typeof spec === 'object') {
+      const op = String(spec.op || 'contains').toLowerCase();
+      const val = spec.val !== undefined && spec.val !== null ? String(spec.val) : '';
+      if (validTextOps.has(op) && val.trim() !== '') {
+        out.colFilters[key] = { op, val };
+      }
+    }
   }
 
   return out;

@@ -1235,23 +1235,22 @@
       // stockEstado
       filterStockEstado.value = mapStockEstadoFromIa(result.stockEstado);
 
-      // columnFilters
+      // columnFilters: asignar directamente lo que devolvió la IA
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
       const cf = result.colFilters && typeof result.colFilters === 'object'
         ? result.colFilters
         : {};
-      for (const key of ['Stock', 'Comprometido', 'Pedido']) {
-        const spec = cf[key];
-        if (spec && spec.op && spec.val !== undefined && spec.val !== null && spec.val !== '') {
+      for (const [key, spec] of Object.entries(cf)) {
+        if (!spec || typeof spec !== 'object') continue;
+        if (key === 'Fecha') {
+          const f = {};
+          if (spec.date) f.date = spec.date;
+          if (spec.year) f.year = spec.year;
+          if (spec.month) f.month = spec.month;
+          if (Object.keys(f).length) columnFilters.Fecha = f;
+        } else if (spec.op && spec.val !== undefined && spec.val !== null && spec.val !== '') {
           columnFilters[key] = { op: spec.op, val: spec.val };
         }
-      }
-      if (cf.Fecha && typeof cf.Fecha === 'object') {
-        const f = {};
-        if (cf.Fecha.date) f.date = cf.Fecha.date;
-        if (cf.Fecha.year) f.year = cf.Fecha.year;
-        if (cf.Fecha.month) f.month = cf.Fecha.month;
-        if (Object.keys(f).length) columnFilters.Fecha = f;
       }
 
       renderHead();
