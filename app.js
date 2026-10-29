@@ -1359,6 +1359,7 @@ Esquema de la vista "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA" (para consultas 
 - NOMBRE (nvarchar) — descripción del artículo
 - RUBRO (nvarchar) — rubro/grupo del artículo
 - MARCA (nvarchar) — marca del artículo
+- FAMILIA (nvarchar) — familia del artículo (obtenida de SWW de OITM)
 - FECHA_VENTA (date) — fecha del documento de venta
 - ANIO (integer) — año de la venta
 - MES (integer) — mes de la venta (1-12)
@@ -1384,6 +1385,20 @@ IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
   ORDER BY "TOTAL_GS" DESC
   LIMIT 10
   Usa "tipoVisual": "grafico_barra" (o "texto" si el usuario pide un listado detallado).
+- IMPORTANTE — Familia de productos en ventas: la vista "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA" incluye la columna "FAMILIA" (obtenida de SWW de OITM). Cuando el usuario pregunte por familia de productos en ventas (ej: "Top familias con mayor facturación", "ventas por familia", "ranking de familias más vendidas"), DEBES:
+  * Agrupar por "FAMILIA".
+  * Omitir valores nulos o vacíos con la condición: "FAMILIA" IS NOT NULL AND "FAMILIA" != ''
+  * Sumar "TOTAL_GS" o "TOTAL_USD" según la moneda solicitada (por defecto "TOTAL_GS").
+  * Ordenar DESCENDENTE por la métrica y aplicar LIMIT (5 por defecto, o el N indicado).
+  Ejemplo:
+  SELECT "FAMILIA", SUM("TOTAL_GS") AS "TOTAL_GS"
+  FROM "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA"
+  WHERE "FAMILIA" IS NOT NULL AND "FAMILIA" != ''
+  GROUP BY "FAMILIA"
+  ORDER BY "TOTAL_GS" DESC
+  LIMIT 5
+  Usa "tipoVisual": "grafico_barra" (o "grafico_pie" si el usuario pide participación/distribución).
+- IMPORTANTE — La columna "FAMILIA" existe tanto en "TRACTOAGRO"."V_PRODUCTOS" como en "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA". Usa "V_PRODUCTOS" para consultas de stock/inventario por familia y "V_VENTAS_ARTICULOS_ANALITICA" para consultas de ventas/facturación por familia.
 - IMPORTANTE — Filtros de texto en ventas (RUBRO, MARCA, NOMBRE, CLIENTE, etc.): usa SIEMPRE comparaciones insensibles a mayúsculas y acentos con UPPER(...) LIKE y comodines '%'. Ejemplos:
   * "ventas de repuestos agrícolas" => UPPER("RUBRO") LIKE '%REPUESTO%AGRICOLA%' o UPPER("RUBRO") LIKE '%AGRICOLA%'
   * "ventas de la marca Lovol" => UPPER("MARCA") LIKE '%LOVOL%'
