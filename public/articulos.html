@@ -1328,6 +1328,36 @@
       });
     }
 
+    const KPI_LABEL_OVERRIDES = {
+      ITEMS_CON_STOCK: 'Ítems con Stock',
+      TOTAL_STOCK: 'Total Stock',
+      TOTAL_COMPROMETIDO: 'Total Comprometido',
+      TOTAL_EN_PEDIDO: 'Total en Pedido',
+      VALOR_INVENTARIO: 'Valor Inventario (Gs.)',
+      VALORIZACION: 'Valorización (Gs.)',
+      VALORIZACION_TOTAL: 'Valorización Total (Gs.)',
+      STOCK: 'Stock',
+      COMPROMETIDO: 'Comprometido',
+      EN_PEDIDO: 'En Pedido',
+      DISPONIBLE: 'Disponible',
+      COSTO_PROM: 'Costo Promedio',
+    };
+
+    function formatKpiLabel(key) {
+      const raw = String(key ?? '').trim();
+      if (!raw) return '';
+      const upper = raw.toUpperCase();
+      if (KPI_LABEL_OVERRIDES[upper]) return KPI_LABEL_OVERRIDES[upper];
+      const words = raw
+        .replace(/_/g, ' ')
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+      return words
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+
     function renderIaResumen(data) {
       if (!iaResponseCard) return;
       iaResponseCard.classList.remove('d-none');
@@ -1359,7 +1389,7 @@
             return `
               <div class="col-12 col-sm-6 col-lg-4">
                 <div class="border rounded p-2 h-100 bg-white">
-                  <div class="text-muted small text-uppercase">${escapeHtml(key)}</div>
+                  <div class="text-muted small">${escapeHtml(formatKpiLabel(key))}</div>
                   <div class="fs-4 fw-bold">${display}</div>
                 </div>
               </div>`;

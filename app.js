@@ -1325,6 +1325,22 @@ Devuelve EXACTAMENTE:
 }
 
 Reglas ESTRICTAS:
+0. PRIORIDAD MÁXIMA — Agrupaciones:
+   - Si el usuario incluye "por [campo]" (ej: "por rubro", "por marca", "por familia", "por fabricante", "por modelo", "por unidad") o palabras como "distribución", "distribucion", "comparativa", "ranking", "top", "top 5", "top 10", DEBES generar obligatoriamente una consulta con GROUP BY sobre esa columna, con "tipoVisual": "grafico_barra" o "grafico_pie", y LIMIT 5 (o el N indicado), ordenada DESCENDENTE por la métrica solicitada.
+   - Ejemplo para "valorización por rubro":
+     SELECT "RUBRO", ROUND(SUM(CASE WHEN "STOCK_TOTAL" > 0 THEN "STOCK_TOTAL" * COALESCE("COSTO_PROM", 0) ELSE 0 END), 0) AS "VALORIZACION"
+     FROM "TRACTOAGRO"."V_PRODUCTOS"
+     GROUP BY "RUBRO"
+     ORDER BY "VALORIZACION" DESC
+     LIMIT 5
+   - Ejemplo para "stock por marca":
+     SELECT "MARCA", COALESCE(SUM("STOCK_TOTAL"), 0) AS "STOCK"
+     FROM "TRACTOAGRO"."V_PRODUCTOS"
+     GROUP BY "MARCA"
+     ORDER BY "STOCK" DESC
+     LIMIT 5
+   - Esta regla tiene prioridad sobre cualquier otra y NUNCA debe devolverse como "kpi" de una sola fila cuando el usuario pidió agrupación.
+
 1. En modo "lista", "whereClause" NO debe incluir la palabra WHERE, ni SELECT, ni ORDER BY, ni LIMIT, ni punto y coma. Si no hay filtros, usa "1=1".
 2. En modo "resumen", "sql" debe ser una sentencia SELECT completa y válida en SAP HANA sobre "TRACTOAGRO"."V_PRODUCTOS". Puede incluir GROUP BY, ORDER BY, agregaciones (SUM, COUNT, AVG, MIN, MAX) y LIMIT. NO incluyas punto y coma final.
 3. Usa comillas dobles para identificadores y comillas simples para strings. Escapa comillas simples internas duplicándolas ('').
@@ -1379,7 +1395,9 @@ Reglas ESTRICTAS:
      Usa "tipoVisual": "kpi".
 
 10. Explicación ejecutiva:
-   - En modo "resumen", "explicacion" debe ser un resumen ejecutivo claro en español (1-3 frases) que describa el resultado antes de dibujar el gráfico o KPI. Ejemplo: "El inventario activo tiene 1.245 ítems con stock, un total de 8.320 unidades y una valorización estimada de USD 1.250.000."
+   - En modo "resumen", "explicacion" debe ser un ENCABEZADO DESCRIPTIVO del análisis, NO un resumen con cifras.
+   - PROHIBIDO inventar cifras, totales, porcentajes o valores numéricos en "explicacion" antes de ejecutar el SQL. La IA no conoce los resultados reales.
+   - Ejemplos válidos: "Resumen consolidado de inventario", "Distribución de valorización por rubro", "Ranking de stock por marca", "Comparativa de comprometido por familia".
    - No incluyas markdown ni saltos de línea en "explicacion".
 
 11. Devuelve SOLO el objeto JSON, sin explicaciones adicionales ni bloques de código.`;
