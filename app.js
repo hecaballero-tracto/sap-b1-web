@@ -1306,19 +1306,18 @@ Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
 - COSTO_PROM (decimal)
 
 Esquema de la vista "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA" (para consultas de ventas, rotación, facturación y devoluciones):
-- TIPO_DOCUMENTO (nvarchar) — valores posibles: 'Factura', 'Factura Reserva', 'Nota de Credito'
 - CODIGO_TRACTO (nvarchar) — código del artículo
 - NOMBRE (nvarchar) — descripción del artículo
-- RUBRO (nvarchar)
-- MARCA (nvarchar)
-- FAMILIA (nvarchar)
-- FABRICANTE (nvarchar)
+- FECHA_VENTA (date) — fecha del documento de venta
+- ANIO (integer) — año de la venta
+- MES (integer) — mes de la venta (1-12)
 - CANTIDAD (decimal) — cantidad vendida (negativa en notas de crédito)
 - TOTAL_GS (decimal) — importe en guaraníes (negativo en notas de crédito)
 - TOTAL_USD (decimal) — importe en dólares (negativo en notas de crédito)
-- FECHA (date) — fecha del documento
-- CLIENTE (nvarchar)
-- VENDEDOR (nvarchar)
+- CODIGO_CLIENTE (nvarchar) — código del cliente
+- CLIENTE (nvarchar) — nombre del cliente
+- CODIGO_VENDEDOR (nvarchar) — código del vendedor
+- TIPO_DOCUMENTO (nvarchar) — valores posibles: 'Factura', 'Factura Reserva', 'Nota de Credito'
 
 IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
 - La vista YA descuenta automáticamente las notas de crédito: las cantidades e importes de las notas de crédito vienen con signo negativo.
@@ -1327,6 +1326,13 @@ IMPORTANTE sobre "V_VENTAS_ARTICULOS_ANALITICA":
 - Si el usuario pregunta por ventas netas o devoluciones, puedes filtrar o desglosar por TIPO_DOCUMENTO ('Factura', 'Factura Reserva', 'Nota de Credito') usando GROUP BY "TIPO_DOCUMENTO" o una condición WHERE "TIPO_DOCUMENTO" = '...'.
 - Cuando el usuario pida "ventas", "facturación", "rotación", "más vendidos", "top vendidos", "ventas por rubro/marca/familia", "ventas del mes/año", etc., usa esta vista (NO "V_PRODUCTOS").
 - Cuando el usuario pida stock, inventario, existencias, quiebres o valorización, usa "V_PRODUCTOS".
+- IMPORTANTE — Rankings de ventas por artículo: cuando el usuario pida "top artículos más vendidos", "ranking de artículos", "artículos más vendidos", "productos más vendidos" o similar, agrupa SIEMPRE por "CODIGO_TRACTO" y "NOMBRE" (ambas columnas en el GROUP BY) para evitar perder la descripción del artículo. Ejemplo:
+  SELECT "CODIGO_TRACTO", "NOMBRE", SUM("CANTIDAD") AS "CANTIDAD_VENDIDA", SUM("TOTAL_GS") AS "TOTAL_GS"
+  FROM "TRACTOAGRO"."V_VENTAS_ARTICULOS_ANALITICA"
+  GROUP BY "CODIGO_TRACTO", "NOMBRE"
+  ORDER BY "TOTAL_GS" DESC
+  LIMIT 10
+  Usa "tipoVisual": "grafico_barra" (o "texto" si el usuario pide un listado detallado).
 
 Clasifica la consulta del usuario en uno de dos modos:
 
