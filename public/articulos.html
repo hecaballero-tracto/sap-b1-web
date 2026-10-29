@@ -285,6 +285,44 @@
     </div>
   </div>
 
+  <!-- Modal de series -->
+  <div class="modal fade" id="seriesModal" tabindex="-1" aria-labelledby="seriesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="seriesModalLabel">
+            <i class="bi bi-upc-scan me-2"></i>Series del artículo
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2"><strong id="seriesModalItemCode"></strong> - <span id="seriesModalItemName"></span></p>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>N° Serie</th>
+                  <th>Serie Fabricante</th>
+                  <th>Lote</th>
+                  <th>Depósito</th>
+                  <th>Fecha Ingreso</th>
+                  <th class="text-end">Costo Local</th>
+                  <th class="text-end">Tipo Cambio</th>
+                  <th class="text-end">Costo USD</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="seriesModalBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de depósitos -->
   <div class="modal fade" id="warehouseModal" tabindex="-1" aria-labelledby="warehouseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -341,6 +379,10 @@
       { key: 'OnOrder', label: 'En Pedido', align: 'text-end', default: false, format: 'stock', filter: 'numeric', filterKey: 'Pedido' },
       { key: 'Available', label: 'Disponible', align: 'text-end', default: true, format: 'stock' },
       { key: 'CreateDate', label: 'Fecha Creación', align: '', default: false, format: 'date', filter: 'date', filterKey: 'Fecha' },
+      { key: 'CostoProm', label: 'Costo Promedio', align: 'text-end', default: false, format: 'stock' },
+      { key: 'FechaUltCompra', label: 'Última Compra', align: '', default: false, format: 'date' },
+      { key: 'FechaUltVenta', label: 'Última Venta', align: '', default: false, format: 'date' },
+      { key: 'Series', label: 'Series', align: 'text-center', default: true, format: 'series' },
       { key: 'Warehouses', label: 'Depósitos', align: 'text-center', default: true, format: 'warehouses' },
       { key: 'Prices', label: 'Precios', align: 'text-center', default: true, format: 'prices' },
     ];
@@ -427,6 +469,10 @@
     const priceModalBody = document.getElementById('priceModalBody');
     const priceModal = new bootstrap.Modal(document.getElementById('priceModal'));
     const priceConfigModal = new bootstrap.Modal(document.getElementById('priceConfigModal'));
+    const seriesModal = new bootstrap.Modal(document.getElementById('seriesModal'));
+    const seriesModalItemCode = document.getElementById('seriesModalItemCode');
+    const seriesModalItemName = document.getElementById('seriesModalItemName');
+    const seriesModalBody = document.getElementById('seriesModalBody');
     const priceConfigList = document.getElementById('priceConfigList');
     const btnPriceConfig = document.getElementById('btnPriceConfig');
     const btnSavePriceConfig = document.getElementById('btnSavePriceConfig');
@@ -783,6 +829,10 @@
           visible.length === 0 ? 'disabled' : ''
         }><i class="bi bi-tags me-1"></i>${visible.length}</button>`;
       }
+      if (col.format === 'series') {
+        const idx = articulos.indexOf(item);
+        return `<button class="btn btn-outline-info btn-sm" data-series-index="${idx}" title="Ver series"><i class="bi bi-upc-scan me-1"></i>Series</button>`;
+      }
       return escapeHtml(value);
     }
 
@@ -828,6 +878,13 @@
           openPrices(list[idx]);
         });
       });
+
+      body.querySelectorAll('button[data-series-index]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.getAttribute('data-series-index'), 10);
+          openSeries(list[idx]);
+        });
+      });
     }
 
     function openWarehouses(item) {
@@ -856,6 +913,58 @@
       }
 
       warehouseModal.show();
+    }
+
+    async function openSeries(item) {
+      if (!item) return;
+      seriesModalItemCode.textContent = item.ItemCode || '';
+      seriesModalItemName.textContent = item.ItemName || '';
+      seriesModalBody.innerHTML = `
+        <tr><td colspan="9" class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span class="ms-2 text-muted">Cargando series...</span>
+        </td></tr>`;
+      seriesModal.show();
+
+      try {
+        const res = await apiFetch(
+          `/api/articulos/${encodeURIComponent(item.ItemCode)}/series`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudieron obtener las series';
+          seriesModalBody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${escapeHtml(
+            msg
+          )}</td></tr>`;
+          return;
+        }
+        const rows = Array.isArray(data.data) ? data.data : [];
+        if (!rows.length) {
+          seriesModalBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Sin series registradas.</td></tr>`;
+          return;
+        }
+        seriesModalBody.innerHTML = rows
+          .map(
+            (r) => `
+          <tr>
+            <td><strong>${escapeHtml(r.NUMERO_SERIE)}</strong></td>
+            <td>${escapeHtml(r.SERIE_FABRICANTE)}</td>
+            <td>${escapeHtml(r.NUMERO_LOTE)}</td>
+            <td>${escapeHtml(r.DEPOSITO)}</td>
+            <td>${formatDate(r.FECHA_INGRESO)}</td>
+            <td class="text-end">${formatStock(r.COSTO_LOCAL)}</td>
+            <td class="text-end">${formatStock(r.TIPO_CAMBIO_INGRESO)}</td>
+            <td class="text-end">${formatStock(r.COSTO_USD_INGRESO)}</td>
+            <td>${escapeHtml(r.ESTADO_DESC)}</td>
+          </tr>`
+          )
+          .join('');
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
+        seriesModalBody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Error de conexión al consultar series.</td></tr>`;
+      }
     }
 
     function openPrices(item) {
@@ -1152,6 +1261,40 @@
           iaUsageBadge.classList.remove('d-none');
           iaUsageBadge.innerHTML =
             `<span class="badge bg-secondary">Tokens: ${u.total_tokens} (Entrada: ${u.prompt_tokens}, Salida: ${u.completion_tokens})</span>`;
+        }
+        // El endpoint ahora devuelve resultados directos desde HANA
+        if (data && Array.isArray(data.data)) {
+          articulos = data.data.map((r) => ({
+            ItemCode: r.CODIGO_TRACTO,
+            ItemName: r.NOMBRE,
+            FrgnName: r.NOMBRE_INTERNO,
+            SalesUnit: r.UNIDAD,
+            SWW: r.FAMILIA,
+            rubro: r.RUBRO,
+            fabricante: r.FABRICANTE,
+            U_Marca: r.MARCA,
+            U_Modelo: r.MODELO,
+            QuantityOnStock: Number(r.STOCK_TOTAL) || 0,
+            IsCommited: Number(r.COMPROMETIDO) || 0,
+            OnOrder: Number(r.EN_PEDIDO) || 0,
+            Available: Number(r.DISPONIBLE) || 0,
+            CreateDate: r.FECHA_CREACION,
+            FechaUltVenta: r.FECHA_ULT_VENTA,
+            FechaUltCompra: r.FECHA_ULT_COMPRA,
+            CostoProm: Number(r.COSTO_PROM) || 0,
+            Warehouses: [],
+            Prices: [],
+          }));
+          paging = {
+            page: data.page || 1,
+            limit: data.limit || 20,
+            total: data.total || 0,
+            totalPages: data.totalPages || 0,
+          };
+          render(articulos);
+          updatePagingControls();
+          updateClearFiltersVisibility();
+          return;
         }
         applyIaFilters(data);
       } catch (err) {

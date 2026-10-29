@@ -11,6 +11,7 @@ const path = require('path');
 const session = require('express-session');
 const { authenticate } = require('ldap-authentication');
 const ldap = require('ldapjs');
+const hana = require('@sap/hana-client');
 
 const {
   SAP_URL,
@@ -27,6 +28,11 @@ const {
   AD_TLS_REJECT_UNAUTHORIZED,
   SESSION_SECRET,
   SESSION_MAX_AGE,
+  HANA_HOST,
+  HANA_PORT,
+  HANA_USER,
+  HANA_PASSWORD,
+  HANA_SCHEMA,
 } = process.env;
 
 if (!SAP_URL || !SAP_COMPANY_DB || !SAP_USER || !SAP_PASSWORD) {
@@ -259,6 +265,60 @@ async function authenticateAD(username, password) {
 
 // Endpoint de DeepSeek para interpretación de consultas en lenguaje natural
 const DEEPSEEK_ENDPOINT = 'https' + '://api.deepseek.com/chat/completions';
+
+// ---------------------------------------------------------------------------
+// Conexión reutilizable a SAP HANA
+// ---------------------------------------------------------------------------
+let hanaClient = null;
+let hanaClientPromise = null;
+
+function getHanaClient() {
+  if (hanaClient) return Promise.resolve(hanaClient);
+  if (hanaClientPromise) return hanaClientPromise;
+
+  hanaClientPromise = new Promise((resolve, reject) => {
+    if (!HANA_HOST || !HANA_USER || !HANA_PASSWORD) {
+      hanaClientPromise = null;
+      return reject(
+        new Error(
+          'Faltan variables de entorno de HANA (HANA_HOST, HANA_USER, HANA_PASSWORD)'
+        )
+      );
+    }
+
+    const client = hana.createConnection();
+    const params = {
+      serverNode: `${HANA_HOST}:${HANA_PORT || 30015}`,
+      uid: HANA_USER,
+      pwd: HANA_PASSWORD,
+    };
+    if (HANA_SCHEMA) params.currentSchema = HANA_SCHEMA;
+
+    client.connect(params, (err) => {
+      if (err) {
+        hanaClientPromise = null;
+        return reject(err);
+      }
+      hanaClient = client;
+      console.log('Conexión HANA establecida');
+      resolve(client);
+    });
+  });
+
+  return hanaClientPromise;
+}
+
+function hanaExec(sql, params = []) {
+  return getHanaClient().then(
+    (client) =>
+      new Promise((resolve, reject) => {
+        client.exec(sql, params, (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        });
+      })
+  );
+}
 
 // Cliente HTTP que ignora certificados autofirmados
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -1219,6 +1279,48 @@ app.post('/api/articulos/config-precios', requireAuth, (req, res) => {
   return res.json({ ok: true, visibleLists });
 });
 
+const IA_SQL_SYSTEM_PROMPT = `Eres un experto en SAP HANA SQL. Tu tarea es traducir consultas en lenguaje natural sobre productos/artículos a una cláusula WHERE válida para la vista "TRACTOAGRO"."V_PRODUCTOS".
+
+Esquema de la vista "TRACTOAGRO"."V_PRODUCTOS":
+- ACTIVO (char 'Y'/'N')
+- CODIGO_TRACTO (nvarchar) — código del artículo
+- NOMBRE (nvarchar) — descripción
+- NOMBRE_INTERNO (nvarchar)
+- CODIGO_FABRICA (nvarchar)
+- RUBRO (nvarchar)
+- MARCA (nvarchar)
+- MODELO (nvarchar)
+- FABRICANTE (nvarchar)
+- FAMILIA (nvarchar)
+- UNIDAD (nvarchar)
+- STOCK_TOTAL (decimal)
+- COMPROMETIDO (decimal)
+- EN_PEDIDO (decimal)
+- DISPONIBLE (decimal)
+- FECHA_CREACION (date)
+- FECHA_ULT_VENTA (date)
+- PRECIO_ULT_COMPRA (decimal)
+- MONEDA_ULT_COMPRA (nvarchar)
+- FECHA_ULT_COMPRA (date)
+- FECHA_ULT_ACT (date)
+- COSTO_PROM (decimal)
+
+Reglas ESTRICTAS:
+1. Devuelve ÚNICAMENTE la cláusula WHERE (sin la palabra WHERE, sin SELECT, sin ORDER BY, sin LIMIT, sin punto y coma).
+2. Usa sintaxis SQL de SAP HANA. Para texto usa LIKE con comodines '%' o comparaciones '='.
+3. Usa comillas simples para strings. Escapa comillas simples internas duplicándolas ('').
+4. Para fechas usa TO_DATE('YYYY-MM-DD','YYYY-MM-DD').
+5. Combina condiciones con AND / OR y paréntesis cuando sea necesario.
+6. Si la consulta no requiere filtros, devuelve "1=1".
+7. NUNCA uses DROP, INSERT, UPDATE, DELETE, ALTER, CREATE, TRUNCATE, MERGE, GRANT, REVOKE, CALL, EXEC ni punto y coma.
+8. Interpreta jerga de inventario:
+   - "quiebre", "faltantes", "ruptura de stock" => STOCK_TOTAL <= 0
+   - "agotados", "sin stock", "sin existencia" => STOCK_TOTAL <= 0
+   - "con stock", "disponibles", "con existencia" => STOCK_TOTAL > 0
+   - "por recibir", "en camino", "pedidos pendientes" => EN_PEDIDO > 0
+   - "comprometidos", "reservados" => COMPROMETIDO > 0
+9. Devuelve SOLO el texto de la cláusula WHERE, sin explicaciones, sin markdown, sin bloques de código.`;
+
 const IA_SYSTEM_PROMPT = `Eres un asistente que traduce consultas en lenguaje natural sobre artículos (repuestos, tractores, maquinaria agrícola) a un objeto JSON de filtros para un sistema SAP Business One.
 
 Debes responder SIEMPRE y ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones.
@@ -1371,6 +1473,39 @@ function sanitizeIaResponse(raw) {
   return out;
 }
 
+const FORBIDDEN_SQL_WORDS = [
+  'DROP',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'ALTER',
+  'CREATE',
+  'TRUNCATE',
+  'MERGE',
+  'GRANT',
+  'REVOKE',
+  'CALL',
+  'EXEC',
+  'EXECUTE',
+  'ATTACH',
+  'DETACH',
+  'RENAME',
+];
+
+function isSafeWhereClause(clause) {
+  if (typeof clause !== 'string') return false;
+  const trimmed = clause.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes(';')) return false;
+  if (/--|\/\*/.test(trimmed)) return false;
+  const upper = trimmed.toUpperCase();
+  for (const word of FORBIDDEN_SQL_WORDS) {
+    const re = new RegExp(`\\b${word}\\b`);
+    if (re.test(upper)) return false;
+  }
+  return true;
+}
+
 app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
   const prompt = (req.body && req.body.prompt ? String(req.body.prompt) : '').trim();
   if (!prompt) {
@@ -1386,6 +1521,10 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
       .json({ error: { message: 'Falta DEEPSEEK_API_KEY en el entorno' } });
   }
 
+  const page = parsePositiveInt(req.body && req.body.page, 1);
+  const limit = parsePositiveInt(req.body && req.body.limit, 20, 200);
+  const offset = (page - 1) * limit;
+
   try {
     const response = await fetch(DEEPSEEK_ENDPOINT, {
       method: 'POST',
@@ -1396,9 +1535,8 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
       body: JSON.stringify({
         model: 'deepseek-chat',
         temperature: 0.1,
-        response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: IA_SYSTEM_PROMPT },
+          { role: 'system', content: IA_SQL_SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
       }),
@@ -1434,18 +1572,39 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
         .json({ error: { message: 'Respuesta vacía del servicio de IA' } });
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch (_) {
-      return res
-        .status(502)
-        .json({ error: { message: 'La IA no devolvió un JSON válido' } });
+    // Limpiar posibles bloques de código o prefijos
+    let whereClause = String(content).trim();
+    whereClause = whereClause.replace(/^```[a-zA-Z]*\s*/i, '').replace(/```$/i, '').trim();
+    whereClause = whereClause.replace(/^WHERE\s+/i, '').trim();
+
+    if (!isSafeWhereClause(whereClause)) {
+      return res.status(400).json({
+        error: {
+          message: 'La cláusula generada por la IA no es segura o no es válida',
+        },
+      });
     }
 
-    const sanitized = sanitizeIaResponse(parsed);
+    const baseSelect = `SELECT "ACTIVO","CODIGO_TRACTO","NOMBRE","NOMBRE_INTERNO","CODIGO_FABRICA","RUBRO","MARCA","MODELO","FABRICANTE","FAMILIA","UNIDAD","STOCK_TOTAL","COMPROMETIDO","EN_PEDIDO","DISPONIBLE","FECHA_CREACION","FECHA_ULT_VENTA","PRECIO_ULT_COMPRA","MONEDA_ULT_COMPRA","FECHA_ULT_COMPRA","FECHA_ULT_ACT","COSTO_PROM" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE `;
+
+    const countSql = `SELECT COUNT(*) AS "TOTAL" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE ${whereClause}`;
+    const dataSql = `${baseSelect}${whereClause} ORDER BY "CODIGO_TRACTO" LIMIT ${limit} OFFSET ${offset}`;
+
+    const [countRows, dataRows] = await Promise.all([
+      hanaExec(countSql),
+      hanaExec(dataSql),
+    ]);
+
+    const total = countRows && countRows[0] ? Number(countRows[0].TOTAL) || 0 : 0;
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
     return res.json({
-      ...sanitized,
+      data: dataRows || [],
+      total,
+      page,
+      limit,
+      totalPages,
+      whereClause,
       usage: {
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
@@ -1457,6 +1616,27 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ error: { message: 'Error al procesar la consulta de IA' } });
+  }
+});
+
+app.get('/api/articulos/:codigo/series', requireAuth, async (req, res) => {
+  const codigo = String(req.params.codigo || '').trim();
+  if (!codigo) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El código es obligatorio' } });
+  }
+
+  const sql = `SELECT "NUMERO_SERIE","SERIE_FABRICANTE","NUMERO_LOTE","DEPOSITO","FECHA_INGRESO","COSTO_LOCAL","TIPO_CAMBIO_INGRESO","COSTO_USD_INGRESO","ESTADO_DESC" FROM "TRACTOAGRO"."V_PRODUCTOS_SERIES_COSTO" WHERE "CODIGO_TRACTO" = ? ORDER BY "FECHA_INGRESO" DESC`;
+
+  try {
+    const rows = await hanaExec(sql, [codigo]);
+    return res.json({ data: rows || [] });
+  } catch (err) {
+    console.error('Error en /api/articulos/:codigo/series:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar series en HANA' } });
   }
 });
 
