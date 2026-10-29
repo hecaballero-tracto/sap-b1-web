@@ -1343,16 +1343,31 @@
 
       if (tipo === 'kpi') {
         const row = rows[0] || {};
-        const keys = Object.keys(row);
-        const valKey = keys.find((k) => k !== keys[0]) || keys[0];
-        const label = keys[0];
-        const value = row[valKey];
+        const entries = Object.entries(row);
+        if (!entries.length) {
+          iaResponseText.innerHTML = `<div class="text-muted">${escapeHtml(explicacion || 'Sin datos para mostrar.')}</div>`;
+          if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
+          iaQuickFilterState = null;
+          return;
+        }
+        const cardsHtml = entries
+          .map(([key, value]) => {
+            const num = Number(value);
+            const display = Number.isFinite(num)
+              ? numberFmtPy.format(num)
+              : escapeHtml(String(value ?? ''));
+            return `
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="border rounded p-2 h-100 bg-white">
+                  <div class="text-muted small text-uppercase">${escapeHtml(key)}</div>
+                  <div class="fs-4 fw-bold">${display}</div>
+                </div>
+              </div>`;
+          })
+          .join('');
         iaResponseText.innerHTML = `
-          ${explicacion ? `<div class="text-muted small mb-1">${escapeHtml(explicacion)}</div>` : ''}
-          <div class="d-flex align-items-baseline gap-2">
-            <span class="display-6 fw-bold">${escapeHtml(formatNumberEs(value))}</span>
-            <span class="text-muted small">${escapeHtml(String(label || ''))}</span>
-          </div>`;
+          ${explicacion ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>` : ''}
+          <div class="row g-2">${cardsHtml}</div>`;
         if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
         iaQuickFilterState = null;
         return;

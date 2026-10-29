@@ -1343,15 +1343,17 @@ Reglas ESTRICTAS:
    - "comprometidos", "reservados" => COMPROMETIDO > 0
 
 8. Resúmenes de inventario (modo "resumen"):
-   - Si el usuario pide "resumen de inventario", "estado general", "reporte de stock", "panorama de inventario" o similar, genera una consulta SQL que devuelva métricas consolidadas en una sola fila:
+   - Si el usuario pide "resumen de inventario", "estado general", "reporte de stock", "panorama de inventario" o similar, genera EXACTAMENTE esta consulta SQL que devuelva métricas consolidadas en una sola fila:
      SELECT
        COUNT(CASE WHEN "STOCK_TOTAL" > 0 THEN 1 END) AS "ITEMS_CON_STOCK",
-       SUM("STOCK_TOTAL") AS "TOTAL_STOCK",
-       SUM("COMPROMETIDO") AS "TOTAL_COMPROMETIDO",
-       SUM("EN_PEDIDO") AS "TOTAL_EN_PEDIDO"
+       COALESCE(SUM("STOCK_TOTAL"), 0) AS "TOTAL_STOCK",
+       COALESCE(SUM("COMPROMETIDO"), 0) AS "TOTAL_COMPROMETIDO",
+       COALESCE(SUM("EN_PEDIDO"), 0) AS "TOTAL_EN_PEDIDO",
+       ROUND(SUM(CASE WHEN "STOCK_TOTAL" > 0 THEN "STOCK_TOTAL" * COALESCE("COSTO_PROM", 0) ELSE 0 END), 0) AS "VALOR_INVENTARIO"
      FROM "TRACTOAGRO"."V_PRODUCTOS"
-     WHERE "ACTIVO" = 'Y'
      Usa "tipoVisual": "kpi".
+   - PROHIBIDO en métricas de inventario: NO incluyas condiciones WHERE que filtren campos de texto como "ACTIVO" = 'TRUE', "ACTIVO" = 'Y', "ACTIVO" = 'SI' ni similares. Las métricas deben calcularse sobre el universo visible completo de la vista.
+   - Usa siempre COALESCE(SUM(...), 0) para evitar NULLs y ROUND(..., 0) para la valorización.
    - Si el usuario pide "valorización por rubro", "valor de inventario por rubro", "top rubros por valor" o similar, genera:
      SELECT "RUBRO", SUM("STOCK_TOTAL" * "COSTO_PROM") AS "VALORIZACION"
      FROM "TRACTOAGRO"."V_PRODUCTOS"
@@ -1692,10 +1694,14 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
       const countSql = `SELECT COUNT(*) AS "TOTAL" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE ${whereClause}`;
       const dataSql = `${baseSelect}${whereClause} ORDER BY "CODIGO_TRACTO" LIMIT ${limit} OFFSET ${offset}`;
 
+      console.log('[IA SQL GENERADO]', whereClause);
+
       const [countRows, dataRows] = await Promise.all([
         hanaExec(countSql),
         hanaExec(dataSql),
       ]);
+
+      console.log('[IA HANA RESULT]', dataRows);
 
       const total = countRows && countRows[0] ? Number(countRows[0].TOTAL) || 0 : 0;
       const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
@@ -1727,7 +1733,11 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
     const tipoVisual =
       parsed && validVisual.has(parsed.tipoVisual) ? parsed.tipoVisual : 'texto';
 
+    console.log('[IA SQL GENERADO]', sql);
+
     const rows = await hanaExec(sql);
+
+    console.log('[IA HANA RESULT]', rows);
 
     return res.json({
       modo: 'resumen',
