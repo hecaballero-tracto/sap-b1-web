@@ -996,7 +996,25 @@ const COLUMN_FILTER_MAP = {
   Comprometido: 'QuantityOrderedByCustomers',
   Pedido: 'QuantityOrderedFromVendors',
   Fecha: 'CreateDate',
+  Codigo: 'ItemCode',
+  Descripcion: 'ItemName',
+  NombreInterno: 'ForeignName',
+  Familia: 'SWW',
+  Marca: 'U_Marca',
+  Fabricante: 'Manufacturer',
 };
+
+// Columnas de texto (usan operadores contains/startswith/eq)
+const TEXT_FILTER_COLUMNS = new Set([
+  'Codigo',
+  'Descripcion',
+  'NombreInterno',
+  'Familia',
+  'Marca',
+  'Fabricante',
+]);
+
+const TEXT_OPERATORS = new Set(['contains', 'startswith', 'eq']);
 
 const NUMERIC_OPERATORS = new Set(['eq', 'gt', 'ge', 'lt', 'le', 'ne']);
 
@@ -1050,6 +1068,23 @@ function buildColumnFilterConditions(colFilters) {
           conditions.push(`CreateDate ge '${fmt(start)}'`);
           conditions.push(`CreateDate le '${fmt(end)}'`);
         }
+      }
+      continue;
+    }
+
+    // Texto
+    if (TEXT_FILTER_COLUMNS.has(col)) {
+      const op = String(spec.op || 'contains').toLowerCase();
+      if (!TEXT_OPERATORS.has(op)) continue;
+      const raw = spec.val;
+      if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+      const safe = escapeODataString(String(raw));
+      if (op === 'contains') {
+        conditions.push(`contains(${prop},'${safe}')`);
+      } else if (op === 'startswith') {
+        conditions.push(`startswith(${prop},'${safe}')`);
+      } else {
+        conditions.push(`${prop} eq '${safe}'`);
       }
       continue;
     }
