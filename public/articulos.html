@@ -80,6 +80,109 @@
     .navbar-tracto .navbar-toggler-icon {
       background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='%231a1a1a' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
     }
+
+    /* Barra flotante de presupuesto (solo móvil) */
+    #presupuestoBar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1050;
+      display: none;
+      padding: 10px 12px;
+      background: #fff;
+      border-top: 1px solid #e5e7eb;
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    }
+    #presupuestoBar.visible { display: block; }
+
+    /* Vista móvil: filas como tarjetas */
+    @media (max-width: 768px) {
+      .table-responsive {
+        max-height: none;
+        overflow-y: visible;
+      }
+      .table thead { display: none; }
+      .table,
+      .table tbody,
+      .table tr,
+      .table td {
+        display: block;
+        width: 100%;
+      }
+      .table tbody tr {
+        margin-bottom: 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        background: #fff;
+        padding: 12px;
+        border-left: 4px solid #f59e0b;
+      }
+      .table tbody tr:hover { background: #fff !important; }
+      .table td {
+        border: none !important;
+        padding: 2px 0 !important;
+        text-align: left !important;
+      }
+      .table td.mobile-hide { display: none !important; }
+      .mobile-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .mobile-card-code {
+        font-weight: 700;
+        font-size: 1rem;
+        color: #1a1a1a;
+      }
+      .mobile-card-brand {
+        font-size: 0.8rem;
+        color: #6b7280;
+        text-align: right;
+      }
+      .mobile-card-desc {
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+        color: #111827;
+      }
+      .mobile-card-stock {
+        background: #fef3c7;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+      }
+      .mobile-card-stock .disp-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: #6b7280;
+        letter-spacing: 0.5px;
+      }
+      .mobile-card-stock .disp-value {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #16a34a;
+        line-height: 1.1;
+      }
+      .mobile-card-stock .disp-value.negative { color: #dc2626; }
+      .mobile-card-stock .stock-detail {
+        font-size: 0.8rem;
+        color: #4b5563;
+        margin-top: 4px;
+      }
+      .mobile-card-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .mobile-card-actions .btn {
+        padding: 6px 14px;
+        font-size: 0.9rem;
+      }
+      body { padding-bottom: 80px; }
+    }
   </style>
 </head>
 <body>
@@ -255,6 +358,13 @@
     </div>
   </div>
 
+  <!-- Barra flotante de presupuesto (móvil) -->
+  <div id="presupuestoBar">
+    <button type="button" id="btnVerPresupuesto" class="btn btn-warning w-100 fw-bold">
+      <i class="bi bi-cart3 me-1"></i>Ver Presupuesto (<span id="presupuestoCount">0</span> ítems)
+    </button>
+  </div>
+
   <!-- Modal de precios -->
   <div class="modal fade" id="priceModal" tabindex="-1" aria-labelledby="priceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -387,6 +497,50 @@
   <script>
     let articulos = [];
     let paging = { page: 1, limit: 20, total: 0, totalPages: 0 };
+
+    // Presupuesto móvil: array global de ítems
+    window.presupuestoItems = [];
+
+    function isMobileView() {
+      return window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    function updatePresupuestoBar() {
+      const bar = document.getElementById('presupuestoBar');
+      const countEl = document.getElementById('presupuestoCount');
+      if (!bar || !countEl) return;
+      const n = window.presupuestoItems.length;
+      countEl.textContent = String(n);
+      if (n > 0 && isMobileView()) {
+        bar.classList.add('visible');
+      } else {
+        bar.classList.remove('visible');
+      }
+    }
+
+    function agregarAlPresupuesto(item) {
+      if (!item) return;
+      const existing = window.presupuestoItems.find(
+        (p) => p.ItemCode === item.ItemCode
+      );
+      if (existing) {
+        existing.cantidad += 1;
+      } else {
+        window.presupuestoItems.push({
+          ItemCode: item.ItemCode,
+          ItemName: item.ItemName,
+          U_Marca: item.U_Marca || '',
+          rubro: item.rubro || '',
+          Available: Number(item.Available) || 0,
+          QuantityOnStock: Number(item.QuantityOnStock) || 0,
+          IsCommited: Number(item.IsCommited) || 0,
+          cantidad: 1,
+        });
+      }
+      updatePresupuestoBar();
+    }
+
+    window.addEventListener('resize', updatePresupuestoBar);
 
     // Definición de columnas disponibles
     const COLUMNS = [
@@ -875,6 +1029,41 @@
       return escapeHtml(value);
     }
 
+    function renderMobileCard(item) {
+      const idx = articulos.indexOf(item);
+      const disponible = Number(item.Available) || 0;
+      const stock = Number(item.QuantityOnStock) || 0;
+      const comprometido = Number(item.IsCommited) || 0;
+      const marca = item.U_Marca || '';
+      const rubro = item.rubro || '';
+      const brandText = [marca, rubro].filter(Boolean).join(' · ');
+      const dispClass = disponible < 0 ? 'disp-value negative' : 'disp-value';
+      return `
+        <tr>
+          <td>
+            <div class="mobile-card-top">
+              <span class="mobile-card-code">${escapeHtml(item.ItemCode || '')}</span>
+              <span class="mobile-card-brand">${escapeHtml(brandText)}</span>
+            </div>
+            <div class="mobile-card-desc">${escapeHtml(item.ItemName || '')}</div>
+            <div class="mobile-card-stock">
+              <div class="disp-label">Disponible</div>
+              <div class="${dispClass}">${numberFmtPy.format(disponible)}</div>
+              <div class="stock-detail">
+                Stock Total: <strong>${numberFmtPy.format(stock)}</strong>
+                &nbsp;·&nbsp;
+                Comprometido: <strong>${numberFmtPy.format(comprometido)}</strong>
+              </div>
+            </div>
+            <div class="mobile-card-actions">
+              <button type="button" class="btn btn-warning btn-sm fw-bold" data-cotizar-index="${idx}">
+                <i class="bi bi-plus-lg me-1"></i>Cotizar
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    }
+
     function render(list) {
       const cols = COLUMNS.filter((c) => visibleColumns.has(c.key));
       const colspan = Math.max(cols.length, 1);
@@ -886,6 +1075,25 @@
               No se encontraron artículos.
             </td>
           </tr>`;
+        return;
+      }
+
+      if (isMobileView()) {
+        body.innerHTML = list.map((a) => renderMobileCard(a)).join('');
+        body.querySelectorAll('button[data-cotizar-index]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-cotizar-index'), 10);
+            agregarAlPresupuesto(list[idx]);
+            btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Agregado';
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-success');
+            setTimeout(() => {
+              btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Cotizar';
+              btn.classList.remove('btn-success');
+              btn.classList.add('btn-warning');
+            }, 1200);
+          });
+        });
         return;
       }
 
@@ -1808,6 +2016,21 @@
 
     if (btnCloseIaResponse) {
       btnCloseIaResponse.addEventListener('click', hideIaResponse);
+    }
+
+    const btnVerPresupuesto = document.getElementById('btnVerPresupuesto');
+    if (btnVerPresupuesto) {
+      btnVerPresupuesto.addEventListener('click', () => {
+        const n = window.presupuestoItems.length;
+        if (!n) return;
+        const resumen = window.presupuestoItems
+          .map(
+            (p) =>
+              `• ${p.ItemCode} — ${p.ItemName} (x${p.cantidad})`
+          )
+          .join('\n');
+        alert(`Presupuesto (${n} ítems):\n\n${resumen}`);
+      });
     }
 
     btnLogout.addEventListener('click', async () => {
