@@ -417,9 +417,13 @@
                   <span id="ddGrupoLabel">Todos</span>
                   <i class="bi bi-chevron-down"></i>
                 </button>
-                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                <div class="dropdown-menu w-100 p-2" data-multi-menu="grupo">
                   <input type="text" class="form-control form-control-sm mb-2" id="ddGrupoSearch" placeholder="Buscar..." />
-                  <div id="ddGrupoList"></div>
+                  <div id="ddGrupoList" style="max-height: 220px; overflow-y: auto;"></div>
+                  <div class="d-flex justify-content-between gap-2 mt-2 pt-2 border-top">
+                    <button type="button" class="btn btn-link btn-sm p-0" data-multi-clear="grupo">Limpiar</button>
+                    <button type="button" class="btn btn-primary btn-sm" data-multi-apply="grupo">Aplicar</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -430,9 +434,13 @@
                   <span id="ddMarcaLabel">Todas</span>
                   <i class="bi bi-chevron-down"></i>
                 </button>
-                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                <div class="dropdown-menu w-100 p-2" data-multi-menu="marca">
                   <input type="text" class="form-control form-control-sm mb-2" id="ddMarcaSearch" placeholder="Buscar..." />
-                  <div id="ddMarcaList"></div>
+                  <div id="ddMarcaList" style="max-height: 220px; overflow-y: auto;"></div>
+                  <div class="d-flex justify-content-between gap-2 mt-2 pt-2 border-top">
+                    <button type="button" class="btn btn-link btn-sm p-0" data-multi-clear="marca">Limpiar</button>
+                    <button type="button" class="btn btn-primary btn-sm" data-multi-apply="marca">Aplicar</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -443,9 +451,13 @@
                   <span id="ddFabricanteLabel">Todos</span>
                   <i class="bi bi-chevron-down"></i>
                 </button>
-                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                <div class="dropdown-menu w-100 p-2" data-multi-menu="fabricante">
                   <input type="text" class="form-control form-control-sm mb-2" id="ddFabricanteSearch" placeholder="Buscar..." />
-                  <div id="ddFabricanteList"></div>
+                  <div id="ddFabricanteList" style="max-height: 220px; overflow-y: auto;"></div>
+                  <div class="d-flex justify-content-between gap-2 mt-2 pt-2 border-top">
+                    <button type="button" class="btn btn-link btn-sm p-0" data-multi-clear="fabricante">Limpiar</button>
+                    <button type="button" class="btn btn-primary btn-sm" data-multi-apply="fabricante">Aplicar</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -769,10 +781,12 @@
     const filterStockEstado = document.getElementById('filterStockEstado');
 
     // Multi-select state
+    // pending: selección en edición dentro del dropdown (aún no aplicada)
+    // selected: selección aplicada (la que se envía al backend)
     const multiFilters = {
-      grupo: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
-      marca: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todas' },
-      fabricante: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
+      grupo: { selected: new Set(), pending: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
+      marca: { selected: new Set(), pending: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todas' },
+      fabricante: { selected: new Set(), pending: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
     };
     multiFilters.grupo.labelEl = document.getElementById('ddGrupoLabel');
     multiFilters.grupo.listEl = document.getElementById('ddGrupoList');
@@ -803,7 +817,7 @@
       mf.listEl.innerHTML = values
         .map((v) => {
           const val = String(v);
-          const checked = mf.selected.has(val) ? 'checked' : '';
+          const checked = mf.pending.has(val) ? 'checked' : '';
           return `<label class="dropdown-item d-flex align-items-center gap-2 mb-0">
             <input type="checkbox" class="form-check-input mt-0" data-multi-key="${key}" data-multi-val="${escapeHtml(val)}" ${checked} />
             <span>${escapeHtml(val)}</span>
@@ -816,13 +830,9 @@
           const v = chk.getAttribute('data-multi-val');
           const m = multiFilters[k];
           if (!m) return;
-          if (chk.checked) m.selected.add(v);
-          else m.selected.delete(v);
-          updateMultiLabel(k);
-          paging.page = 1;
-          currentIaFilter = null;
-          refrescarFiltrosDisponibles();
-          cargarArticulos();
+          if (chk.checked) m.pending.add(v);
+          else m.pending.delete(v);
+          // No se aplica todavía: solo se actualiza el estado pendiente
         });
       });
     }
@@ -831,9 +841,12 @@
       const mf = multiFilters[key];
       if (!mf) return;
       mf.all = values.map((v) => String(v));
-      // Limpiar seleccionados que ya no existen
+      // Limpiar seleccionados/pendientes que ya no existen
       for (const v of Array.from(mf.selected)) {
         if (!mf.all.includes(v)) mf.selected.delete(v);
+      }
+      for (const v of Array.from(mf.pending)) {
+        if (!mf.all.includes(v)) mf.pending.delete(v);
       }
       updateMultiLabel(key);
       renderMultiList(key);
@@ -843,6 +856,55 @@
       const mf = multiFilters[key];
       return mf ? Array.from(mf.selected) : [];
     }
+
+    // Aplica la selección pendiente de un dropdown y recarga
+    function applyMultiFilter(key) {
+      const mf = multiFilters[key];
+      if (!mf) return;
+      mf.selected = new Set(mf.pending);
+      updateMultiLabel(key);
+      paging.page = 1;
+      currentIaFilter = null;
+      refrescarFiltrosDisponibles(key);
+      cargarArticulos();
+    }
+
+    // Limpia la selección pendiente y aplicada de un dropdown
+    function clearMultiFilter(key) {
+      const mf = multiFilters[key];
+      if (!mf) return;
+      mf.pending.clear();
+      mf.selected.clear();
+      updateMultiLabel(key);
+      renderMultiList(key);
+      paging.page = 1;
+      currentIaFilter = null;
+      refrescarFiltrosDisponibles(key);
+      cargarArticulos();
+    }
+
+    // Evitar que clics dentro del menú cierren el dropdown
+    document.querySelectorAll('[data-multi-menu]').forEach((menu) => {
+      menu.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+      });
+    });
+
+    // Botones Aplicar / Limpiar
+    document.querySelectorAll('[data-multi-apply]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const key = btn.getAttribute('data-multi-apply');
+        applyMultiFilter(key);
+      });
+    });
+    document.querySelectorAll('[data-multi-clear]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const key = btn.getAttribute('data-multi-clear');
+        clearMultiFilter(key);
+      });
+    });
     const columnsMenu = document.getElementById('columnsMenu');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
@@ -1597,7 +1659,10 @@
       fabricantes: [],
     };
 
-    async function refrescarFiltrosDisponibles() {
+    // Refresca las opciones en cascada.
+    // `activeKey` es el selector que el usuario está manipulando: sus opciones
+    // NO se reducen (se mantienen todas las disponibles) para poder seguir marcando.
+    async function refrescarFiltrosDisponibles(activeKey) {
       const grupos = getMultiValues('grupo');
       const marcas = getMultiValues('marca');
       const fabricantes = getMultiValues('fabricante');
@@ -1626,9 +1691,10 @@
         const m = Array.isArray(data.marcas) ? data.marcas : [];
         const f = Array.isArray(data.fabricantes) ? data.fabricantes : [];
 
-        setMultiOptions('grupo', g);
-        setMultiOptions('marca', m);
-        setMultiOptions('fabricante', f);
+        // No reducir las opciones del selector activo
+        if (activeKey !== 'grupo') setMultiOptions('grupo', g);
+        if (activeKey !== 'marca') setMultiOptions('marca', m);
+        if (activeKey !== 'fabricante') setMultiOptions('fabricante', f);
       } catch (_) {
         /* silencioso: si falla, se mantienen las opciones actuales */
       }
@@ -1656,6 +1722,14 @@
         setMultiOptions('grupo', catalogosCompletos.grupos);
         setMultiOptions('marca', catalogosCompletos.marcas);
         setMultiOptions('fabricante', catalogosCompletos.fabricantes);
+
+        // Sincronizar pending con selected (por si acaso)
+        multiFilters.grupo.pending = new Set(multiFilters.grupo.selected);
+        multiFilters.marca.pending = new Set(multiFilters.marca.selected);
+        multiFilters.fabricante.pending = new Set(multiFilters.fabricante.selected);
+        renderMultiList('grupo');
+        renderMultiList('marca');
+        renderMultiList('fabricante');
 
         // Listas de precios
         const priceLists = Array.isArray(data.priceLists) ? data.priceLists : [];
@@ -1784,11 +1858,17 @@
       searchInput.value = '';
       filterStockEstado.value = '';
       multiFilters.grupo.selected.clear();
+      multiFilters.grupo.pending.clear();
       multiFilters.marca.selected.clear();
+      multiFilters.marca.pending.clear();
       multiFilters.fabricante.selected.clear();
+      multiFilters.fabricante.pending.clear();
       updateMultiLabel('grupo');
       updateMultiLabel('marca');
       updateMultiLabel('fabricante');
+      renderMultiList('grupo');
+      renderMultiList('marca');
+      renderMultiList('fabricante');
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
       if (activePopover) {
         activePopover.dispose();
