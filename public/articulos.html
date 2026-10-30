@@ -81,6 +81,100 @@
       background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='%231a1a1a' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
     }
 
+    /* Catálogo de tarjetas responsivo */
+    #articulosGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      padding: 12px 0;
+    }
+    .articulo-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .articulo-card:hover {
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+    }
+    .articulo-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .articulo-card-code {
+      font-weight: 700;
+      font-size: 1rem;
+      color: #1a1a1a;
+      word-break: break-all;
+    }
+    .articulo-card-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    .articulo-card-badges .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .articulo-card-desc {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #111827;
+      line-height: 1.3;
+    }
+    .articulo-card-stock {
+      background: #fef3c7;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .articulo-card-stock .disp-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #6b7280;
+      letter-spacing: 0.5px;
+    }
+    .articulo-card-stock .disp-value {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: #16a34a;
+      line-height: 1.1;
+    }
+    .articulo-card-stock .disp-value.negative { color: #dc2626; }
+    .articulo-card-stock .stock-detail {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.8rem;
+      color: #4b5563;
+      margin-top: 6px;
+    }
+    .articulo-card-stock .stock-detail strong { color: #111827; }
+    .articulo-card-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: auto;
+    }
+    .articulo-card-footer .btn {
+      padding: 6px 14px;
+      font-size: 0.9rem;
+    }
+    #articulosEmpty {
+      text-align: center;
+      padding: 48px 16px;
+      color: #6b7280;
+    }
+    #articulosEmpty i { font-size: 2rem; opacity: 0.5; display: block; margin-bottom: 8px; }
+
     /* Barra flotante de presupuesto (solo móvil) */
     #presupuestoBar {
       position: fixed;
@@ -314,6 +408,37 @@
       </div>
       <div class="card-body p-0">
         <div id="alertBox"></div>
+        <div class="px-3 pt-3">
+          <div class="row g-2">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="filterGrupo" class="form-label small mb-1">Grupo de Artículos</label>
+              <select id="filterGrupo" class="form-select form-select-sm">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="filterMarca" class="form-label small mb-1">Marca</label>
+              <select id="filterMarca" class="form-select form-select-sm">
+                <option value="">Todas</option>
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="filterFabricante" class="form-label small mb-1">Fabricante</label>
+              <select id="filterFabricante" class="form-select form-select-sm">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="filterStockEstado" class="form-label small mb-1">Estado Stock</label>
+              <select id="filterStockEstado" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                <option value="con_stock">Solo con Stock</option>
+                <option value="con_pedido">En Pedido</option>
+                <option value="sin_stock">Sin Stock</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div id="iaResponseCard" class="d-none m-3 mb-0">
           <div class="alert mb-0" style="background-color: #fff9e6; border: 1px solid #f6c343;">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -339,20 +464,12 @@
             </div>
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="table table-hover table-striped mb-0">
-            <thead class="table-light">
-              <tr id="articulosHead"></tr>
-            </thead>
-            <tbody id="articulosBody">
-              <tr>
-                <td colspan="20" class="text-center py-5 text-muted">
-                  <i class="bi bi-search fs-3 d-block mb-2 opacity-50"></i>
-                  Utilice la barra de búsqueda, los filtros de columna o la consulta IA para explorar artículos
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="px-3 pb-3">
+          <div id="articulosGrid"></div>
+          <div id="articulosEmpty">
+            <i class="bi bi-search"></i>
+            Utilice la barra de búsqueda, los filtros o la consulta IA para explorar artículos
+          </div>
         </div>
       </div>
     </div>
@@ -626,8 +743,12 @@
     let allPriceLists = loadAllPriceLists();
     let currentUser = null;
 
-    const body = document.getElementById('articulosBody');
-    const head = document.getElementById('articulosHead');
+    const grid = document.getElementById('articulosGrid');
+    const emptyState = document.getElementById('articulosEmpty');
+    const filterGrupo = document.getElementById('filterGrupo');
+    const filterMarca = document.getElementById('filterMarca');
+    const filterFabricante = document.getElementById('filterFabricante');
+    const filterStockEstado = document.getElementById('filterStockEstado');
     const columnsMenu = document.getElementById('columnsMenu');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
@@ -734,6 +855,10 @@
 
     function hasAnyActiveFilter() {
       if (searchInput.value.trim() !== '') return true;
+      if (filterGrupo && filterGrupo.value) return true;
+      if (filterMarca && filterMarca.value) return true;
+      if (filterFabricante && filterFabricante.value) return true;
+      if (filterStockEstado && filterStockEstado.value) return true;
       return Object.keys(columnFilters).length > 0;
     }
 
@@ -747,28 +872,7 @@
     }
 
     function renderHead() {
-      head.innerHTML = COLUMNS.filter((c) => visibleColumns.has(c.key))
-        .map((c) => {
-          const filterBtn = c.filter
-            ? `<button type="button" class="th-filter-btn ${
-                hasActiveFilter(c) ? 'active' : ''
-              }" data-filter-col="${c.filterKey}" data-filter-type="${c.filter}" title="Filtrar ${
-                escapeHtml(c.label)
-              }"><i class="bi bi-funnel${
-                hasActiveFilter(c) ? '-fill' : ''
-              }"></i></button>`
-            : '';
-          return `<th class="${c.align}">${escapeHtml(c.label)}${filterBtn}</th>`;
-        })
-        .join('');
-
-      head.querySelectorAll('button[data-filter-col]').forEach((btn) => {
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          openColumnFilterPopover(btn);
-        });
-      });
-
+      // La vista de tarjetas no usa cabecera de tabla; solo actualiza visibilidad
       updateClearFiltersVisibility();
     }
 
@@ -1029,107 +1133,67 @@
       return escapeHtml(value);
     }
 
-    function renderMobileCard(item) {
+    function renderArticuloCard(item) {
       const idx = articulos.indexOf(item);
       const disponible = Number(item.Available) || 0;
       const stock = Number(item.QuantityOnStock) || 0;
       const comprometido = Number(item.IsCommited) || 0;
+      const enPedido = Number(item.OnOrder) || 0;
       const marca = item.U_Marca || '';
       const rubro = item.rubro || '';
-      const brandText = [marca, rubro].filter(Boolean).join(' · ');
       const dispClass = disponible < 0 ? 'disp-value negative' : 'disp-value';
+      const badges = [];
+      if (marca) badges.push(`<span class="badge bg-warning text-dark">${escapeHtml(marca)}</span>`);
+      if (rubro) badges.push(`<span class="badge bg-secondary">${escapeHtml(rubro)}</span>`);
       return `
-        <tr>
-          <td>
-            <div class="mobile-card-top">
-              <span class="mobile-card-code">${escapeHtml(item.ItemCode || '')}</span>
-              <span class="mobile-card-brand">${escapeHtml(brandText)}</span>
+        <div class="articulo-card">
+          <div class="articulo-card-header">
+            <span class="articulo-card-code">${escapeHtml(item.ItemCode || '')}</span>
+            <div class="articulo-card-badges">${badges.join('')}</div>
+          </div>
+          <div class="articulo-card-desc">${escapeHtml(item.ItemName || '')}</div>
+          <div class="articulo-card-stock">
+            <div class="disp-label">Disponible</div>
+            <div class="${dispClass}">${numberFmtPy.format(disponible)}</div>
+            <div class="stock-detail">
+              <span>Stock: <strong>${numberFmtPy.format(stock)}</strong></span>
+              <span>Comprometido: <strong>${numberFmtPy.format(comprometido)}</strong></span>
+              <span>En Pedido: <strong>${numberFmtPy.format(enPedido)}</strong></span>
             </div>
-            <div class="mobile-card-desc">${escapeHtml(item.ItemName || '')}</div>
-            <div class="mobile-card-stock">
-              <div class="disp-label">Disponible</div>
-              <div class="${dispClass}">${numberFmtPy.format(disponible)}</div>
-              <div class="stock-detail">
-                Stock Total: <strong>${numberFmtPy.format(stock)}</strong>
-                &nbsp;·&nbsp;
-                Comprometido: <strong>${numberFmtPy.format(comprometido)}</strong>
-              </div>
-            </div>
-            <div class="mobile-card-actions">
-              <button type="button" class="btn btn-warning btn-sm fw-bold" data-cotizar-index="${idx}">
-                <i class="bi bi-plus-lg me-1"></i>Cotizar
-              </button>
-            </div>
-          </td>
-        </tr>`;
+          </div>
+          <div class="articulo-card-footer">
+            <button type="button" class="btn btn-warning btn-sm fw-bold" data-cotizar-index="${idx}">
+              <i class="bi bi-plus-lg me-1"></i>Cotizar
+            </button>
+          </div>
+        </div>`;
     }
 
     function render(list) {
-      const cols = COLUMNS.filter((c) => visibleColumns.has(c.key));
-      const colspan = Math.max(cols.length, 1);
-
       if (!list.length) {
-        body.innerHTML = `
-          <tr>
-            <td colspan="${colspan}" class="text-center py-4 text-muted">
-              No se encontraron artículos.
-            </td>
-          </tr>`;
+        grid.innerHTML = '';
+        emptyState.style.display = 'block';
+        emptyState.innerHTML = `
+          <i class="bi bi-search"></i>
+          No se encontraron artículos.`;
         return;
       }
 
-      if (isMobileView()) {
-        body.innerHTML = list.map((a) => renderMobileCard(a)).join('');
-        body.querySelectorAll('button[data-cotizar-index]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const idx = parseInt(btn.getAttribute('data-cotizar-index'), 10);
-            agregarAlPresupuesto(list[idx]);
-            btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Agregado';
-            btn.classList.remove('btn-warning');
-            btn.classList.add('btn-success');
-            setTimeout(() => {
-              btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Cotizar';
-              btn.classList.remove('btn-success');
-              btn.classList.add('btn-warning');
-            }, 1200);
-          });
-        });
-        return;
-      }
+      emptyState.style.display = 'none';
+      grid.innerHTML = list.map((a) => renderArticuloCard(a)).join('');
 
-      body.innerHTML = list
-        .map((a) => {
-          const cells = cols
-            .map((c) => {
-              const content = renderCell(c, a);
-              const isCode = c.key === 'ItemCode';
-              return `<td class="${c.align}">${
-                isCode ? `<strong>${content}</strong>` : content
-              }</td>`;
-            })
-            .join('');
-          return `<tr>${cells}</tr>`;
-        })
-        .join('');
-
-      body.querySelectorAll('button[data-index]').forEach((btn) => {
+      grid.querySelectorAll('button[data-cotizar-index]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-index'), 10);
-          openWarehouses(list[idx]);
-        });
-      });
-
-      body.querySelectorAll('button[data-price-index]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-price-index'), 10);
-          openPrices(list[idx]);
-        });
-      });
-
-      body.querySelectorAll('button[data-series-index]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-series-index'), 10);
-          openSeries(list[idx]);
+          const idx = parseInt(btn.getAttribute('data-cotizar-index'), 10);
+          agregarAlPresupuesto(list[idx]);
+          btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Agregado';
+          btn.classList.remove('btn-warning');
+          btn.classList.add('btn-success');
+          setTimeout(() => {
+            btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Cotizar';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-warning');
+          }, 1200);
         });
       });
     }
@@ -1316,15 +1380,11 @@
     }
 
     function renderEmptyState() {
-      const cols = COLUMNS.filter((c) => visibleColumns.has(c.key));
-      const colspan = Math.max(cols.length, 1);
-      body.innerHTML = `
-        <tr>
-          <td colspan="${colspan}" class="text-center py-5 text-muted">
-            <i class="bi bi-search fs-3 d-block mb-2 opacity-50"></i>
-            Utilice la barra de búsqueda, los filtros de columna o la consulta IA para explorar artículos
-          </td>
-        </tr>`;
+      grid.innerHTML = '';
+      emptyState.style.display = 'block';
+      emptyState.innerHTML = `
+        <i class="bi bi-search"></i>
+        Utilice la barra de búsqueda, los filtros o la consulta IA para explorar artículos`;
     }
 
     function mapIaRowsToArticulos(rows) {
@@ -1353,13 +1413,12 @@
 
     async function cargarPaginaIa() {
       if (!currentIaFilter) return;
-      body.innerHTML = `
-        <tr>
-          <td colspan="5" class="text-center py-4">
-            <div class="spinner-border text-primary" role="status"></div>
-            <div class="mt-2 text-muted">Cargando artículos...</div>
-          </td>
-        </tr>`;
+      emptyState.style.display = 'none';
+      grid.innerHTML = `
+        <div class="text-center py-4" style="grid-column: 1 / -1;">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="mt-2 text-muted">Cargando artículos...</div>
+        </div>`;
       try {
         const res = await apiFetch('/api/articulos/ia-pagina', {
           method: 'POST',
@@ -1404,7 +1463,12 @@
       const term = searchInput.value.trim();
       if (term) params.set('search', term);
 
-      // Filtros por columna
+      if (filterGrupo.value) params.set('rubro', filterGrupo.value);
+      if (filterMarca.value) params.set('marca', filterMarca.value);
+      if (filterFabricante.value) params.set('fabricante', filterFabricante.value);
+      if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
+
+      // Filtros por columna (compatibilidad)
       for (const [colKey, spec] of Object.entries(columnFilters)) {
         for (const [field, value] of Object.entries(spec)) {
           if (value === undefined || value === null || value === '') continue;
@@ -1435,6 +1499,38 @@
         if (!res.ok) return;
         const data = await res.json();
 
+        const rubros = Array.isArray(data.rubros) ? data.rubros : [];
+        const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
+        const marcas = Array.isArray(data.marcas) ? data.marcas : [];
+
+        filterGrupo.innerHTML =
+          '<option value="">Todos</option>' +
+          rubros
+            .map(
+              (r) =>
+                `<option value="${escapeHtml(String(r.code))}">${escapeHtml(r.name)}</option>`
+            )
+            .join('');
+
+        filterFabricante.innerHTML =
+          '<option value="">Todos</option>' +
+          fabricantes
+            .map(
+              (f) =>
+                `<option value="${escapeHtml(String(f.code))}">${escapeHtml(f.name)}</option>`
+            )
+            .join('');
+
+        filterMarca.innerHTML =
+          '<option value="">Todas</option>' +
+          marcas
+            .map((m) => {
+              const code = typeof m === 'string' ? m : m && m.code;
+              const name = typeof m === 'string' ? m : (m && m.name) || code;
+              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
+            })
+            .join('');
+
         // Listas de precios
         const priceLists = Array.isArray(data.priceLists) ? data.priceLists : [];
         allPriceLists = priceLists;
@@ -1447,13 +1543,12 @@
     async function cargarArticulos() {
       alertBox.innerHTML = '';
       showPagingFooter();
-      body.innerHTML = `
-        <tr>
-          <td colspan="5" class="text-center py-4">
-            <div class="spinner-border text-primary" role="status"></div>
-            <div class="mt-2 text-muted">Cargando artículos...</div>
-          </td>
-        </tr>`;
+      emptyState.style.display = 'none';
+      grid.innerHTML = `
+        <div class="text-center py-4" style="grid-column: 1 / -1;">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="mt-2 text-muted">Cargando artículos...</div>
+        </div>`;
 
       try {
         const res = await apiFetch(`/api/articulos?${buildQuery()}`);
@@ -1478,7 +1573,7 @@
         updateClearFiltersVisibility();
       } catch (err) {
         if (err && err.message === 'Sesión expirada') return;
-        body.innerHTML = '';
+        grid.innerHTML = '';
         alertBox.innerHTML = `
           <div class="alert alert-danger m-3 mb-0">
             <i class="bi bi-exclamation-triangle-fill me-2"></i>
@@ -1545,8 +1640,33 @@
       cargarArticulos();
     });
 
+    filterGrupo.addEventListener('change', () => {
+      paging.page = 1;
+      currentIaFilter = null;
+      cargarArticulos();
+    });
+    filterMarca.addEventListener('change', () => {
+      paging.page = 1;
+      currentIaFilter = null;
+      cargarArticulos();
+    });
+    filterFabricante.addEventListener('change', () => {
+      paging.page = 1;
+      currentIaFilter = null;
+      cargarArticulos();
+    });
+    filterStockEstado.addEventListener('change', () => {
+      paging.page = 1;
+      currentIaFilter = null;
+      cargarArticulos();
+    });
+
     btnClearFilters.addEventListener('click', () => {
       searchInput.value = '';
+      filterGrupo.value = '';
+      filterMarca.value = '';
+      filterFabricante.value = '';
+      filterStockEstado.value = '';
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
       if (activePopover) {
         activePopover.dispose();
@@ -1555,7 +1675,8 @@
       currentIaFilter = null;
       renderHead();
       paging.page = 1;
-      cargarArticulos();
+      renderEmptyState();
+      if (pagingFooter) pagingFooter.classList.add('d-none');
     });
 
 
