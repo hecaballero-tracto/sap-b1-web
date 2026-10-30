@@ -605,6 +605,7 @@
           <div class="mb-3">
             <label class="form-label small text-muted mb-1">Vendedor</label>
             <input type="text" class="form-control form-control-sm" id="cotVendedor" readonly />
+            <select id="selectVendedorCotizacion" class="form-select form-select-sm mt-2 d-none"></select>
           </div>
 
           <div class="mb-3 position-relative">
@@ -2626,6 +2627,8 @@
     const modalCotizacionEl = document.getElementById('modalCotizacion');
     const modalCotizacion = modalCotizacionEl ? new bootstrap.Modal(modalCotizacionEl) : null;
     const cotVendedor = document.getElementById('cotVendedor');
+    const selectVendedorCotizacion = document.getElementById('selectVendedorCotizacion');
+    let vendedoresCache = null;
     const cotClienteSearch = document.getElementById('cotClienteSearch');
     const cotClienteResults = document.getElementById('cotClienteResults');
     const cotClienteSelected = document.getElementById('cotClienteSelected');
@@ -2768,8 +2771,22 @@
       });
     }
 
-    function abrirModalCotizacion() {
+    async function cargarVendedoresCot() {
+      if (vendedoresCache) return vendedoresCache;
+      try {
+        const res = await apiFetch('/api/vendedores');
+        if (!res.ok) return [];
+        const data = await res.json();
+        vendedoresCache = Array.isArray(data.data) ? data.data : [];
+        return vendedoresCache;
+      } catch (_) {
+        return [];
+      }
+    }
+
+    async function abrirModalCotizacion() {
       if (!modalCotizacion) return;
+      const manual = currentUser && currentUser.slpAsignadoManual === true;
       if (currentUser) {
         const slp = currentUser.slpCode ? ` [${currentUser.slpCode}]` : '';
         cotVendedor.value = currentUser.slpName
@@ -2778,6 +2795,31 @@
       } else {
         cotVendedor.value = '';
       }
+
+      if (manual && selectVendedorCotizacion) {
+        // Mostrar select para elegir vendedor manualmente
+        cotVendedor.classList.add('d-none');
+        selectVendedorCotizacion.classList.remove('d-none');
+        selectVendedorCotizacion.innerHTML = '<option value="">Cargando vendedores...</option>';
+        const lista = await cargarVendedoresCot();
+        if (!lista.length) {
+          selectVendedorCotizacion.innerHTML = '<option value="">Sin vendedores disponibles</option>';
+        } else {
+          const currentCode = currentUser && currentUser.slpCode ? Number(currentUser.slpCode) : null;
+          selectVendedorCotizacion.innerHTML =
+            '<option value="">Seleccione un vendedor...</option>' +
+            lista
+              .map((v) => {
+                const sel = currentCode !== null && Number(v.slpCode) === currentCode ? 'selected' : '';
+                return `<option value="${v.slpCode}" ${sel}>${escapeHtml(v.slpName)} [${v.slpCode}]</option>`;
+              })
+              .join('');
+        }
+      } else if (selectVendedorCotizacion) {
+        cotVendedor.classList.remove('d-none');
+        selectVendedorCotizacion.classList.add('d-none');
+      }
+
       renderCotItems();
       renderCotClienteSelected();
       modalCotizacion.show();
@@ -2807,6 +2849,21 @@
           unitPrice: Number(it.precio) > 0 ? Number(it.precio) : undefined,
         }));
 
+        // Vendedor: si el select está visible, usar el valor elegido
+        let salesPersonCode = undefined;
+        if (
+          selectVendedorCotizacion &&
+          !selectVendedorCotizacion.classList.contains('d-none')
+        ) {
+          const v = selectVendedorCotizacion.value;
+          if (!v) {
+            alert('Debe seleccionar un vendedor.');
+            return;
+          }
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n)) salesPersonCode = n;
+        }
+
         const originalHtml = btnGenerarOferta.innerHTML;
         btnGenerarOferta.disabled = true;
         btnGenerarOferta.innerHTML =
@@ -2821,6 +2878,7 @@
               cardCode: cotCliente.CardCode,
               comments: cotComments ? cotComments.value.trim() : '',
               lines,
+              salesPersonCode,
             }),
           });
           const data = await res.json().catch(() => ({}));

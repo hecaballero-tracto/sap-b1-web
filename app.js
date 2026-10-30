@@ -80,10 +80,24 @@ function extractGroupNames(memberOf) {
   return names;
 }
 
-// Resuelve los datos del vendedor (OSLP/OHEM) a partir del email o usuario AD
+// Vendedor por defecto cuando no hay coincidencia por email/usuario
+function getDefaultVendedor() {
+  const rawCode = process.env.DEFAULT_SLP_CODE;
+  const parsed = parseInt(rawCode, 10);
+  const slpCode = Number.isFinite(parsed) ? parsed : -1;
+  return {
+    slpCode,
+    slpName: 'Ventas Casa Central / General',
+    empId: null,
+    slpAsignadoManual: true,
+  };
+}
+
+// Resuelve los datos del vendedor (OSLP/OHEM) a partir del email o usuario AD.
+// Si no hay coincidencia, devuelve un vendedor por defecto (slpAsignadoManual = true).
 async function obtenerDatosVendedor(emailOUser) {
   const raw = String(emailOUser || '').trim();
-  if (!raw) return null;
+  if (!raw) return getDefaultVendedor();
   // Prefijo del usuario (antes de @) para el LIKE
   const prefix = raw.includes('@') ? raw.split('@')[0] : raw;
   const sql = `SELECT T0."SlpCode" AS "slpCode", T0."SlpName" AS "slpName", T1."empID" AS "empId"
@@ -94,16 +108,17 @@ async function obtenerDatosVendedor(emailOUser) {
     LIMIT 1`;
   try {
     const rows = await hanaExec(sql, [raw, raw, prefix, prefix]);
-    if (!rows || !rows.length) return null;
+    if (!rows || !rows.length) return getDefaultVendedor();
     const r = rows[0];
     return {
       slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
       slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
       empId: r.empId !== undefined && r.empId !== null ? Number(r.empId) : null,
+      slpAsignadoManual: false,
     };
   } catch (err) {
     console.warn('No se pudo resolver el vendedor en HANA:', err.message);
-    return null;
+    return getDefaultVendedor();
   }
 }
 
@@ -976,6 +991,7 @@ app.post('/api/login', async (req, res) => {
       slpCode: vendedor ? vendedor.slpCode : null,
       slpName: vendedor ? vendedor.slpName : '',
       empId: vendedor ? vendedor.empId : null,
+      slpAsignadoManual: vendedor ? vendedor.slpAsignadoManual === true : true,
       loginAt: new Date().toISOString(),
     };
 
@@ -2054,24 +2070,48 @@ app.post('/api/articulos/ia-pagina', requireAuth, requireIA, async (req, res) =>
   }
 });
 
+app.get('/api/vendedores', requireAuth, async (req, res) => {
+  const sql = `SELECT "SlpCode" AS "slpCode", "SlpName" AS "slpName" FROM "TRACTOAGRO".OSLP WHERE "Active" = 'Y' ORDER BY "SlpName" ASC`;
+  try {
+    const rows = await hanaExec(sql);
+    const data = (rows || [])
+      .map((r) => ({
+        slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
+        slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
+      }))
+      .filter((v) => v.slpCode !== null);
+    return res.json({ data });
+  } catch (err) {
+    console.error('Error en /api/vendedores:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar vendedores en HANA' } });
+  }
+});
+
 app.post('/api/cotizaciones', requireAuth, async (req, res) => {
   const user = req.session && req.session.user;
   if (!user) {
     return res.status(401).json({ error: { message: 'No autenticado' } });
-  }
-  if (!user.slpCode) {
-    return res.status(403).json({
-      error: {
-        message:
-          'El usuario no tiene un vendedor asignado en SAP B1. Contacte al administrador.',
-      },
-    });
   }
 
   const body = req.body || {};
   const cardCode = String(body.cardCode || '').trim();
   const comments = String(body.comments || '').trim();
   const lines = Array.isArray(body.lines) ? body.lines : [];
+
+  // Prioridad: SalesPersonCode enviado en el body > slpCode de sesión > default
+  let salesPersonCode = null;
+  if (body.salesPersonCode !== undefined && body.salesPersonCode !== null && body.salesPersonCode !== '') {
+    const n = parseInt(body.salesPersonCode, 10);
+    if (Number.isFinite(n)) salesPersonCode = n;
+  }
+  if (salesPersonCode === null && user.slpCode !== undefined && user.slpCode !== null) {
+    salesPersonCode = Number(user.slpCode);
+  }
+  if (salesPersonCode === null) {
+    salesPersonCode = getDefaultVendedor().slpCode;
+  }
 
   if (!cardCode) {
     return res
@@ -2109,7 +2149,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
 
   const payload = {
     CardCode: cardCode,
-    SalesPersonCode: Number(user.slpCode),
+    SalesPersonCode: Number(salesPersonCode),
     DocumentLines: documentLines,
   };
   if (user.empId !== null && user.empId !== undefined) {
