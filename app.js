@@ -80,6 +80,33 @@ function extractGroupNames(memberOf) {
   return names;
 }
 
+// Resuelve los datos del vendedor (OSLP/OHEM) a partir del email o usuario AD
+async function obtenerDatosVendedor(emailOUser) {
+  const raw = String(emailOUser || '').trim();
+  if (!raw) return null;
+  // Prefijo del usuario (antes de @) para el LIKE
+  const prefix = raw.includes('@') ? raw.split('@')[0] : raw;
+  const sql = `SELECT T0."SlpCode" AS "slpCode", T0."SlpName" AS "slpName", T1."empID" AS "empId"
+    FROM "TRACTOAGRO".OSLP T0
+    LEFT JOIN "TRACTOAGRO".OHEM T1 ON T0."SlpCode" = T1."salesPrson"
+    WHERE (LOWER(T1."email") = LOWER(?) OR LOWER(T0."Email") = LOWER(?) OR LOWER(T1."email") LIKE LOWER(? || '@%') OR LOWER(T0."Email") LIKE LOWER(? || '@%'))
+      AND T0."Active" = 'Y'
+    LIMIT 1`;
+  try {
+    const rows = await hanaExec(sql, [raw, raw, prefix, prefix]);
+    if (!rows || !rows.length) return null;
+    const r = rows[0];
+    return {
+      slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
+      slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
+      empId: r.empId !== undefined && r.empId !== null ? Number(r.empId) : null,
+    };
+  } catch (err) {
+    console.warn('No se pudo resolver el vendedor en HANA:', err.message);
+    return null;
+  }
+}
+
 function canUseIAFromGroups(groups, rawMemberOf) {
   if (Array.isArray(groups)) {
     const lower = groups.map((g) => String(g).toLowerCase());
@@ -933,6 +960,11 @@ app.post('/api/login', async (req, res) => {
       canUseIA = true;
     }
 
+    // Resolver vendedor SAP (OSLP/OHEM) por email o usuario AD
+    const emailForVendor =
+      (adUser && (adUser.mail || adUser.userPrincipalName)) || authUser;
+    const vendedor = await obtenerDatosVendedor(emailForVendor);
+
     req.session.user = {
       username: authUser,
       displayName:
@@ -941,6 +973,9 @@ app.post('/api/login', async (req, res) => {
       groups,
       canConfigurePriceLists,
       canUseIA,
+      slpCode: vendedor ? vendedor.slpCode : null,
+      slpName: vendedor ? vendedor.slpName : '',
+      empId: vendedor ? vendedor.empId : null,
       loginAt: new Date().toISOString(),
     };
 
@@ -2018,6 +2053,123 @@ app.post('/api/articulos/ia-pagina', requireAuth, requireIA, async (req, res) =>
       .json({ error: { message: 'Error al paginar resultados de IA en HANA' } });
   }
 });
+
+app.post('/api/cotizaciones', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user) {
+    return res.status(401).json({ error: { message: 'No autenticado' } });
+  }
+  if (!user.slpCode) {
+    return res.status(403).json({
+      error: {
+        message:
+          'El usuario no tiene un vendedor asignado en SAP B1. Contacte al administrador.',
+      },
+    });
+  }
+
+  const body = req.body || {};
+  const cardCode = String(body.cardCode || '').trim();
+  const comments = String(body.comments || '').trim();
+  const lines = Array.isArray(body.lines) ? body.lines : [];
+
+  if (!cardCode) {
+    return res
+      .status(400)
+      .json({ error: { message: 'Debe seleccionar un cliente (CardCode)' } });
+  }
+  if (!lines.length) {
+    return res
+      .status(400)
+      .json({ error: { message: 'Debe agregar al menos un ítem a la cotización' } });
+  }
+
+  const documentLines = [];
+  for (const l of lines) {
+    const itemCode = String(l.itemCode || '').trim();
+    const quantity = Number(l.quantity);
+    if (!itemCode) {
+      return res
+        .status(400)
+        .json({ error: { message: 'Cada línea debe tener ItemCode' } });
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return res.status(400).json({
+        error: { message: `Cantidad inválida para el ítem ${itemCode}` },
+      });
+    }
+    const line = { ItemCode: itemCode, Quantity: quantity };
+    if (l.warehouseCode) line.WarehouseCode = String(l.warehouseCode);
+    const unitPrice = Number(l.unitPrice);
+    if (Number.isFinite(unitPrice) && unitPrice >= 0) {
+      line.UnitPrice = unitPrice;
+    }
+    documentLines.push(line);
+  }
+
+  const payload = {
+    CardCode: cardCode,
+    SalesPersonCode: Number(user.slpCode),
+    DocumentLines: documentLines,
+  };
+  if (user.empId !== null && user.empId !== undefined) {
+    payload.DocumentsOwner = Number(user.empId);
+  }
+  if (comments) payload.Comments = comments;
+
+  try {
+    await ensureSession();
+
+    const response = await sapClient.post('/b1s/v1/Quotations', payload, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    const doc = response.data || {};
+    return res.json({
+      ok: true,
+      docEntry: doc.DocEntry,
+      docNum: doc.DocNum,
+      cardCode: doc.CardCode,
+      salesPersonCode: doc.SalesPersonCode,
+    });
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const retry = await sapClient.post('/b1s/v1/Quotations', payload, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        const doc = retry.data || {};
+        return res.json({
+          ok: true,
+          docEntry: doc.DocEntry,
+          docNum: doc.DocNum,
+          cardCode: doc.CardCode,
+          salesPersonCode: doc.SalesPersonCode,
+        });
+      } catch (retryError) {
+        return handleCotizacionError(res, retryError);
+      }
+    }
+    return handleCotizacionError(res, error);
+  }
+});
+
+function handleCotizacionError(res, error) {
+  const status = error.response ? error.response.status : 500;
+  const data = error.response ? error.response.data : { message: error.message };
+  console.error('Error creando cotización en SAP B1:', status, data);
+  let message = 'No se pudo crear la oferta de ventas en SAP B1';
+  if (data && data.error && data.error.message && data.error.message.value) {
+    message = data.error.message.value;
+  } else if (data && data.message) {
+    message = data.message;
+  }
+  return res.status(status >= 400 && status < 600 ? status : 500).json({
+    error: { message },
+  });
+}
 
 app.get('/api/articulos/:codigo/detalle', requireAuth, async (req, res) => {
   const codigo = String(req.params.codigo || '').trim();

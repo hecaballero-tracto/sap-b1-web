@@ -584,11 +584,79 @@
     </div>
   </div>
 
-  <!-- Barra flotante de presupuesto (móvil) -->
+  <!-- Barra flotante de cotización -->
   <div id="presupuestoBar">
     <button type="button" id="btnVerPresupuesto" class="btn btn-warning w-100 fw-bold">
-      <i class="bi bi-cart3 me-1"></i>Ver Presupuesto (<span id="presupuestoCount">0</span> ítems)
+      <i class="bi bi-cart3 me-1"></i>Cotización (<span id="presupuestoCount">0</span> ítems)
     </button>
+  </div>
+
+  <!-- Modal de cotización -->
+  <div class="modal fade" id="modalCotizacion" tabindex="-1" aria-labelledby="modalCotizacionLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalCotizacionLabel">
+            <i class="bi bi-file-earmark-text me-2"></i>Oferta de Ventas
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Vendedor</label>
+            <input type="text" class="form-control form-control-sm" id="cotVendedor" readonly />
+          </div>
+
+          <div class="mb-3 position-relative">
+            <label class="form-label small text-muted mb-1">Cliente</label>
+            <input type="text" class="form-control form-control-sm" id="cotClienteSearch" placeholder="Buscar por RUC o razón social..." autocomplete="off" />
+            <div id="cotClienteResults" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1080; max-height: 240px; overflow-y: auto;"></div>
+            <div id="cotClienteSelected" class="mt-2 small text-muted"></div>
+          </div>
+
+          <div class="mb-2 d-flex justify-content-between align-items-center">
+            <strong class="small">Ítems</strong>
+            <span class="small text-muted" id="cotItemsCount">0 ítems</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th style="width: 90px;">Cant.</th>
+                  <th style="width: 120px;">Precio</th>
+                  <th style="width: 130px;">Almacén</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="cotItemsBody"></tbody>
+            </table>
+          </div>
+
+          <div class="mt-3">
+            <label class="form-label small text-muted mb-1">Comentarios</label>
+            <textarea class="form-control form-control-sm" id="cotComments" rows="2" placeholder="Observaciones para la oferta..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnGenerarOferta">
+            <i class="bi bi-check2-circle me-1"></i>Generar Oferta de Ventas
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast de éxito -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+    <div id="cotToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="cotToastBody"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal de precios -->
@@ -724,8 +792,10 @@
     let articulos = [];
     let paging = { page: 1, limit: 20, total: 0, totalPages: 0 };
 
-    // Presupuesto móvil: array global de ítems
-    window.presupuestoItems = [];
+    // Cotización actual: array global de ítems
+    window.cotizacionActual = [];
+    // Alias de compatibilidad
+    window.presupuestoItems = window.cotizacionActual;
 
     function isMobileView() {
       return window.matchMedia('(max-width: 768px)').matches;
@@ -746,13 +816,19 @@
 
     function agregarAlPresupuesto(item) {
       if (!item) return;
-      const existing = window.presupuestoItems.find(
+      const existing = window.cotizacionActual.find(
         (p) => p.ItemCode === item.ItemCode
       );
       if (existing) {
         existing.cantidad += 1;
       } else {
-        window.presupuestoItems.push({
+        // Almacén sugerido: el primero con disponible > 0
+        let whSugerido = '';
+        if (Array.isArray(item.Warehouses) && item.Warehouses.length) {
+          const conStock = item.Warehouses.find((w) => Number(w.Available) > 0);
+          whSugerido = (conStock || item.Warehouses[0]).WarehouseCode || '';
+        }
+        window.cotizacionActual.push({
           ItemCode: item.ItemCode,
           ItemName: item.ItemName,
           U_Marca: item.U_Marca || '',
@@ -761,6 +837,8 @@
           QuantityOnStock: Number(item.QuantityOnStock) || 0,
           IsCommited: Number(item.IsCommited) || 0,
           cantidad: 1,
+          precio: 0,
+          almacen: whSugerido,
         });
       }
       updatePresupuestoBar();
@@ -2542,18 +2620,236 @@
       btnCloseIaResponse.addEventListener('click', hideIaResponse);
     }
 
-    const btnVerPresupuesto = document.getElementById('btnVerPresupuesto');
+    // ---------------------------------------------------------------------
+    // Cotización / Oferta de Ventas
+    // ---------------------------------------------------------------------
+    const modalCotizacionEl = document.getElementById('modalCotizacion');
+    const modalCotizacion = modalCotizacionEl ? new bootstrap.Modal(modalCotizacionEl) : null;
+    const cotVendedor = document.getElementById('cotVendedor');
+    const cotClienteSearch = document.getElementById('cotClienteSearch');
+    const cotClienteResults = document.getElementById('cotClienteResults');
+    const cotClienteSelected = document.getElementById('cotClienteSelected');
+    const cotItemsBody = document.getElementById('cotItemsBody');
+    const cotItemsCount = document.getElementById('cotItemsCount');
+    const cotComments = document.getElementById('cotComments');
+    const btnGenerarOferta = document.getElementById('btnGenerarOferta');
+    const cotToastEl = document.getElementById('cotToast');
+    const cotToastBody = document.getElementById('cotToastBody');
+    const cotToast = cotToastEl ? new bootstrap.Toast(cotToastEl, { delay: 5000 }) : null;
+
+    let cotCliente = null; // { CardCode, CardName }
+    let cotSearchTimer = null;
+
+    function renderCotItems() {
+      if (!cotItemsBody) return;
+      const items = window.cotizacionActual;
+      cotItemsCount.textContent = `${items.length} ítem${items.length === 1 ? '' : 's'}`;
+      if (!items.length) {
+        cotItemsBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3">Sin ítems. Agregue artículos desde el catálogo.</td></tr>`;
+        return;
+      }
+      cotItemsBody.innerHTML = items
+        .map((it, idx) => `
+          <tr>
+            <td><strong>${escapeHtml(it.ItemCode)}</strong></td>
+            <td>${escapeHtml(it.ItemName || '')}</td>
+            <td>
+              <input type="number" min="1" step="1" class="form-control form-control-sm" data-cot-qty="${idx}" value="${it.cantidad}" />
+            </td>
+            <td>
+              <input type="number" min="0" step="any" class="form-control form-control-sm" data-cot-price="${idx}" value="${it.precio || 0}" />
+            </td>
+            <td>
+              <input type="text" class="form-control form-control-sm" data-cot-wh="${idx}" value="${escapeHtml(it.almacen || '')}" placeholder="Almacén" />
+            </td>
+            <td class="text-center">
+              <button type="button" class="btn btn-outline-danger btn-sm" data-cot-del="${idx}" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>`)
+        .join('');
+
+      cotItemsBody.querySelectorAll('input[data-cot-qty]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const i = parseInt(inp.getAttribute('data-cot-qty'), 10);
+          const v = parseInt(inp.value, 10);
+          if (Number.isFinite(v) && v > 0) window.cotizacionActual[i].cantidad = v;
+          else inp.value = window.cotizacionActual[i].cantidad;
+        });
+      });
+      cotItemsBody.querySelectorAll('input[data-cot-price]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const i = parseInt(inp.getAttribute('data-cot-price'), 10);
+          const v = Number(inp.value);
+          window.cotizacionActual[i].precio = Number.isFinite(v) && v >= 0 ? v : 0;
+        });
+      });
+      cotItemsBody.querySelectorAll('input[data-cot-wh]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const i = parseInt(inp.getAttribute('data-cot-wh'), 10);
+          window.cotizacionActual[i].almacen = inp.value.trim();
+        });
+      });
+      cotItemsBody.querySelectorAll('button[data-cot-del]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const i = parseInt(btn.getAttribute('data-cot-del'), 10);
+          window.cotizacionActual.splice(i, 1);
+          renderCotItems();
+          updatePresupuestoBar();
+        });
+      });
+    }
+
+    function renderCotClienteSelected() {
+      if (!cotClienteSelected) return;
+      if (!cotCliente) {
+        cotClienteSelected.textContent = '';
+        return;
+      }
+      cotClienteSelected.innerHTML = `<i class="bi bi-check2-circle text-success me-1"></i><strong>${escapeHtml(cotCliente.CardCode)}</strong> — ${escapeHtml(cotCliente.CardName)}`;
+    }
+
+    async function buscarClientesCot(term) {
+      if (!cotClienteResults) return;
+      const q = String(term || '').trim();
+      if (q.length < 2) {
+        cotClienteResults.classList.add('d-none');
+        cotClienteResults.innerHTML = '';
+        return;
+      }
+      try {
+        const res = await apiFetch(`/api/clientes?search=${encodeURIComponent(q)}&limit=10&page=1`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = Array.isArray(data.data) ? data.data : [];
+        if (!list.length) {
+          cotClienteResults.innerHTML = `<div class="list-group-item small text-muted">Sin resultados</div>`;
+          cotClienteResults.classList.remove('d-none');
+          return;
+        }
+        cotClienteResults.innerHTML = list
+          .map((c) => `
+            <button type="button" class="list-group-item list-group-item-action" data-cot-card="${escapeHtml(c.CardCode)}" data-cot-name="${escapeHtml(c.CardName)}">
+              <div class="d-flex justify-content-between">
+                <span><strong>${escapeHtml(c.CardCode)}</strong> — ${escapeHtml(c.CardName)}</span>
+              </div>
+            </button>`)
+          .join('');
+        cotClienteResults.classList.remove('d-none');
+        cotClienteResults.querySelectorAll('button[data-cot-card]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            cotCliente = {
+              CardCode: btn.getAttribute('data-cot-card'),
+              CardName: btn.getAttribute('data-cot-name'),
+            };
+            cotClienteSearch.value = `${cotCliente.CardCode} — ${cotCliente.CardName}`;
+            cotClienteResults.classList.add('d-none');
+            renderCotClienteSelected();
+          });
+        });
+      } catch (_) {
+        /* silencioso */
+      }
+    }
+
+    if (cotClienteSearch) {
+      cotClienteSearch.addEventListener('input', () => {
+        cotCliente = null;
+        renderCotClienteSelected();
+        clearTimeout(cotSearchTimer);
+        const term = cotClienteSearch.value;
+        cotSearchTimer = setTimeout(() => buscarClientesCot(term), 300);
+      });
+      cotClienteSearch.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (cotClienteResults) cotClienteResults.classList.add('d-none');
+        }, 200);
+      });
+    }
+
+    function abrirModalCotizacion() {
+      if (!modalCotizacion) return;
+      if (currentUser) {
+        const slp = currentUser.slpCode ? ` [${currentUser.slpCode}]` : '';
+        cotVendedor.value = currentUser.slpName
+          ? `${currentUser.slpName}${slp}`
+          : 'Sin vendedor asignado en SAP';
+      } else {
+        cotVendedor.value = '';
+      }
+      renderCotItems();
+      renderCotClienteSelected();
+      modalCotizacion.show();
+    }
+
     if (btnVerPresupuesto) {
       btnVerPresupuesto.addEventListener('click', () => {
-        const n = window.presupuestoItems.length;
-        if (!n) return;
-        const resumen = window.presupuestoItems
-          .map(
-            (p) =>
-              `• ${p.ItemCode} — ${p.ItemName} (x${p.cantidad})`
-          )
-          .join('\n');
-        alert(`Presupuesto (${n} ítems):\n\n${resumen}`);
+        if (!window.cotizacionActual.length) return;
+        abrirModalCotizacion();
+      });
+    }
+
+    if (btnGenerarOferta) {
+      btnGenerarOferta.addEventListener('click', async () => {
+        if (!cotCliente) {
+          alert('Debe seleccionar un cliente.');
+          return;
+        }
+        if (!window.cotizacionActual.length) {
+          alert('Debe agregar al menos un ítem.');
+          return;
+        }
+        const lines = window.cotizacionActual.map((it) => ({
+          itemCode: it.ItemCode,
+          quantity: Number(it.cantidad) || 1,
+          warehouseCode: it.almacen || undefined,
+          unitPrice: Number(it.precio) > 0 ? Number(it.precio) : undefined,
+        }));
+
+        const originalHtml = btnGenerarOferta.innerHTML;
+        btnGenerarOferta.disabled = true;
+        btnGenerarOferta.innerHTML =
+          '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generando...';
+
+        try {
+          const res = await apiFetch('/api/cotizaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              cardCode: cotCliente.CardCode,
+              comments: cotComments ? cotComments.value.trim() : '',
+              lines,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg =
+              (data && data.error && data.error.message) ||
+              'No se pudo generar la oferta de ventas';
+            alert(msg);
+            return;
+          }
+          if (cotToast && cotToastBody) {
+            cotToastBody.innerHTML = `Oferta de ventas generada: <strong>DocNum ${escapeHtml(String(data.docNum))}</strong>`;
+            cotToast.show();
+          }
+          window.cotizacionActual.length = 0;
+          cotCliente = null;
+          if (cotClienteSearch) cotClienteSearch.value = '';
+          if (cotComments) cotComments.value = '';
+          renderCotClienteSelected();
+          renderCotItems();
+          updatePresupuestoBar();
+          if (modalCotizacion) modalCotizacion.hide();
+        } catch (err) {
+          if (err && err.message === 'Sesión expirada') return;
+          alert('Error de conexión al generar la oferta de ventas');
+        } finally {
+          btnGenerarOferta.disabled = false;
+          btnGenerarOferta.innerHTML = originalHtml;
+        }
       });
     }
 
