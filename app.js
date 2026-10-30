@@ -349,6 +349,7 @@ let manufacturersCache = null;
 let manufacturersCachePromise = null;
 
 // Caché en memoria de marcas activas (tabla de usuario @MARCAS): Array<string>
+// NOTA: ya no se usa en /api/articulos/catalogos (ahora consulta HANA directamente).
 let marcasCache = null;
 let marcasCachePromise = null;
 
@@ -1996,13 +1997,40 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
       }),
     ]);
 
-    // Marcas activas desde la tabla de usuario @MARCAS
+    // Marcas activas desde HANA (tabla de usuario @MARCAS), con fallback a V_PRODUCTOS
     let marcas = [];
     try {
-      const codes = await loadMarcas();
-      marcas = codes.map((code) => ({ code, name: code }));
+      const rows = await hanaExec(
+        `SELECT "Code" AS "code", "Name" AS "name" FROM "TRACTOAGRO"."@MARCAS" WHERE "U_Activo" = 'Si' ORDER BY "Name" ASC`
+      );
+      marcas = (rows || [])
+        .map((r) => ({
+          code: r.code !== undefined && r.code !== null ? String(r.code) : '',
+          name: r.name !== undefined && r.name !== null ? String(r.name) : '',
+        }))
+        .filter((m) => m.code !== '');
     } catch (err) {
-      console.warn('No se pudieron cargar las marcas:', err.message);
+      console.warn(
+        'No se pudo consultar @MARCAS en HANA, se usará fallback desde V_PRODUCTOS:',
+        err.message
+      );
+      try {
+        const rows = await hanaExec(
+          `SELECT DISTINCT "MARCA" AS "code", "MARCA" AS "name" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE "MARCA" IS NOT NULL AND "MARCA" != '' ORDER BY "MARCA" ASC`
+        );
+        marcas = (rows || [])
+          .map((r) => ({
+            code: r.code !== undefined && r.code !== null ? String(r.code) : '',
+            name: r.name !== undefined && r.name !== null ? String(r.name) : '',
+          }))
+          .filter((m) => m.code !== '');
+      } catch (fallbackErr) {
+        console.warn(
+          'No se pudieron cargar las marcas desde HANA:',
+          fallbackErr.message
+        );
+        marcas = [];
+      }
     }
 
     const rubros = Array.from(itemGroups.entries())
