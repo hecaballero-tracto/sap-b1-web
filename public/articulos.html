@@ -428,7 +428,7 @@
               placeholder="Buscar por código o descripción..."
             />
           </div>
-          <div class="d-flex align-items-center flex-wrap gap-2">
+          <div id="iaPromptWrapper" class="d-flex align-items-center flex-wrap gap-2 d-none">
             <div class="input-group" style="max-width: 520px;">
               <span class="input-group-text"><i class="bi bi-stars"></i></span>
               <input
@@ -452,19 +452,6 @@
           >
             <i class="bi bi-x-circle me-1"></i>Limpiar filtros
           </button>
-          <div class="dropdown">
-            <button
-              class="btn btn-outline-secondary btn-sm dropdown-toggle"
-              type="button"
-              id="columnsDropdown"
-              data-bs-toggle="dropdown"
-              data-bs-auto-close="outside"
-              aria-expanded="false"
-            >
-              <i class="bi bi-layout-three-columns me-1"></i>Columnas
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end p-2" id="columnsMenu" style="max-height: 320px; overflow-y: auto;"></ul>
-          </div>
           <button
             id="btnPriceConfig"
             class="btn btn-outline-secondary btn-sm d-none"
@@ -994,7 +981,6 @@
         clearMultiFilter(key);
       });
     });
-    const columnsMenu = document.getElementById('columnsMenu');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
     const searchInput = document.getElementById('searchInput');
@@ -1325,30 +1311,6 @@
       }, 50);
     }
 
-    function renderColumnsMenu() {
-      columnsMenu.innerHTML = COLUMNS.map(
-        (c) => `
-        <li>
-          <label class="dropdown-item d-flex align-items-center gap-2 mb-0">
-            <input type="checkbox" class="form-check-input mt-0" data-col="${c.key}" ${
-          visibleColumns.has(c.key) ? 'checked' : ''
-        } />
-            <span>${escapeHtml(c.label)}</span>
-          </label>
-        </li>`
-      ).join('');
-
-      columnsMenu.querySelectorAll('input[data-col]').forEach((chk) => {
-        chk.addEventListener('change', () => {
-          const key = chk.getAttribute('data-col');
-          if (chk.checked) visibleColumns.add(key);
-          else visibleColumns.delete(key);
-          saveVisibleColumns(visibleColumns);
-          renderHead();
-          render(articulos);
-        });
-      });
-    }
 
     function renderCell(col, item) {
       const value = item[col.key];
@@ -2618,6 +2580,15 @@
           } else {
             btnPriceConfig.classList.add('d-none');
           }
+          // Mostrar el módulo de IA solo si el usuario tiene permiso
+          const iaWrapper = document.getElementById('iaPromptWrapper');
+          if (iaWrapper) {
+            if (user.canUseIA === true) {
+              iaWrapper.classList.remove('d-none');
+            } else {
+              iaWrapper.classList.add('d-none');
+            }
+          }
         }
       } catch (_) {
         /* silencioso: si falla, no se muestra el nombre */
@@ -2652,7 +2623,6 @@
     }
 
     renderHead();
-    renderColumnsMenu();
     renderEmptyState();
     cargarUsuario();
     cargarConfigPrecios();

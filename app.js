@@ -59,6 +59,9 @@ if (!SESSION_SECRET) {
 // Grupos de AD con permiso para configurar listas de precios (en minúsculas)
 const PRICE_LIST_ADMIN_GROUPS = ['informatica', 'directorio', 'directorio_rw'];
 
+// Grupos de AD con permiso para usar el módulo de IA (en minúsculas)
+const IA_ALLOWED_GROUPS = ['informatica', 'directorio', 'directorio_rw'];
+
 function extractGroupNames(memberOf) {
   if (!memberOf) return [];
   const list = Array.isArray(memberOf) ? memberOf : [memberOf];
@@ -75,6 +78,26 @@ function extractGroupNames(memberOf) {
     }
   }
   return names;
+}
+
+function canUseIAFromGroups(groups, rawMemberOf) {
+  if (Array.isArray(groups)) {
+    const lower = groups.map((g) => String(g).toLowerCase());
+    if (IA_ALLOWED_GROUPS.some((g) => lower.includes(g))) {
+      return true;
+    }
+  }
+  if (rawMemberOf) {
+    const list = Array.isArray(rawMemberOf) ? rawMemberOf : [rawMemberOf];
+    for (const dn of list) {
+      if (!dn) continue;
+      const text = String(dn).toLowerCase();
+      if (IA_ALLOWED_GROUPS.some((g) => text.includes(`cn=${g}`))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function canConfigurePriceListsFromGroups(groups, rawMemberOf) {
@@ -805,6 +828,18 @@ function requireAuth(req, res, next) {
   return res.redirect(`/login.html?redirect=${redirect}`);
 }
 
+// Middleware de autorización para el módulo de IA
+function requireIA(req, res, next) {
+  const user = req.session && req.session.user;
+  if (!user) {
+    return res.status(401).json({ error: { message: 'No autenticado' } });
+  }
+  if (user.canUseIA === true) return next();
+  return res
+    .status(403)
+    .json({ error: { message: 'No tiene permisos para usar el módulo de IA' } });
+}
+
 // Endpoints de autenticación (públicos)
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body || {};
@@ -877,6 +912,27 @@ app.post('/api/login', async (req, res) => {
       canConfigurePriceLists
     );
 
+    // Permiso para usar el módulo de IA (mismos grupos que listas de precios)
+    let canUseIA = canUseIAFromGroups(groups, rawMemberOf);
+    if (
+      memberOfList.some((dn) => {
+        const text = String(dn || '').toLowerCase();
+        return (
+          text.includes('informatica') ||
+          text.includes('directorio_rw') ||
+          text.includes('directorio')
+        );
+      })
+    ) {
+      canUseIA = true;
+    }
+    if (
+      samAccountLower === 'hecaballero' ||
+      String(authUser || '').toLowerCase() === 'hecaballero@tracto.com.py'
+    ) {
+      canUseIA = true;
+    }
+
     req.session.user = {
       username: authUser,
       displayName:
@@ -884,6 +940,7 @@ app.post('/api/login', async (req, res) => {
       email: (adUser && (adUser.mail || adUser.userPrincipalName)) || null,
       groups,
       canConfigurePriceLists,
+      canUseIA,
       loginAt: new Date().toISOString(),
     };
 
@@ -1746,7 +1803,7 @@ function isSafeSelectSql(sql) {
   return true;
 }
 
-app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
+app.post('/api/articulos/ia-prompt', requireAuth, requireIA, async (req, res) => {
   const prompt = (req.body && req.body.prompt ? String(req.body.prompt) : '').trim();
   if (!prompt) {
     return res
@@ -1916,7 +1973,7 @@ app.post('/api/articulos/ia-prompt', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/articulos/ia-pagina', requireAuth, async (req, res) => {
+app.post('/api/articulos/ia-pagina', requireAuth, requireIA, async (req, res) => {
   const body = req.body || {};
   const whereClauseRaw = typeof body.whereClause === 'string' ? body.whereClause.trim() : '';
   const whereClause = whereClauseRaw.replace(/^WHERE\s+/i, '').trim();
