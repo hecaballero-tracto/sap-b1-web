@@ -2159,9 +2159,19 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     }
     const line = { ItemCode: itemCode, Quantity: quantity };
     if (l.warehouseCode) line.WarehouseCode = String(l.warehouseCode);
-    const unitPrice = Number(l.unitPrice);
-    if (Number.isFinite(unitPrice) && unitPrice >= 0) {
-      line.UnitPrice = unitPrice;
+    // UnitPrice: solo si viene con valor (si no, Service Layer aplica la lógica nativa)
+    if (l.unitPrice !== undefined && l.unitPrice !== null && l.unitPrice !== '') {
+      const unitPrice = Number(l.unitPrice);
+      if (Number.isFinite(unitPrice) && unitPrice >= 0) {
+        line.UnitPrice = unitPrice;
+      }
+    }
+    // DiscountPercent: solo si viene con valor
+    if (l.discountPercent !== undefined && l.discountPercent !== null && l.discountPercent !== '') {
+      const disc = Number(l.discountPercent);
+      if (Number.isFinite(disc) && disc >= 0 && disc <= 100) {
+        line.DiscountPercent = disc;
+      }
     }
     documentLines.push(line);
   }
@@ -2231,6 +2241,92 @@ function handleCotizacionError(res, error) {
     error: { message },
   });
 }
+
+app.get('/api/clientes/:cardCode/condiciones', requireAuth, async (req, res) => {
+  const cardCode = String(req.params.cardCode || '').trim();
+  if (!cardCode) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El código de cliente es obligatorio' } });
+  }
+
+  const safe = escapeODataString(cardCode);
+  const query = `/b1s/v1/BusinessPartners('${safe}')?$select=CardCode,CardName,ListNum,Discount,Currency`;
+
+  try {
+    await ensureSession();
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+    const bp = response.data || {};
+    return res.json({
+      CardCode: bp.CardCode || cardCode,
+      CardName: bp.CardName || '',
+      ListNum: bp.ListNum !== undefined && bp.ListNum !== null ? Number(bp.ListNum) : null,
+      Discount: bp.Discount !== undefined && bp.Discount !== null ? Number(bp.Discount) : 0,
+      Currency: bp.Currency || '',
+    });
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const retry = await sapClient.get(query, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        const bp = retry.data || {};
+        return res.json({
+          CardCode: bp.CardCode || cardCode,
+          CardName: bp.CardName || '',
+          ListNum: bp.ListNum !== undefined && bp.ListNum !== null ? Number(bp.ListNum) : null,
+          Discount: bp.Discount !== undefined && bp.Discount !== null ? Number(bp.Discount) : 0,
+          Currency: bp.Currency || '',
+        });
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+});
+
+app.get('/api/articulos/:itemCode/precio', requireAuth, async (req, res) => {
+  const itemCode = String(req.params.itemCode || '').trim();
+  const listNumRaw = req.query.listNum;
+  const listNum = parseInt(listNumRaw, 10);
+
+  if (!itemCode) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El código de artículo es obligatorio' } });
+  }
+  if (!Number.isFinite(listNum)) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El parámetro listNum es obligatorio y numérico' } });
+  }
+
+  const sql = `SELECT "Price", "Currency" FROM "TRACTOAGRO".ITM1 WHERE "ItemCode" = ? AND "PriceList" = ?`;
+
+  try {
+    const rows = await hanaExec(sql, [itemCode, listNum]);
+    if (!rows || !rows.length) {
+      return res.json({ ItemCode: itemCode, PriceList: listNum, Price: 0, Currency: '' });
+    }
+    const r = rows[0];
+    return res.json({
+      ItemCode: itemCode,
+      PriceList: listNum,
+      Price: r.Price !== undefined && r.Price !== null ? Number(r.Price) : 0,
+      Currency: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+    });
+  } catch (err) {
+    console.error('Error en /api/articulos/:itemCode/precio:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar precio en HANA' } });
+  }
+});
 
 app.get('/api/articulos/:codigo/detalle', requireAuth, async (req, res) => {
   const codigo = String(req.params.codigo || '').trim();

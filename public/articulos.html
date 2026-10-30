@@ -654,6 +654,7 @@
             <strong class="small">Ítems</strong>
             <span class="small text-muted" id="cotItemsCount">0 ítems</span>
           </div>
+          <div id="cotCondicionesInfo" class="small text-muted mb-2 d-none"></div>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
@@ -673,6 +674,17 @@
           <div class="mt-3">
             <label class="form-label small text-muted mb-1">Comentarios</label>
             <textarea class="form-control form-control-sm" id="cotComments" rows="2" placeholder="Observaciones para la oferta..."></textarea>
+          </div>
+
+          <div class="mt-3 d-flex justify-content-end gap-4">
+            <div class="text-end">
+              <div class="small text-muted">Subtotal</div>
+              <div class="fw-bold" id="cotSubtotal">0</div>
+            </div>
+            <div class="text-end">
+              <div class="small text-muted">Total</div>
+              <div class="fw-bold fs-5" id="cotTotal">0</div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -2716,6 +2728,9 @@
     const cotItemsBody = document.getElementById('cotItemsBody');
     const cotItemsCount = document.getElementById('cotItemsCount');
     const cotComments = document.getElementById('cotComments');
+    const cotCondicionesInfo = document.getElementById('cotCondicionesInfo');
+    const cotSubtotal = document.getElementById('cotSubtotal');
+    const cotTotal = document.getElementById('cotTotal');
     const btnGenerarOferta = document.getElementById('btnGenerarOferta');
     const cotToastEl = document.getElementById('cotToast');
     const cotToastBody = document.getElementById('cotToastBody');
@@ -2723,6 +2738,102 @@
 
     let cotCliente = null; // { CardCode, CardName }
     let cotSearchTimer = null;
+    // Condiciones del cliente: { ListNum, Discount, Currency }
+    let cotCondiciones = null;
+    // Caché de precios por itemCode+listNum
+    const cotPreciosCache = new Map();
+
+    async function fetchPrecioItem(itemCode, listNum) {
+      if (!itemCode || !Number.isFinite(Number(listNum))) return null;
+      const key = `${itemCode}|${listNum}`;
+      if (cotPreciosCache.has(key)) return cotPreciosCache.get(key);
+      try {
+        const res = await apiFetch(
+          `/api/articulos/${encodeURIComponent(itemCode)}/precio?listNum=${encodeURIComponent(listNum)}`
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        cotPreciosCache.set(key, data);
+        return data;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function recalcularTotalesCot() {
+      let subtotal = 0;
+      for (const it of window.cotizacionActual) {
+        const precio = Number(it.precio) || 0;
+        const cant = Number(it.cantidad) || 0;
+        subtotal += precio * cant;
+      }
+      const desc = cotCondiciones && Number(cotCondiciones.Discount)
+        ? Number(cotCondiciones.Discount)
+        : 0;
+      const total = subtotal * (1 - desc / 100);
+      if (cotSubtotal) cotSubtotal.textContent = numberFmtPy.format(subtotal);
+      if (cotTotal) cotTotal.textContent = numberFmtPy.format(total);
+    }
+
+    async function aplicarCondicionesCliente() {
+      if (!cotCondiciones) {
+        if (cotCondicionesInfo) cotCondicionesInfo.classList.add('d-none');
+        recalcularTotalesCot();
+        return;
+      }
+      if (cotCondicionesInfo) {
+        cotCondicionesInfo.classList.remove('d-none');
+        const listNum = cotCondiciones.ListNum !== null && cotCondiciones.ListNum !== undefined
+          ? cotCondiciones.ListNum
+          : '-';
+        const desc = Number(cotCondiciones.Discount) || 0;
+        const cur = cotCondiciones.Currency || '';
+        cotCondicionesInfo.innerHTML =
+          `<i class="bi bi-info-circle me-1"></i>Lista de precios: <strong>${escapeHtml(String(listNum))}</strong>` +
+          ` · Descuento: <strong>${desc}%</strong>` +
+          (cur ? ` · Moneda: <strong>${escapeHtml(cur)}</strong>` : '');
+      }
+
+      const listNum = cotCondiciones.ListNum;
+      if (Number.isFinite(Number(listNum))) {
+        // Recalcular precio base de cada ítem según la lista del cliente
+        for (const it of window.cotizacionActual) {
+          const p = await fetchPrecioItem(it.ItemCode, listNum);
+          if (p && Number.isFinite(Number(p.Price))) {
+            it.precio = Number(p.Price);
+          }
+        }
+      }
+      renderCotItems();
+      recalcularTotalesCot();
+    }
+
+    async function cargarCondicionesCliente(cardCode) {
+      if (!cardCode) {
+        cotCondiciones = null;
+        if (cotCondicionesInfo) cotCondicionesInfo.classList.add('d-none');
+        recalcularTotalesCot();
+        return;
+      }
+      try {
+        const res = await apiFetch(
+          `/api/clientes/${encodeURIComponent(cardCode)}/condiciones`
+        );
+        if (!res.ok) {
+          cotCondiciones = null;
+          return;
+        }
+        const data = await res.json();
+        cotCondiciones = {
+          ListNum: data.ListNum,
+          Discount: Number(data.Discount) || 0,
+          Currency: data.Currency || '',
+        };
+        await aplicarCondicionesCliente();
+      } catch (_) {
+        cotCondiciones = null;
+      }
+    }
 
     function renderCotItems() {
       if (!cotItemsBody) return;
@@ -2760,6 +2871,7 @@
           const v = parseInt(inp.value, 10);
           if (Number.isFinite(v) && v > 0) window.cotizacionActual[i].cantidad = v;
           else inp.value = window.cotizacionActual[i].cantidad;
+          recalcularTotalesCot();
         });
       });
       cotItemsBody.querySelectorAll('input[data-cot-price]').forEach((inp) => {
@@ -2767,6 +2879,7 @@
           const i = parseInt(inp.getAttribute('data-cot-price'), 10);
           const v = Number(inp.value);
           window.cotizacionActual[i].precio = Number.isFinite(v) && v >= 0 ? v : 0;
+          recalcularTotalesCot();
         });
       });
       cotItemsBody.querySelectorAll('input[data-cot-wh]').forEach((inp) => {
@@ -2781,8 +2894,10 @@
           window.cotizacionActual.splice(i, 1);
           renderCotItems();
           updatePresupuestoBar();
+          recalcularTotalesCot();
         });
       });
+      recalcularTotalesCot();
     }
 
     function renderCotClienteSelected() {
@@ -2830,6 +2945,8 @@
             cotClienteSearch.value = `${cotCliente.CardCode} — ${cotCliente.CardName}`;
             cotClienteResults.classList.add('d-none');
             renderCotClienteSelected();
+            // Consultar condiciones del cliente y recalcular precios
+            cargarCondicionesCliente(cotCliente.CardCode);
           });
         });
       } catch (_) {
@@ -2917,6 +3034,7 @@
 
       renderCotItems();
       renderCotClienteSelected();
+      recalcularTotalesCot();
       modalCotizacion.show();
     }
 
@@ -2956,11 +3074,15 @@
           alert('Debe agregar al menos un ítem.');
           return;
         }
+        const descPct = cotCondiciones && Number(cotCondiciones.Discount)
+          ? Number(cotCondiciones.Discount)
+          : 0;
         const lines = window.cotizacionActual.map((it) => ({
           itemCode: it.ItemCode,
           quantity: Number(it.cantidad) || 1,
           warehouseCode: it.almacen || undefined,
           unitPrice: Number(it.precio) > 0 ? Number(it.precio) : undefined,
+          discountPercent: descPct > 0 ? descPct : undefined,
         }));
 
         // Vendedor: si el select está visible, usar el valor elegido
@@ -3017,10 +3139,13 @@
           }
           window.cotizacionActual.length = 0;
           cotCliente = null;
+          cotCondiciones = null;
           if (cotClienteSearch) cotClienteSearch.value = '';
           if (cotComments) cotComments.value = '';
+          if (cotCondicionesInfo) cotCondicionesInfo.classList.add('d-none');
           renderCotClienteSelected();
           renderCotItems();
+          recalcularTotalesCot();
           updatePresupuestoBar();
           if (modalCotizacion) modalCotizacion.hide();
         } catch (err) {
