@@ -404,6 +404,10 @@
         </ul>
         <div class="d-flex align-items-center gap-2">
           <span id="userName" class="small" style="color: #1a1a1a;"></span>
+          <button id="btnVerCotizacionNav" class="btn btn-warning btn-sm position-relative" type="button">
+            <i class="bi bi-cart3 me-1"></i>Cotización
+            <span id="badgeCotizacionNav" class="badge bg-danger rounded-pill">0</span>
+          </button>
           <button id="btnRefresh" class="btn btn-dark btn-sm">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
           </button>
@@ -584,12 +588,21 @@
     </div>
   </div>
 
-  <!-- Barra flotante de cotización -->
+  <!-- Barra flotante de cotización (móvil) -->
   <div id="presupuestoBar">
     <button type="button" id="btnVerPresupuesto" class="btn btn-warning w-100 fw-bold">
       <i class="bi bi-cart3 me-1"></i>Cotización (<span id="presupuestoCount">0</span> ítems)
     </button>
   </div>
+
+  <!-- Botón flotante de cotización (esquina inferior derecha) -->
+  <button
+    type="button"
+    id="btnCotizacionFlotante"
+    style="position: fixed; bottom: 20px; right: 20px; z-index: 1050; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.25); border-radius: 50px; padding: 12px 24px; font-weight: bold; background: #f59e0b; color: #fff; border: none;"
+  >
+    <i class="bi bi-cart3 me-1"></i>Ver Presupuesto (<span id="cantCotizacionFlotante">0</span>)
+  </button>
 
   <!-- Modal de cotización -->
   <div class="modal fade" id="modalCotizacion" tabindex="-1" aria-labelledby="modalCotizacionLabel" aria-hidden="true">
@@ -803,15 +816,36 @@
     }
 
     function updatePresupuestoBar() {
+      const n = window.cotizacionActual.length;
+
+      // Barra móvil inferior
       const bar = document.getElementById('presupuestoBar');
       const countEl = document.getElementById('presupuestoCount');
-      if (!bar || !countEl) return;
-      const n = window.presupuestoItems.length;
-      countEl.textContent = String(n);
-      if (n > 0 && isMobileView()) {
-        bar.classList.add('visible');
-      } else {
-        bar.classList.remove('visible');
+      if (bar && countEl) {
+        countEl.textContent = String(n);
+        if (n > 0 && isMobileView()) {
+          bar.classList.add('visible');
+        } else {
+          bar.classList.remove('visible');
+        }
+      }
+
+      // Badge en la barra de navegación
+      const badgeNav = document.getElementById('badgeCotizacionNav');
+      if (badgeNav) badgeNav.textContent = String(n);
+
+      // Botón flotante inferior derecho
+      const btnFlotante = document.getElementById('btnCotizacionFlotante');
+      const cantFlotante = document.getElementById('cantCotizacionFlotante');
+      if (cantFlotante) cantFlotante.textContent = String(n);
+      if (btnFlotante) {
+        if (n > 0) {
+          btnFlotante.style.display = 'flex';
+          btnFlotante.style.alignItems = 'center';
+          btnFlotante.style.gap = '6px';
+        } else {
+          btnFlotante.style.display = 'none';
+        }
       }
     }
 
@@ -843,6 +877,30 @@
         });
       }
       updatePresupuestoBar();
+      mostrarToastCotizacion('Artículo añadido al presupuesto');
+    }
+
+    // Toast temporal para confirmar que se agregó un artículo
+    let toastCotizacionTimer = null;
+    function mostrarToastCotizacion(mensaje) {
+      let el = document.getElementById('toastCotizacionTemporal');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'toastCotizacionTemporal';
+        el.style.cssText =
+          'position: fixed; bottom: 90px; right: 20px; z-index: 1090; ' +
+          'background: #16a34a; color: #fff; padding: 10px 16px; ' +
+          'border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); ' +
+          'font-weight: 600; font-size: 0.9rem; opacity: 0; ' +
+          'transition: opacity 0.2s ease; pointer-events: none;';
+        document.body.appendChild(el);
+      }
+      el.innerHTML = `<i class="bi bi-check2-circle me-1"></i>${escapeHtml(mensaje)}`;
+      el.style.opacity = '1';
+      clearTimeout(toastCotizacionTimer);
+      toastCotizacionTimer = setTimeout(() => {
+        el.style.opacity = '0';
+      }, 1800);
     }
 
     window.addEventListener('resize', updatePresupuestoBar);
@@ -2827,6 +2885,25 @@
 
     if (btnVerPresupuesto) {
       btnVerPresupuesto.addEventListener('click', () => {
+        if (!window.cotizacionActual.length) return;
+        abrirModalCotizacion();
+      });
+    }
+
+    const btnVerCotizacionNav = document.getElementById('btnVerCotizacionNav');
+    if (btnVerCotizacionNav) {
+      btnVerCotizacionNav.addEventListener('click', () => {
+        if (!window.cotizacionActual.length) {
+          mostrarToastCotizacion('Aún no hay artículos en la cotización');
+          return;
+        }
+        abrirModalCotizacion();
+      });
+    }
+
+    const btnCotizacionFlotante = document.getElementById('btnCotizacionFlotante');
+    if (btnCotizacionFlotante) {
+      btnCotizacionFlotante.addEventListener('click', () => {
         if (!window.cotizacionActual.length) return;
         abrirModalCotizacion();
       });
