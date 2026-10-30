@@ -1978,6 +1978,65 @@ app.get('/api/marcas', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/articulos/filtros-disponibles', requireAuth, async (req, res) => {
+  const grupo = (req.query.grupo || '').trim();
+  const marca = (req.query.marca || '').trim();
+  const fabricante = (req.query.fabricante || '').trim();
+
+  const conditions = [];
+  const params = [];
+
+  if (grupo && grupo !== 'Todos') {
+    conditions.push(`UPPER("RUBRO") LIKE ?`);
+    params.push(`%${grupo.toUpperCase()}%`);
+  }
+  if (marca && marca !== 'Todas') {
+    conditions.push(`"MARCA" = ?`);
+    params.push(marca);
+  }
+  if (fabricante && fabricante !== 'Todos') {
+    conditions.push(`UPPER("FABRICANTE") LIKE ?`);
+    params.push(`%${fabricante.toUpperCase()}%`);
+  }
+
+  const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const sql = `SELECT DISTINCT "RUBRO" AS "grupo", "MARCA" AS "marca", "FABRICANTE" AS "fabricante" FROM "TRACTOAGRO"."V_PRODUCTOS" ${whereSql}`;
+
+  try {
+    const rows = await hanaExec(sql, params);
+
+    const gruposSet = new Set();
+    const marcasSet = new Set();
+    const fabricantesSet = new Set();
+
+    for (const r of rows || []) {
+      if (r.grupo !== undefined && r.grupo !== null && String(r.grupo).trim() !== '') {
+        gruposSet.add(String(r.grupo).trim());
+      }
+      if (r.marca !== undefined && r.marca !== null && String(r.marca).trim() !== '') {
+        marcasSet.add(String(r.marca).trim());
+      }
+      if (r.fabricante !== undefined && r.fabricante !== null && String(r.fabricante).trim() !== '') {
+        fabricantesSet.add(String(r.fabricante).trim());
+      }
+    }
+
+    const sortEs = (a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' });
+
+    return res.json({
+      grupos: Array.from(gruposSet).sort(sortEs),
+      marcas: Array.from(marcasSet).sort(sortEs),
+      fabricantes: Array.from(fabricantesSet).sort(sortEs),
+    });
+  } catch (err) {
+    console.error('Error en /api/articulos/filtros-disponibles:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar filtros disponibles en HANA' } });
+  }
+});
+
 app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
   try {
     await ensureSession();

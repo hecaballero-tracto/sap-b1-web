@@ -1493,6 +1493,76 @@
       }
     }
 
+    // Catálogos completos iniciales (para restaurar cuando todo vuelve a "Todos")
+    let catalogosCompletos = {
+      grupos: [],
+      marcas: [],
+      fabricantes: [],
+    };
+
+    function buildOptionsHtml(values, selectedValue, emptyLabel) {
+      const opts = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
+      const selected = String(selectedValue || '');
+      let found = false;
+      for (const v of values) {
+        const val = String(v);
+        const isSel = val === selected;
+        if (isSel) found = true;
+        opts.push(
+          `<option value="${escapeHtml(val)}" ${isSel ? 'selected' : ''}>${escapeHtml(val)}</option>`
+        );
+      }
+      // Si el valor seleccionado ya no existe, se deja "Todos"
+      if (selected && !found) {
+        opts[0] = `<option value="" selected>${escapeHtml(emptyLabel)}</option>`;
+      }
+      return opts.join('');
+    }
+
+    function repoblarSelect(selectEl, values, emptyLabel) {
+      if (!selectEl) return;
+      const current = selectEl.value;
+      selectEl.innerHTML = buildOptionsHtml(values, current, emptyLabel);
+    }
+
+    async function refrescarFiltrosDisponibles() {
+      const grupo = filterGrupo.value;
+      const marca = filterMarca.value;
+      const fabricante = filterFabricante.value;
+
+      // Si todo está en "Todos", restaurar catálogos completos
+      if (!grupo && !marca && !fabricante) {
+        repoblarSelect(filterGrupo, catalogosCompletos.grupos, 'Todos');
+        repoblarSelect(filterMarca, catalogosCompletos.marcas, 'Todas');
+        repoblarSelect(filterFabricante, catalogosCompletos.fabricantes, 'Todos');
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams();
+        if (grupo) params.set('grupo', grupo);
+        if (marca) params.set('marca', marca);
+        if (fabricante) params.set('fabricante', fabricante);
+
+        const res = await apiFetch(
+          `/api/articulos/filtros-disponibles?${params.toString()}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const grupos = Array.isArray(data.grupos) ? data.grupos : [];
+        const marcas = Array.isArray(data.marcas) ? data.marcas : [];
+        const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
+
+        // Repoblar los otros dos selectores (y el actual también, por si cambia el conjunto)
+        repoblarSelect(filterGrupo, grupos, 'Todos');
+        repoblarSelect(filterMarca, marcas, 'Todas');
+        repoblarSelect(filterFabricante, fabricantes, 'Todos');
+      } catch (_) {
+        /* silencioso: si falla, se mantienen las opciones actuales */
+      }
+    }
+
     async function cargarCatalogos() {
       try {
         const res = await apiFetch('/api/articulos/catalogos');
@@ -1503,31 +1573,32 @@
         const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
         const marcas = Array.isArray(data.marcas) ? data.marcas : [];
 
+        // Guardar catálogos completos (usando el nombre visible como valor)
+        catalogosCompletos = {
+          grupos: rubros.map((r) => String(r.name)),
+          marcas: marcas.map((m) => {
+            const code = typeof m === 'string' ? m : m && m.code;
+            return String(code);
+          }),
+          fabricantes: fabricantes.map((f) => String(f.name)),
+        };
+
         filterGrupo.innerHTML =
           '<option value="">Todos</option>' +
-          rubros
-            .map(
-              (r) =>
-                `<option value="${escapeHtml(String(r.code))}">${escapeHtml(r.name)}</option>`
-            )
+          catalogosCompletos.grupos
+            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
             .join('');
 
         filterFabricante.innerHTML =
           '<option value="">Todos</option>' +
-          fabricantes
-            .map(
-              (f) =>
-                `<option value="${escapeHtml(String(f.code))}">${escapeHtml(f.name)}</option>`
-            )
+          catalogosCompletos.fabricantes
+            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
             .join('');
 
         filterMarca.innerHTML =
           '<option value="">Todas</option>' +
-          marcas
-            .map((m) => {
-              const code = typeof m === 'string' ? m : m && m.code;
-              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(code))}</option>`;
-            })
+          catalogosCompletos.marcas
+            .map((code) => `<option value="${escapeHtml(code)}">${escapeHtml(code)}</option>`)
             .join('');
 
         // Listas de precios
@@ -1642,16 +1713,19 @@
     filterGrupo.addEventListener('change', () => {
       paging.page = 1;
       currentIaFilter = null;
+      refrescarFiltrosDisponibles();
       cargarArticulos();
     });
     filterMarca.addEventListener('change', () => {
       paging.page = 1;
       currentIaFilter = null;
+      refrescarFiltrosDisponibles();
       cargarArticulos();
     });
     filterFabricante.addEventListener('change', () => {
       paging.page = 1;
       currentIaFilter = null;
+      refrescarFiltrosDisponibles();
       cargarArticulos();
     });
     filterStockEstado.addEventListener('change', () => {
@@ -1676,6 +1750,8 @@
       paging.page = 1;
       renderEmptyState();
       if (pagingFooter) pagingFooter.classList.add('d-none');
+      // Restaurar catálogos completos
+      refrescarFiltrosDisponibles();
     });
 
 
