@@ -1297,17 +1297,28 @@
       const enPedido = Number(item.OnOrder) || 0;
       const marca = item.U_Marca || '';
       const rubro = item.rubro || '';
+      const familia = item.SWW || item.FAMILIA || '';
+      const nombreInterno = item.FrgnName || item.NOMBRE_INTERNO || '';
+      const descripcion = item.ItemName || '';
+      const mostrarNombreInterno =
+        nombreInterno && String(nombreInterno).trim() !== '' &&
+        String(nombreInterno).trim() !== String(descripcion).trim();
       const dispClass = disponible < 0 ? 'disp-value negative' : 'disp-value';
       const badges = [];
       if (marca) badges.push(`<span class="badge bg-warning text-dark">${escapeHtml(marca)}</span>`);
       if (rubro) badges.push(`<span class="badge bg-secondary">${escapeHtml(rubro)}</span>`);
+      const codigoSafe = escapeHtml(item.ItemCode || '');
       return `
         <div class="articulo-card">
           <div class="articulo-card-header">
-            <span class="articulo-card-code">${escapeHtml(item.ItemCode || '')}</span>
+            <span class="articulo-card-code">${codigoSafe}</span>
             <div class="articulo-card-badges">${badges.join('')}</div>
           </div>
-          <div class="articulo-card-desc">${escapeHtml(item.ItemName || '')}</div>
+          <div class="articulo-card-desc">${escapeHtml(descripcion)}</div>
+          ${mostrarNombreInterno ? `<div class="text-muted small" style="margin-top:-4px;">${escapeHtml(nombreInterno)}</div>` : ''}
+          <div>
+            <span class="badge bg-light text-dark border" style="font-weight:500;">Fam: ${escapeHtml(familia || '-')}</span>
+          </div>
           <div class="articulo-card-stock">
             <div class="disp-label">Disponible</div>
             <div class="${dispClass}">${numberFmtPy.format(disponible)}</div>
@@ -1318,6 +1329,16 @@
             </div>
           </div>
           <div class="articulo-card-footer">
+            <div class="d-flex gap-1 me-auto">
+              <button type="button" class="btn btn-outline-primary btn-sm" title="Almacenes"
+                onclick="abrirModalStockAlmacenes('${codigoSafe}')">
+                <i class="bi bi-building"></i>
+              </button>
+              <button type="button" class="btn btn-outline-success btn-sm" title="Precios"
+                onclick="abrirModalPrecios('${codigoSafe}')">
+                <i class="bi bi-tags"></i>
+              </button>
+            </div>
             <button type="button" class="btn btn-warning btn-sm fw-bold" data-cotizar-index="${idx}">
               <i class="bi bi-plus-lg me-1"></i>Cotizar
             </button>
@@ -1353,6 +1374,103 @@
         });
       });
     }
+
+    // Caché de detalles por código para evitar reconsultas
+    const detalleCache = new Map();
+
+    async function fetchDetalleArticulo(codigo) {
+      if (!codigo) return null;
+      if (detalleCache.has(codigo)) return detalleCache.get(codigo);
+      try {
+        const res = await apiFetch(
+          `/api/articulos/${encodeURIComponent(codigo)}/detalle`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return null;
+        detalleCache.set(codigo, data);
+        return data;
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return null;
+        return null;
+      }
+    }
+
+    window.abrirModalStockAlmacenes = async function (codigo) {
+      if (!codigo) return;
+      modalItemCode.textContent = codigo;
+      modalItemName.textContent = '';
+      modalWarehouseBody.innerHTML = `
+        <tr><td colspan="6" class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span class="ms-2 text-muted">Cargando almacenes...</span>
+        </td></tr>`;
+      warehouseModal.show();
+
+      const detalle = await fetchDetalleArticulo(codigo);
+      if (!detalle) {
+        modalWarehouseBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">No se pudo obtener el detalle del artículo.</td></tr>`;
+        return;
+      }
+      modalItemName.textContent = detalle.ItemName || '';
+      const whs = Array.isArray(detalle.Warehouses) ? detalle.Warehouses : [];
+      if (!whs.length) {
+        modalWarehouseBody.innerHTML = `
+          <tr><td colspan="6" class="text-center text-muted py-3">Sin stock en depósitos.</td></tr>`;
+        return;
+      }
+      modalWarehouseBody.innerHTML = whs
+        .map(
+          (w) => `
+        <tr>
+          <td><strong>${escapeHtml(w.WarehouseCode)}</strong></td>
+          <td>${escapeHtml(w.WarehouseName || w.WarehouseCode)}</td>
+          <td class="text-end">${formatStock(w.InStock)}</td>
+          <td class="text-end">${formatStock(w.Committed)}</td>
+          <td class="text-end">${formatStock(w.Ordered)}</td>
+          <td class="text-end">${formatStock(w.Available)}</td>
+        </tr>`
+        )
+        .join('');
+    };
+
+    window.abrirModalPrecios = async function (codigo) {
+      if (!codigo) return;
+      priceModalItemCode.textContent = codigo;
+      priceModalItemName.textContent = '';
+      priceModalBody.innerHTML = `
+        <tr><td colspan="4" class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span class="ms-2 text-muted">Cargando precios...</span>
+        </td></tr>`;
+      priceModal.show();
+
+      const detalle = await fetchDetalleArticulo(codigo);
+      if (!detalle) {
+        priceModalBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">No se pudo obtener el detalle del artículo.</td></tr>`;
+        return;
+      }
+      priceModalItemName.textContent = detalle.ItemName || '';
+      const prices = Array.isArray(detalle.Prices) ? detalle.Prices : [];
+      const visible = visiblePriceLists
+        ? prices.filter((p) => visiblePriceLists.has(Number(p.PriceList)))
+        : prices;
+      if (!visible.length) {
+        priceModalBody.innerHTML = `
+          <tr><td colspan="4" class="text-center text-muted py-3">Sin listas de precios configuradas.</td></tr>`;
+        return;
+      }
+      priceModalBody.innerHTML = visible
+        .map(
+          (p) => `
+        <tr>
+          <td><strong>${escapeHtml(p.PriceList)}</strong></td>
+          <td>${escapeHtml(p.PriceListName || p.PriceList)}</td>
+          <td class="text-end">${formatStock(p.Price)}</td>
+          <td>${escapeHtml(p.Currency)}</td>
+        </tr>`
+        )
+        .join('');
+    };
 
     function openWarehouses(item) {
       if (!item) return;

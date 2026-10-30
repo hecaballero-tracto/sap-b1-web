@@ -1962,6 +1962,111 @@ app.post('/api/articulos/ia-pagina', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/articulos/:codigo/detalle', requireAuth, async (req, res) => {
+  const codigo = String(req.params.codigo || '').trim();
+  if (!codigo) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El código es obligatorio' } });
+  }
+
+  const safe = escapeODataString(codigo);
+  const query = `/b1s/v1/Items('${safe}')?$select=ItemCode,ItemName,ForeignName,SWW,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,ItemWarehouseInfoCollection,ItemPrices`;
+
+  try {
+    await ensureSession();
+
+    const [warehouses, priceLists] = await Promise.all([
+      loadWarehouses().catch(() => new Map()),
+      loadPriceLists().catch(() => new Map()),
+    ]);
+
+    const response = await sapClient.get(query, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+
+    const item = response.data || {};
+    const whMap = warehouses instanceof Map ? warehouses : new Map();
+    const priceMap = priceLists instanceof Map ? priceLists : new Map();
+
+    const whs = Array.isArray(item.ItemWarehouseInfoCollection)
+      ? item.ItemWarehouseInfoCollection
+          .map((w) => {
+            const inStock = Number(w.InStock) || 0;
+            const committed = Number(w.Committed) || 0;
+            const ordered = Number(w.Ordered) || 0;
+            const available = inStock - committed + ordered;
+            return {
+              WarehouseCode: w.WarehouseCode,
+              WarehouseName: whMap.get(w.WarehouseCode) || w.WarehouseCode,
+              InStock: inStock,
+              Committed: committed,
+              Ordered: ordered,
+              Available: available,
+            };
+          })
+          .filter((w) => w.InStock > 0 || w.Available > 0)
+      : [];
+
+    const prices = Array.isArray(item.ItemPrices)
+      ? item.ItemPrices.map((p) => {
+          const code = Number(p.PriceList);
+          return {
+            PriceList: code,
+            PriceListName: priceMap.get(code) || String(p.PriceList),
+            Price: Number(p.Price) || 0,
+            Currency: p.Currency || '',
+          };
+        })
+      : [];
+
+    return res.json({
+      ItemCode: item.ItemCode || codigo,
+      ItemName: item.ItemName || '',
+      FrgnName: item.ForeignName || '',
+      SWW: item.SWW || '',
+      QuantityOnStock: Number(item.QuantityOnStock) || 0,
+      IsCommited: Number(item.QuantityOrderedByCustomers) || 0,
+      OnOrder: Number(item.QuantityOrderedFromVendors) || 0,
+      Available:
+        (Number(item.QuantityOnStock) || 0) -
+        (Number(item.QuantityOrderedByCustomers) || 0) +
+        (Number(item.QuantityOrderedFromVendors) || 0),
+      Warehouses: whs,
+      Prices: prices,
+    });
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        const retry = await sapClient.get(query, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        const item = retry.data || {};
+        return res.json({
+          ItemCode: item.ItemCode || codigo,
+          ItemName: item.ItemName || '',
+          FrgnName: item.ForeignName || '',
+          SWW: item.SWW || '',
+          QuantityOnStock: Number(item.QuantityOnStock) || 0,
+          IsCommited: Number(item.QuantityOrderedByCustomers) || 0,
+          OnOrder: Number(item.QuantityOrderedFromVendors) || 0,
+          Available:
+            (Number(item.QuantityOnStock) || 0) -
+            (Number(item.QuantityOrderedByCustomers) || 0) +
+            (Number(item.QuantityOrderedFromVendors) || 0),
+          Warehouses: [],
+          Prices: [],
+        });
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+});
+
 app.get('/api/articulos/:codigo/series', requireAuth, async (req, res) => {
   const codigo = String(req.params.codigo || '').trim();
   if (!codigo) {
