@@ -1998,16 +1998,17 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
     ]);
 
     // Marcas activas desde HANA (tabla de usuario @MARCAS), con fallback a V_PRODUCTOS
+    // Se usa exclusivamente el campo "Code" tanto para la clave como para el texto visible.
     let marcas = [];
     try {
       const rows = await hanaExec(
-        `SELECT "Code" AS "code", "Name" AS "name" FROM "TRACTOAGRO"."@MARCAS" WHERE "U_Activo" = 'Si' ORDER BY "Name" ASC`
+        `SELECT "Code" AS "code" FROM "TRACTOAGRO"."@MARCAS" WHERE "U_Activo" = 'Si' ORDER BY "Code" ASC`
       );
       marcas = (rows || [])
-        .map((r) => ({
-          code: r.code !== undefined && r.code !== null ? String(r.code) : '',
-          name: r.name !== undefined && r.name !== null ? String(r.name) : '',
-        }))
+        .map((r) => {
+          const code = r.code !== undefined && r.code !== null ? String(r.code) : '';
+          return { code, name: code };
+        })
         .filter((m) => m.code !== '');
     } catch (err) {
       console.warn(
@@ -2016,13 +2017,13 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
       );
       try {
         const rows = await hanaExec(
-          `SELECT DISTINCT "MARCA" AS "code", "MARCA" AS "name" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE "MARCA" IS NOT NULL AND "MARCA" != '' ORDER BY "MARCA" ASC`
+          `SELECT DISTINCT "MARCA" AS "code" FROM "TRACTOAGRO"."V_PRODUCTOS" WHERE "MARCA" IS NOT NULL AND "MARCA" != '' ORDER BY "MARCA" ASC`
         );
         marcas = (rows || [])
-          .map((r) => ({
-            code: r.code !== undefined && r.code !== null ? String(r.code) : '',
-            name: r.name !== undefined && r.name !== null ? String(r.name) : '',
-          }))
+          .map((r) => {
+            const code = r.code !== undefined && r.code !== null ? String(r.code) : '';
+            return { code, name: code };
+          })
           .filter((m) => m.code !== '');
       } catch (fallbackErr) {
         console.warn(

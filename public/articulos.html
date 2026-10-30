@@ -1526,8 +1526,7 @@
           marcas
             .map((m) => {
               const code = typeof m === 'string' ? m : m && m.code;
-              const name = typeof m === 'string' ? m : (m && m.name) || code;
-              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(name))}</option>`;
+              return `<option value="${escapeHtml(String(code))}">${escapeHtml(String(code))}</option>`;
             })
             .join('');
 
