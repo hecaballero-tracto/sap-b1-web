@@ -89,6 +89,7 @@ function getDefaultVendedor() {
     slpCode,
     slpName: 'Ventas Casa Central / General',
     empId: null,
+    sucursalDefault: '01',
     slpAsignadoManual: true,
   };
 }
@@ -100,7 +101,8 @@ async function obtenerDatosVendedor(emailOUser) {
   if (!raw) return getDefaultVendedor();
   // Prefijo del usuario (antes de @) para el LIKE
   const prefix = raw.includes('@') ? raw.split('@')[0] : raw;
-  const sql = `SELECT T0."SlpCode" AS "slpCode", T0."SlpName" AS "slpName", T1."empID" AS "empId"
+  const sql = `SELECT T0."SlpCode" AS "slpCode", T0."SlpName" AS "slpName", T1."empID" AS "empId",
+      T1."branch" AS "branch", T1."U_Sucursal" AS "uSucursal"
     FROM "TRACTOAGRO".OSLP T0
     LEFT JOIN "TRACTOAGRO".OHEM T1 ON T0."SlpCode" = T1."salesPrson"
     WHERE (LOWER(T1."email") = LOWER(?) OR LOWER(T0."Email") = LOWER(?) OR LOWER(T1."email") LIKE LOWER(? || '@%') OR LOWER(T0."Email") LIKE LOWER(? || '@%'))
@@ -110,10 +112,25 @@ async function obtenerDatosVendedor(emailOUser) {
     const rows = await hanaExec(sql, [raw, raw, prefix, prefix]);
     if (!rows || !rows.length) return getDefaultVendedor();
     const r = rows[0];
+    // Sucursal: preferir U_Sucursal (2 dígitos), luego branch, luego '01'
+    let sucursalDefault = '01';
+    const rawSucursal =
+      r.uSucursal !== undefined && r.uSucursal !== null && String(r.uSucursal).trim() !== ''
+        ? String(r.uSucursal).trim()
+        : r.branch !== undefined && r.branch !== null && String(r.branch).trim() !== ''
+        ? String(r.branch).trim()
+        : '';
+    if (rawSucursal) {
+      const n = parseInt(rawSucursal, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 99) {
+        sucursalDefault = String(n).padStart(2, '0');
+      }
+    }
     return {
       slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
       slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
       empId: r.empId !== undefined && r.empId !== null ? Number(r.empId) : null,
+      sucursalDefault,
       slpAsignadoManual: false,
     };
   } catch (err) {
@@ -991,6 +1008,7 @@ app.post('/api/login', async (req, res) => {
       slpCode: vendedor ? vendedor.slpCode : null,
       slpName: vendedor ? vendedor.slpName : '',
       empId: vendedor ? vendedor.empId : null,
+      sucursalDefault: vendedor && vendedor.sucursalDefault ? vendedor.sucursalDefault : '01',
       slpAsignadoManual: vendedor ? vendedor.slpAsignadoManual === true : true,
       loginAt: new Date().toISOString(),
     };
@@ -2099,6 +2117,13 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
   const cardCode = String(body.cardCode || '').trim();
   const comments = String(body.comments || '').trim();
   const lines = Array.isArray(body.lines) ? body.lines : [];
+  const uSucursal = String(body.U_Sucursal || body.uSucursal || '').trim();
+
+  if (!uSucursal) {
+    return res
+      .status(400)
+      .json({ error: { message: 'Debe seleccionar una sucursal (U_Sucursal)' } });
+  }
 
   // Prioridad: SalesPersonCode enviado en el body > slpCode de sesión > default
   let salesPersonCode = null;
@@ -2150,6 +2175,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
   const payload = {
     CardCode: cardCode,
     SalesPersonCode: Number(salesPersonCode),
+    U_Sucursal: uSucursal,
     DocumentLines: documentLines,
   };
   if (user.empId !== null && user.empId !== undefined) {

@@ -615,10 +615,32 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label small text-muted mb-1">Vendedor</label>
-            <input type="text" class="form-control form-control-sm" id="cotVendedor" readonly />
-            <select id="selectVendedorCotizacion" class="form-select form-select-sm mt-2 d-none"></select>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label small text-muted mb-1">Vendedor</label>
+              <input type="text" class="form-control form-control-sm" id="cotVendedor" readonly />
+              <select id="selectVendedorCotizacion" class="form-select form-select-sm mt-2 d-none"></select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label for="cotizacionSucursal" class="form-label small text-muted mb-1">Sucursal <span class="text-danger">*</span></label>
+              <select id="cotizacionSucursal" class="form-select form-select-sm" required>
+                <option value="01">01 - CENTRAL</option>
+                <option value="02">02 - TALLER</option>
+                <option value="03">03 - BELLA VISTA</option>
+                <option value="04">04 - FILADELFIA</option>
+                <option value="05">05 - KATUETE</option>
+                <option value="06">06 - LOMA PLATA</option>
+                <option value="07">07 - MARIANO R. ALONSO</option>
+                <option value="08">08 - SAN ALBERTO</option>
+                <option value="09">09 - SANTA RITA</option>
+                <option value="10">10 - SANTA ROSA</option>
+                <option value="11">11 - COLONIA INDEPENDENCIA</option>
+                <option value="12">12 - LAMBARE</option>
+                <option value="13">13 - CAMPO 9</option>
+                <option value="14">14 - SAN JUAN BAUTISTA</option>
+                <option value="15">15 - SANTA ROSA LIC.</option>
+              </select>
+            </div>
           </div>
 
           <div class="mb-3 position-relative">
@@ -2686,6 +2708,7 @@
     const modalCotizacion = modalCotizacionEl ? new bootstrap.Modal(modalCotizacionEl) : null;
     const cotVendedor = document.getElementById('cotVendedor');
     const selectVendedorCotizacion = document.getElementById('selectVendedorCotizacion');
+    const cotizacionSucursal = document.getElementById('cotizacionSucursal');
     let vendedoresCache = null;
     const cotClienteSearch = document.getElementById('cotClienteSearch');
     const cotClienteResults = document.getElementById('cotClienteResults');
@@ -2854,6 +2877,17 @@
         cotVendedor.value = '';
       }
 
+      // Preseleccionar sucursal del empleado (o '01' por defecto)
+      if (cotizacionSucursal) {
+        const suc = currentUser && currentUser.sucursalDefault
+          ? String(currentUser.sucursalDefault).padStart(2, '0')
+          : '01';
+        const exists = Array.from(cotizacionSucursal.options).some(
+          (o) => o.value === suc
+        );
+        cotizacionSucursal.value = exists ? suc : '01';
+      }
+
       if (manual && selectVendedorCotizacion) {
         // Mostrar select para elegir vendedor manualmente
         cotVendedor.classList.add('d-none');
@@ -2941,6 +2975,13 @@
           if (Number.isFinite(n)) salesPersonCode = n;
         }
 
+        // Sucursal obligatoria
+        const uSucursal = cotizacionSucursal ? cotizacionSucursal.value : '';
+        if (!uSucursal) {
+          alert('Debe seleccionar una sucursal.');
+          return;
+        }
+
         const originalHtml = btnGenerarOferta.innerHTML;
         btnGenerarOferta.disabled = true;
         btnGenerarOferta.innerHTML =
@@ -2956,6 +2997,7 @@
               comments: cotComments ? cotComments.value.trim() : '',
               lines,
               salesPersonCode,
+              U_Sucursal: uSucursal,
             }),
           });
           const data = await res.json().catch(() => ({}));
