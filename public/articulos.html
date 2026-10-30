@@ -411,22 +411,43 @@
         <div class="px-3 pt-3">
           <div class="row g-2">
             <div class="col-12 col-sm-6 col-lg-3">
-              <label for="filterGrupo" class="form-label small mb-1">Grupo de Artículos</label>
-              <select id="filterGrupo" class="form-select form-select-sm">
-                <option value="">Todos</option>
-              </select>
+              <label class="form-label small mb-1">Grupo de Artículos</label>
+              <div class="dropdown w-100" id="ddGrupo">
+                <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                  <span id="ddGrupoLabel">Todos</span>
+                  <i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                  <input type="text" class="form-control form-control-sm mb-2" id="ddGrupoSearch" placeholder="Buscar..." />
+                  <div id="ddGrupoList"></div>
+                </div>
+              </div>
             </div>
             <div class="col-12 col-sm-6 col-lg-3">
-              <label for="filterMarca" class="form-label small mb-1">Marca</label>
-              <select id="filterMarca" class="form-select form-select-sm">
-                <option value="">Todas</option>
-              </select>
+              <label class="form-label small mb-1">Marca</label>
+              <div class="dropdown w-100" id="ddMarca">
+                <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                  <span id="ddMarcaLabel">Todas</span>
+                  <i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                  <input type="text" class="form-control form-control-sm mb-2" id="ddMarcaSearch" placeholder="Buscar..." />
+                  <div id="ddMarcaList"></div>
+                </div>
+              </div>
             </div>
             <div class="col-12 col-sm-6 col-lg-3">
-              <label for="filterFabricante" class="form-label small mb-1">Fabricante</label>
-              <select id="filterFabricante" class="form-select form-select-sm">
-                <option value="">Todos</option>
-              </select>
+              <label class="form-label small mb-1">Fabricante</label>
+              <div class="dropdown w-100" id="ddFabricante">
+                <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                  <span id="ddFabricanteLabel">Todos</span>
+                  <i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="dropdown-menu w-100 p-2" style="max-height: 280px; overflow-y: auto;">
+                  <input type="text" class="form-control form-control-sm mb-2" id="ddFabricanteSearch" placeholder="Buscar..." />
+                  <div id="ddFabricanteList"></div>
+                </div>
+              </div>
             </div>
             <div class="col-12 col-sm-6 col-lg-3">
               <label for="filterStockEstado" class="form-label small mb-1">Estado Stock</label>
@@ -745,10 +766,83 @@
 
     const grid = document.getElementById('articulosGrid');
     const emptyState = document.getElementById('articulosEmpty');
-    const filterGrupo = document.getElementById('filterGrupo');
-    const filterMarca = document.getElementById('filterMarca');
-    const filterFabricante = document.getElementById('filterFabricante');
     const filterStockEstado = document.getElementById('filterStockEstado');
+
+    // Multi-select state
+    const multiFilters = {
+      grupo: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
+      marca: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todas' },
+      fabricante: { selected: new Set(), all: [], labelEl: null, listEl: null, searchEl: null, emptyLabel: 'Todos' },
+    };
+    multiFilters.grupo.labelEl = document.getElementById('ddGrupoLabel');
+    multiFilters.grupo.listEl = document.getElementById('ddGrupoList');
+    multiFilters.grupo.searchEl = document.getElementById('ddGrupoSearch');
+    multiFilters.marca.labelEl = document.getElementById('ddMarcaLabel');
+    multiFilters.marca.listEl = document.getElementById('ddMarcaList');
+    multiFilters.marca.searchEl = document.getElementById('ddMarcaSearch');
+    multiFilters.fabricante.labelEl = document.getElementById('ddFabricanteLabel');
+    multiFilters.fabricante.listEl = document.getElementById('ddFabricanteList');
+    multiFilters.fabricante.searchEl = document.getElementById('ddFabricanteSearch');
+
+    function updateMultiLabel(key) {
+      const mf = multiFilters[key];
+      if (!mf || !mf.labelEl) return;
+      const n = mf.selected.size;
+      mf.labelEl.textContent = n === 0 ? mf.emptyLabel : `${n} seleccionado${n === 1 ? '' : 's'}`;
+    }
+
+    function renderMultiList(key) {
+      const mf = multiFilters[key];
+      if (!mf || !mf.listEl) return;
+      const term = (mf.searchEl && mf.searchEl.value ? mf.searchEl.value : '').trim().toLowerCase();
+      const values = mf.all.filter((v) => !term || String(v).toLowerCase().includes(term));
+      if (!values.length) {
+        mf.listEl.innerHTML = '<div class="text-muted small px-2 py-1">Sin opciones</div>';
+        return;
+      }
+      mf.listEl.innerHTML = values
+        .map((v) => {
+          const val = String(v);
+          const checked = mf.selected.has(val) ? 'checked' : '';
+          return `<label class="dropdown-item d-flex align-items-center gap-2 mb-0">
+            <input type="checkbox" class="form-check-input mt-0" data-multi-key="${key}" data-multi-val="${escapeHtml(val)}" ${checked} />
+            <span>${escapeHtml(val)}</span>
+          </label>`;
+        })
+        .join('');
+      mf.listEl.querySelectorAll('input[data-multi-key]').forEach((chk) => {
+        chk.addEventListener('change', () => {
+          const k = chk.getAttribute('data-multi-key');
+          const v = chk.getAttribute('data-multi-val');
+          const m = multiFilters[k];
+          if (!m) return;
+          if (chk.checked) m.selected.add(v);
+          else m.selected.delete(v);
+          updateMultiLabel(k);
+          paging.page = 1;
+          currentIaFilter = null;
+          refrescarFiltrosDisponibles();
+          cargarArticulos();
+        });
+      });
+    }
+
+    function setMultiOptions(key, values) {
+      const mf = multiFilters[key];
+      if (!mf) return;
+      mf.all = values.map((v) => String(v));
+      // Limpiar seleccionados que ya no existen
+      for (const v of Array.from(mf.selected)) {
+        if (!mf.all.includes(v)) mf.selected.delete(v);
+      }
+      updateMultiLabel(key);
+      renderMultiList(key);
+    }
+
+    function getMultiValues(key) {
+      const mf = multiFilters[key];
+      return mf ? Array.from(mf.selected) : [];
+    }
     const columnsMenu = document.getElementById('columnsMenu');
     const btnClearFilters = document.getElementById('btnClearFilters');
     const alertBox = document.getElementById('alertBox');
@@ -855,9 +949,9 @@
 
     function hasAnyActiveFilter() {
       if (searchInput.value.trim() !== '') return true;
-      if (filterGrupo && filterGrupo.value) return true;
-      if (filterMarca && filterMarca.value) return true;
-      if (filterFabricante && filterFabricante.value) return true;
+      if (multiFilters.grupo.selected.size > 0) return true;
+      if (multiFilters.marca.selected.size > 0) return true;
+      if (multiFilters.fabricante.selected.size > 0) return true;
       if (filterStockEstado && filterStockEstado.value) return true;
       return Object.keys(columnFilters).length > 0;
     }
@@ -1463,9 +1557,12 @@
       const term = searchInput.value.trim();
       if (term) params.set('search', term);
 
-      if (filterGrupo.value) params.set('rubro', filterGrupo.value);
-      if (filterMarca.value) params.set('marca', filterMarca.value);
-      if (filterFabricante.value) params.set('fabricante', filterFabricante.value);
+      const grupos = getMultiValues('grupo');
+      const marcas = getMultiValues('marca');
+      const fabricantes = getMultiValues('fabricante');
+      if (grupos.length) params.set('grupos', grupos.join(','));
+      if (marcas.length) params.set('marcas', marcas.join(','));
+      if (fabricantes.length) params.set('fabricantes', fabricantes.join(','));
       if (filterStockEstado.value) params.set('stockEstado', filterStockEstado.value);
 
       // Filtros por columna (compatibilidad)
@@ -1500,49 +1597,24 @@
       fabricantes: [],
     };
 
-    function buildOptionsHtml(values, selectedValue, emptyLabel) {
-      const opts = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
-      const selected = String(selectedValue || '');
-      let found = false;
-      for (const v of values) {
-        const val = String(v);
-        const isSel = val === selected;
-        if (isSel) found = true;
-        opts.push(
-          `<option value="${escapeHtml(val)}" ${isSel ? 'selected' : ''}>${escapeHtml(val)}</option>`
-        );
-      }
-      // Si el valor seleccionado ya no existe, se deja "Todos"
-      if (selected && !found) {
-        opts[0] = `<option value="" selected>${escapeHtml(emptyLabel)}</option>`;
-      }
-      return opts.join('');
-    }
-
-    function repoblarSelect(selectEl, values, emptyLabel) {
-      if (!selectEl) return;
-      const current = selectEl.value;
-      selectEl.innerHTML = buildOptionsHtml(values, current, emptyLabel);
-    }
-
     async function refrescarFiltrosDisponibles() {
-      const grupo = filterGrupo.value;
-      const marca = filterMarca.value;
-      const fabricante = filterFabricante.value;
+      const grupos = getMultiValues('grupo');
+      const marcas = getMultiValues('marca');
+      const fabricantes = getMultiValues('fabricante');
 
-      // Si todo está en "Todos", restaurar catálogos completos
-      if (!grupo && !marca && !fabricante) {
-        repoblarSelect(filterGrupo, catalogosCompletos.grupos, 'Todos');
-        repoblarSelect(filterMarca, catalogosCompletos.marcas, 'Todas');
-        repoblarSelect(filterFabricante, catalogosCompletos.fabricantes, 'Todos');
+      // Si todo está vacío, restaurar catálogos completos
+      if (!grupos.length && !marcas.length && !fabricantes.length) {
+        setMultiOptions('grupo', catalogosCompletos.grupos);
+        setMultiOptions('marca', catalogosCompletos.marcas);
+        setMultiOptions('fabricante', catalogosCompletos.fabricantes);
         return;
       }
 
       try {
         const params = new URLSearchParams();
-        if (grupo) params.set('grupo', grupo);
-        if (marca) params.set('marca', marca);
-        if (fabricante) params.set('fabricante', fabricante);
+        if (grupos.length) params.set('grupos', grupos.join(','));
+        if (marcas.length) params.set('marcas', marcas.join(','));
+        if (fabricantes.length) params.set('fabricantes', fabricantes.join(','));
 
         const res = await apiFetch(
           `/api/articulos/filtros-disponibles?${params.toString()}`
@@ -1550,14 +1622,13 @@
         if (!res.ok) return;
         const data = await res.json();
 
-        const grupos = Array.isArray(data.grupos) ? data.grupos : [];
-        const marcas = Array.isArray(data.marcas) ? data.marcas : [];
-        const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
+        const g = Array.isArray(data.grupos) ? data.grupos : [];
+        const m = Array.isArray(data.marcas) ? data.marcas : [];
+        const f = Array.isArray(data.fabricantes) ? data.fabricantes : [];
 
-        // Repoblar los otros dos selectores (y el actual también, por si cambia el conjunto)
-        repoblarSelect(filterGrupo, grupos, 'Todos');
-        repoblarSelect(filterMarca, marcas, 'Todas');
-        repoblarSelect(filterFabricante, fabricantes, 'Todos');
+        setMultiOptions('grupo', g);
+        setMultiOptions('marca', m);
+        setMultiOptions('fabricante', f);
       } catch (_) {
         /* silencioso: si falla, se mantienen las opciones actuales */
       }
@@ -1573,7 +1644,6 @@
         const fabricantes = Array.isArray(data.fabricantes) ? data.fabricantes : [];
         const marcas = Array.isArray(data.marcas) ? data.marcas : [];
 
-        // Guardar catálogos completos (usando el nombre visible como valor)
         catalogosCompletos = {
           grupos: rubros.map((r) => String(r.name)),
           marcas: marcas.map((m) => {
@@ -1583,23 +1653,9 @@
           fabricantes: fabricantes.map((f) => String(f.name)),
         };
 
-        filterGrupo.innerHTML =
-          '<option value="">Todos</option>' +
-          catalogosCompletos.grupos
-            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-            .join('');
-
-        filterFabricante.innerHTML =
-          '<option value="">Todos</option>' +
-          catalogosCompletos.fabricantes
-            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-            .join('');
-
-        filterMarca.innerHTML =
-          '<option value="">Todas</option>' +
-          catalogosCompletos.marcas
-            .map((code) => `<option value="${escapeHtml(code)}">${escapeHtml(code)}</option>`)
-            .join('');
+        setMultiOptions('grupo', catalogosCompletos.grupos);
+        setMultiOptions('marca', catalogosCompletos.marcas);
+        setMultiOptions('fabricante', catalogosCompletos.fabricantes);
 
         // Listas de precios
         const priceLists = Array.isArray(data.priceLists) ? data.priceLists : [];
@@ -1710,36 +1766,29 @@
       cargarArticulos();
     });
 
-    filterGrupo.addEventListener('change', () => {
-      paging.page = 1;
-      currentIaFilter = null;
-      refrescarFiltrosDisponibles();
-      cargarArticulos();
-    });
-    filterMarca.addEventListener('change', () => {
-      paging.page = 1;
-      currentIaFilter = null;
-      refrescarFiltrosDisponibles();
-      cargarArticulos();
-    });
-    filterFabricante.addEventListener('change', () => {
-      paging.page = 1;
-      currentIaFilter = null;
-      refrescarFiltrosDisponibles();
-      cargarArticulos();
-    });
     filterStockEstado.addEventListener('change', () => {
       paging.page = 1;
       currentIaFilter = null;
       cargarArticulos();
     });
 
+    // Búsqueda dentro de los dropdowns multi-select
+    ['grupo', 'marca', 'fabricante'].forEach((key) => {
+      const mf = multiFilters[key];
+      if (mf && mf.searchEl) {
+        mf.searchEl.addEventListener('input', () => renderMultiList(key));
+      }
+    });
+
     btnClearFilters.addEventListener('click', () => {
       searchInput.value = '';
-      filterGrupo.value = '';
-      filterMarca.value = '';
-      filterFabricante.value = '';
       filterStockEstado.value = '';
+      multiFilters.grupo.selected.clear();
+      multiFilters.marca.selected.clear();
+      multiFilters.fabricante.selected.clear();
+      updateMultiLabel('grupo');
+      updateMultiLabel('marca');
+      updateMultiLabel('fabricante');
       for (const k of Object.keys(columnFilters)) delete columnFilters[k];
       if (activePopover) {
         activePopover.dispose();

@@ -1170,6 +1170,9 @@ function buildArticulosQuery({
   rubro,
   fabricante,
   marca,
+  grupos,
+  fabricantes,
+  marcas,
   stockEstado,
   colFilters,
   itemGroups,
@@ -1221,38 +1224,59 @@ function buildArticulosQuery({
     );
   }
 
-  if (rubro !== undefined && rubro !== null && rubro !== '') {
-    const n = parseInt(rubro, 10);
-    if (Number.isFinite(n) && String(n) === String(rubro).trim()) {
-      filters.push(`ItemsGroupCode eq ${n}`);
-    } else if (itemGroups instanceof Map) {
-      // Texto: resolver contra el nombre del grupo (case-insensitive)
-      const needle = String(rubro).trim().toLowerCase();
-      const matchedCodes = [];
+  // Grupos (múltiples): resolver nombres a ItemsGroupCode
+  const gruposList = Array.isArray(grupos) && grupos.length
+    ? grupos
+    : (rubro !== undefined && rubro !== null && rubro !== '' ? [rubro] : []);
+  if (gruposList.length && itemGroups instanceof Map) {
+    const matchedCodes = new Set();
+    for (const g of gruposList) {
+      const n = parseInt(g, 10);
+      if (Number.isFinite(n) && String(n) === String(g).trim()) {
+        matchedCodes.add(n);
+        continue;
+      }
+      const needle = String(g).trim().toLowerCase();
       for (const [code, name] of itemGroups.entries()) {
-        if (String(name || '').toLowerCase().includes(needle)) {
+        if (String(name || '').toLowerCase() === needle) {
           const c = parseInt(code, 10);
-          if (Number.isFinite(c)) matchedCodes.push(c);
+          if (Number.isFinite(c)) matchedCodes.add(c);
         }
       }
-      if (matchedCodes.length) {
-        filters.push(`(${matchedCodes.map((c) => `ItemsGroupCode eq ${c}`).join(' or ')})`);
-      } else {
-        filters.push('ItemsGroupCode eq -1');
+    }
+    if (matchedCodes.size) {
+      filters.push(`(${Array.from(matchedCodes).map((c) => `ItemsGroupCode eq ${c}`).join(' or ')})`);
+    } else {
+      filters.push('ItemsGroupCode eq -1');
+    }
+  }
+
+  // Fabricantes (múltiples): resolver nombres a Manufacturer code
+  const fabricantesList = Array.isArray(fabricantes) && fabricantes.length
+    ? fabricantes
+    : (fabricante !== undefined && fabricante !== null && fabricante !== '' ? [fabricante] : []);
+  if (fabricantesList.length) {
+    const matchedCodes = new Set();
+    for (const f of fabricantesList) {
+      const n = parseInt(f, 10);
+      if (Number.isFinite(n) && String(n) === String(f).trim()) {
+        matchedCodes.add(n);
       }
     }
-  }
-
-  if (fabricante !== undefined && fabricante !== null && fabricante !== '') {
-    const n = parseInt(fabricante, 10);
-    if (Number.isFinite(n)) {
-      filters.push(`Manufacturer eq ${n}`);
+    if (matchedCodes.size) {
+      filters.push(`(${Array.from(matchedCodes).map((c) => `Manufacturer eq ${c}`).join(' or ')})`);
+    } else {
+      filters.push('Manufacturer eq -1');
     }
   }
 
-  if (marca !== undefined && marca !== null && marca !== '') {
-    const safe = escapeODataString(marca);
-    filters.push(`U_Marca eq '${safe}'`);
+  // Marcas (múltiples)
+  const marcasList = Array.isArray(marcas) && marcas.length
+    ? marcas
+    : (marca !== undefined && marca !== null && marca !== '' ? [marca] : []);
+  if (marcasList.length) {
+    const safeList = marcasList.map((m) => `U_Marca eq '${escapeODataString(m)}'`);
+    filters.push(`(${safeList.join(' or ')})`);
   }
 
   if (stockEstado) {
@@ -1978,25 +2002,36 @@ app.get('/api/marcas', requireAuth, async (req, res) => {
   }
 });
 
+function parseCsvParam(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v) => v !== '' && v !== 'Todos' && v !== 'Todas');
+}
+
 app.get('/api/articulos/filtros-disponibles', requireAuth, async (req, res) => {
-  const grupo = (req.query.grupo || '').trim();
-  const marca = (req.query.marca || '').trim();
-  const fabricante = (req.query.fabricante || '').trim();
+  const grupos = parseCsvParam(req.query.grupos || req.query.grupo);
+  const marcas = parseCsvParam(req.query.marcas || req.query.marca);
+  const fabricantes = parseCsvParam(req.query.fabricantes || req.query.fabricante);
 
   const conditions = [];
   const params = [];
 
-  if (grupo && grupo !== 'Todos') {
-    conditions.push(`UPPER("RUBRO") LIKE ?`);
-    params.push(`%${grupo.toUpperCase()}%`);
+  if (grupos.length) {
+    const placeholders = grupos.map(() => '?').join(', ');
+    conditions.push(`"RUBRO" IN (${placeholders})`);
+    for (const g of grupos) params.push(g);
   }
-  if (marca && marca !== 'Todas') {
-    conditions.push(`"MARCA" = ?`);
-    params.push(marca);
+  if (marcas.length) {
+    const placeholders = marcas.map(() => '?').join(', ');
+    conditions.push(`"MARCA" IN (${placeholders})`);
+    for (const m of marcas) params.push(m);
   }
-  if (fabricante && fabricante !== 'Todos') {
-    conditions.push(`UPPER("FABRICANTE") LIKE ?`);
-    params.push(`%${fabricante.toUpperCase()}%`);
+  if (fabricantes.length) {
+    const placeholders = fabricantes.map(() => '?').join(', ');
+    conditions.push(`"FABRICANTE" IN (${placeholders})`);
+    for (const f of fabricantes) params.push(f);
   }
 
   const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -2115,11 +2150,14 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
   const page = parsePositiveInt(req.query.page, 1);
   const limit = parsePositiveInt(req.query.limit, 20, 200);
   const search = (req.query.search || '').trim();
-  const rubro = (req.query.rubro || '').trim();
-  const fabricante = (req.query.fabricante || '').trim();
-  const marca = (req.query.marca || '').trim();
+  const grupos = parseCsvParam(req.query.grupos || req.query.rubro);
+  const fabricantes = parseCsvParam(req.query.fabricantes || req.query.fabricante);
+  const marcas = parseCsvParam(req.query.marcas || req.query.marca);
   const stockEstado = (req.query.stockEstado || '').trim();
   const colFilters = parseColumnFilters(req.query);
+  const rubro = grupos.length === 1 ? grupos[0] : '';
+  const fabricante = fabricantes.length === 1 ? fabricantes[0] : '';
+  const marca = marcas.length === 1 ? marcas[0] : '';
 
   // Fallback para 'faltante': Service Layer puede rechazar expresiones
   // aritméticas en $filter, por lo que se consulta con un filtro simple
@@ -2171,6 +2209,9 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
       rubro,
       fabricante,
       marca,
+      grupos,
+      fabricantes,
+      marcas,
       stockEstado,
       colFilters,
       itemGroups,
@@ -2206,6 +2247,9 @@ app.get('/api/articulos', requireAuth, async (req, res) => {
           rubro,
           fabricante,
           marca,
+          grupos,
+          fabricantes,
+          marcas,
           stockEstado,
           colFilters,
           itemGroups,
