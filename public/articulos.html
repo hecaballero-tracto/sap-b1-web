@@ -213,23 +213,23 @@
         <div id="alertBox"></div>
         <div id="iaResponseCard" class="d-none m-3 mb-0">
           <div class="alert mb-0" style="background-color: #fff9e6; border: 1px solid #f6c343;">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-              <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <i class="bi bi-stars text-warning"></i>
-                  <strong>Respuesta de la IA</strong>
-                </div>
-                <div id="iaResponseText" class="mb-2"></div>
-                <div id="iaChartWrapper" class="d-none" style="max-width: 640px;">
-                  <canvas id="iaChartCanvas" height="220"></canvas>
-                </div>
-                <div id="iaQuickActionWrapper" class="mt-2 d-none">
-                  <button type="button" id="btnIaQuickFilter" class="btn btn-sm btn-outline-dark">
-                    <i class="bi bi-funnel me-1"></i>Filtrar matriz con estos resultados
-                  </button>
-                </div>
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-stars text-warning"></i>
+                <strong>Respuesta de la IA</strong>
               </div>
-              <button type="button" class="btn-close" id="btnCloseIaResponse" aria-label="Cerrar"></button>
+              <button type="button" class="btn btn-sm btn-outline-dark" id="btnCloseIaResponse">
+                <i class="bi bi-x-lg me-1"></i>Cerrar análisis
+              </button>
+            </div>
+            <div id="iaResponseText" class="mb-2"></div>
+            <div id="iaChartWrapper" class="d-none" style="max-height: 320px;">
+              <canvas id="iaChartCanvas" height="220"></canvas>
+            </div>
+            <div id="iaQuickActionWrapper" class="mt-2 d-none">
+              <button type="button" id="btnIaQuickFilter" class="btn btn-sm btn-outline-dark">
+                <i class="bi bi-funnel me-1"></i>Filtrar matriz con estos resultados
+              </button>
             </div>
             <div class="d-flex justify-content-end mt-2">
               <small id="iaUsageBadge" class="text-muted d-none"></small>
@@ -1511,17 +1511,15 @@
               ? numberFmtPy.format(num)
               : escapeHtml(String(value ?? ''));
             return `
-              <div class="col-12 col-sm-6 col-lg-4">
-                <div class="border rounded p-2 h-100 bg-white">
-                  <div class="text-muted small">${escapeHtml(formatKpiLabel(key))}</div>
-                  <div class="fs-4 fw-bold">${display}</div>
-                </div>
+              <div class="border rounded p-3 bg-white" style="border-color: #f0e0b8 !important;">
+                <div class="text-muted small text-uppercase mb-1">${escapeHtml(formatKpiLabel(key))}</div>
+                <div class="fw-bold" style="font-size: 1.75rem; line-height: 1.1;">${display}</div>
               </div>`;
           })
           .join('');
         iaResponseText.innerHTML = `
           ${explicacion ? `<div class="text-muted small mb-2">${escapeHtml(explicacion)}</div>` : ''}
-          <div class="row g-2">${cardsHtml}</div>`;
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">${cardsHtml}</div>`;
         if (iaQuickActionWrapper) iaQuickActionWrapper.classList.add('d-none');
         iaQuickFilterState = null;
         return;
@@ -1592,8 +1590,8 @@
         if (iaChartWrapper) iaChartWrapper.classList.remove('d-none');
 
         const palette = [
-          '#f6c343', '#0d6efd', '#198754', '#dc3545', '#6f42c1',
-          '#fd7e14', '#20c997', '#6610f2', '#e83e8c', '#6c757d',
+          '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f',
+          '#fbbf24', '#fcd34d', '#fde68a', '#fef3c7', '#a16207',
         ];
 
         // Formato simplificado para ticks del eje Y (millones / miles)
@@ -1617,8 +1615,8 @@
                 backgroundColor:
                   tipo === 'grafico_pie'
                     ? labels.map((_, i) => palette[i % palette.length])
-                    : 'rgba(255, 193, 7, 0.85)',
-                borderColor: tipo === 'grafico_pie' ? '#c99a1a' : '#e0a800',
+                    : 'rgba(245, 158, 11, 0.85)',
+                borderColor: tipo === 'grafico_pie' ? '#b45309' : '#d97706',
                 borderWidth: 1,
               },
             ],

@@ -1463,11 +1463,12 @@ Reglas ESTRICTAS:
 3. Usa comillas dobles para identificadores y comillas simples para strings. Escapa comillas simples internas duplicándolas ('').
 4. Para fechas usa TO_DATE('YYYY-MM-DD','YYYY-MM-DD').
 5. NUNCA uses DROP, INSERT, UPDATE, DELETE, ALTER, CREATE, TRUNCATE, MERGE, GRANT, REVOKE, CALL, EXEC, ATTACH, DETACH, RENAME ni punto y coma.
-6. Elige "tipoVisual":
-   - "kpi" para un único valor numérico (un total, un conteo, un promedio).
-   - "grafico_barra" para agrupaciones por categoría con valores comparables (por rubro, por marca, top N).
-   - "grafico_pie" para distribuciones porcentuales (participación por rubro, por familia).
-   - "texto" para resultados que no son numéricos o no aplican gráfico.
+6. Elige "tipoVisual" con precisión:
+   - "kpi": para totales o métricas globales en una sola fila (ej: "resumen de inventario", "valorización total", "cuántos artículos con stock"). Devuelve una fila con una o varias métricas agregadas.
+   - "grafico_barra": para agrupaciones y rankings comparables (ej: "por rubro", "por marca", "top 5 familias", "ranking de artículos más vendidos").
+   - "grafico_pie": para distribuciones porcentuales o de participación (ej: "participación por rubro", "distribución por familia").
+   - "texto": para resultados que no son numéricos o no aplican gráfico.
+   - NUNCA uses "lista" como tipoVisual en modo "resumen". El modo "lista" se usa ÚNICAMENTE cuando el usuario pide listar, buscar o filtrar artículos específicos (ej: "muéstrame los tractores Lovol", "artículos con stock > 2", "repuestos de filtro").
 7. Interpreta jerga de inventario:
    - "quiebre", "faltantes", "ruptura de stock" => STOCK_TOTAL <= 0
    - "agotados", "sin stock", "sin existencia" => STOCK_TOTAL <= 0
