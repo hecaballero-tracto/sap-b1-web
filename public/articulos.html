@@ -2869,10 +2869,13 @@
       if (!modalCotizacion) return;
       const manual = currentUser && currentUser.slpAsignadoManual === true;
       if (currentUser) {
-        const slp = currentUser.slpCode ? ` [${currentUser.slpCode}]` : '';
-        cotVendedor.value = currentUser.slpName
-          ? `${currentUser.slpName}${slp}`
-          : 'Sin vendedor asignado en SAP';
+        if (currentUser.slpName && currentUser.slpCode) {
+          cotVendedor.value = `Vendedor: ${currentUser.slpName} [ID: ${currentUser.slpCode}]`;
+        } else if (currentUser.slpName) {
+          cotVendedor.value = `Vendedor: ${currentUser.slpName}`;
+        } else {
+          cotVendedor.value = 'Sin vendedor asignado en SAP';
+        }
       } else {
         cotVendedor.value = '';
       }

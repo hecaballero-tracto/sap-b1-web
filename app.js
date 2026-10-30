@@ -94,43 +94,30 @@ function getDefaultVendedor() {
   };
 }
 
-// Resuelve los datos del vendedor (OSLP/OHEM) a partir del email o usuario AD.
+// Resuelve los datos del vendedor cruzando OHEM (empleado) con OSLP (vendedor)
+// y OUSR (usuario SAP) a partir del email de login o del nombre de usuario AD.
 // Si no hay coincidencia, devuelve un vendedor por defecto (slpAsignadoManual = true).
-async function obtenerDatosVendedor(emailOUser) {
-  const raw = String(emailOUser || '').trim();
+async function obtenerDatosVendedor(identificadorUsuario) {
+  const raw = String(identificadorUsuario || '').trim();
   if (!raw) return getDefaultVendedor();
   // Prefijo del usuario (antes de @) para el LIKE
   const prefix = raw.includes('@') ? raw.split('@')[0] : raw;
-  const sql = `SELECT T0."SlpCode" AS "slpCode", T0."SlpName" AS "slpName", T1."empID" AS "empId",
-      T1."branch" AS "branch", T1."U_Sucursal" AS "uSucursal"
-    FROM "TRACTOAGRO".OSLP T0
-    LEFT JOIN "TRACTOAGRO".OHEM T1 ON T0."SlpCode" = T1."salesPrson"
-    WHERE (LOWER(T1."email") = LOWER(?) OR LOWER(T0."Email") = LOWER(?) OR LOWER(T1."email") LIKE LOWER(? || '@%') OR LOWER(T0."Email") LIKE LOWER(? || '@%'))
-      AND T0."Active" = 'Y'
+  const sql = `SELECT T0."empID" AS "empId", T0."salesPrson" AS "slpCode", T1."SlpName" AS "slpName", T0."email" AS "email"
+    FROM "TRACTOAGRO".OHEM T0
+    INNER JOIN "TRACTOAGRO".OSLP T1 ON T0."salesPrson" = T1."SlpCode"
+    LEFT JOIN "TRACTOAGRO".OUSR T2 ON T0."userId" = T2."USERID"
+    WHERE (LOWER(T0."email") = LOWER(?) OR LOWER(T0."email") LIKE LOWER(? || '@%') OR LOWER(T2."USER_CODE") = LOWER(?))
+      AND T1."Active" = 'Y'
     LIMIT 1`;
   try {
-    const rows = await hanaExec(sql, [raw, raw, prefix, prefix]);
+    const rows = await hanaExec(sql, [raw, prefix, raw]);
     if (!rows || !rows.length) return getDefaultVendedor();
     const r = rows[0];
-    // Sucursal: preferir U_Sucursal (2 dígitos), luego branch, luego '01'
-    let sucursalDefault = '01';
-    const rawSucursal =
-      r.uSucursal !== undefined && r.uSucursal !== null && String(r.uSucursal).trim() !== ''
-        ? String(r.uSucursal).trim()
-        : r.branch !== undefined && r.branch !== null && String(r.branch).trim() !== ''
-        ? String(r.branch).trim()
-        : '';
-    if (rawSucursal) {
-      const n = parseInt(rawSucursal, 10);
-      if (Number.isFinite(n) && n >= 1 && n <= 99) {
-        sucursalDefault = String(n).padStart(2, '0');
-      }
-    }
     return {
       slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
       slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
       empId: r.empId !== undefined && r.empId !== null ? Number(r.empId) : null,
-      sucursalDefault,
+      sucursalDefault: '01',
       slpAsignadoManual: false,
     };
   } catch (err) {
@@ -992,10 +979,21 @@ app.post('/api/login', async (req, res) => {
       canUseIA = true;
     }
 
-    // Resolver vendedor SAP (OSLP/OHEM) por email o usuario AD
+    // Resolver vendedor SAP (OHEM/OSLP/OUSR) por email o usuario AD
     const emailForVendor =
       (adUser && (adUser.mail || adUser.userPrincipalName)) || authUser;
-    const vendedor = await obtenerDatosVendedor(emailForVendor);
+    const samAccountForVendor = String(authUser || '')
+      .split('@')[0]
+      .split('\\\\')
+      .pop();
+    // Intentar primero por email; si no hay coincidencia, por username AD
+    let vendedor = await obtenerDatosVendedor(emailForVendor);
+    if (!vendedor || vendedor.slpAsignadoManual === true) {
+      const porUsuario = await obtenerDatosVendedor(samAccountForVendor);
+      if (porUsuario && porUsuario.slpAsignadoManual !== true) {
+        vendedor = porUsuario;
+      }
+    }
 
     req.session.user = {
       username: authUser,
@@ -2125,13 +2123,9 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
       .json({ error: { message: 'Debe seleccionar una sucursal (U_Sucursal)' } });
   }
 
-  // Prioridad: SalesPersonCode enviado en el body > slpCode de sesión > default
+  // SalesPersonCode: siempre desde la sesión (vendedor vinculado al usuario AD)
   let salesPersonCode = null;
-  if (body.salesPersonCode !== undefined && body.salesPersonCode !== null && body.salesPersonCode !== '') {
-    const n = parseInt(body.salesPersonCode, 10);
-    if (Number.isFinite(n)) salesPersonCode = n;
-  }
-  if (salesPersonCode === null && user.slpCode !== undefined && user.slpCode !== null) {
+  if (user.slpCode !== undefined && user.slpCode !== null) {
     salesPersonCode = Number(user.slpCode);
   }
   if (salesPersonCode === null) {
@@ -2178,6 +2172,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     U_Sucursal: uSucursal,
     DocumentLines: documentLines,
   };
+  // DocumentsOwner: siempre desde la sesión (empleado vinculado al usuario AD)
   if (user.empId !== null && user.empId !== undefined) {
     payload.DocumentsOwner = Number(user.empId);
   }
