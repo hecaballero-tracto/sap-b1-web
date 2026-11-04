@@ -2905,45 +2905,54 @@
           ` · Descuento: <strong>${descuento}%</strong>`;
       }
 
-      // b) Extraer itemCodes
+      // b) Extraer itemCodes limpiamente
       const itemCodes = window.cotizacionActual
-        .map((it) => it.ItemCode)
-        .filter((c) => c);
+        .map((it) => String(it.ItemCode || it.codigo || it.CODIGO_TRACTO || '').trim())
+        .filter(Boolean);
+
+      if (!itemCodes.length || !cotCliente || !cotCliente.CardCode) {
+        // Sin ítems o sin cliente: solo actualizar descuento y re-renderizar
+        for (const it of window.cotizacionActual) {
+          it.descuento = descuento;
+        }
+        renderCotItems();
+        recalcularTotalesCot();
+        return;
+      }
+
+      console.log('Enviando a precios:', {
+        cardCode: cotCliente.CardCode,
+        itemCodes,
+        listNum: cliente.ListNum,
+      });
 
       // c) Consultar precios vía Service Layer (ItemPriceService_GetItemPrice)
       let preciosMap = {};
-      if (itemCodes.length) {
-        try {
-          const res = await apiFetch('/api/articulos/precios-service-layer', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              cardCode: cotCliente.CardCode,
-              itemCodes,
-            }),
-          });
-          if (res.ok) {
-            preciosMap = await res.json();
-          }
-        } catch (_) {
-          preciosMap = {};
+      try {
+        const res = await apiFetch('/api/articulos/precios-service-layer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            cardCode: cotCliente.CardCode,
+            itemCodes,
+          }),
+        });
+        if (res.ok) {
+          preciosMap = await res.json();
         }
+      } catch (_) {
+        preciosMap = {};
       }
 
-      // d) Asignar precio y descuento a cada ítem
+      console.log('Precios recibidos:', preciosMap);
+
+      // d) Asignar precio y descuento a cada ítem (buscando por todas las variantes)
       for (const it of window.cotizacionActual) {
-        const codigo = it.codigo || it.CODIGO_TRACTO || it.ItemCode;
-        const p = preciosMap[codigo] || preciosMap[it.ItemCode];
-        if (p) {
-          it.precio = Number.isFinite(Number(p.precio)) ? Number(p.precio) : 0;
-          it.descuento = Number.isFinite(Number(p.descuento))
-            ? Number(p.descuento)
-            : descuento;
-        } else {
-          it.precio = 0;
-          it.descuento = descuento;
-        }
+        const code = String(it.ItemCode || it.codigo || it.CODIGO_TRACTO || '').trim();
+        const p = preciosMap[code];
+        it.precio = p ? Number(p.precio) || 0 : 0;
+        it.descuento = Number(cliente.Discount) || 0;
       }
 
       // e) Re-renderizar la tabla con los valores actualizados

@@ -2321,12 +2321,37 @@ async function obtenerListNumCliente(cardCode) {
   return null;
 }
 
+// Fallback directo: precios desde ITM1 uniendo con OCRD por ListNum del cliente
+async function preciosDesdeHanaPorCliente(cardCode, itemCodes) {
+  const result = {};
+  if (!cardCode || !Array.isArray(itemCodes) || !itemCodes.length) return result;
+  const placeholders = itemCodes.map(() => '?').join(', ');
+  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."PriceAfVAT", 0), NULLIF(T0."Price", 0), 0) AS "precio", T0."Currency" FROM "TRACTOAGRO".ITM1 T0 INNER JOIN "TRACTOAGRO".OCRD T1 ON T1."ListNum" = T0."PriceList" WHERE T1."CardCode" = ? AND T0."ItemCode" IN (${placeholders})`;
+  try {
+    const params = [cardCode, ...itemCodes];
+    const rows = await hanaExec(sql, params);
+    for (const r of rows || []) {
+      const code = r.ItemCode !== undefined && r.ItemCode !== null ? String(r.ItemCode) : '';
+      if (!code) continue;
+      result[code] = {
+        precio: r.precio !== undefined && r.precio !== null ? Number(r.precio) : 0,
+        moneda: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+      };
+    }
+  } catch (err) {
+    console.warn('Fallback HANA (ITM1+OCRD) falló:', err.message);
+  }
+  return result;
+}
+
 app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) => {
   const body = req.body || {};
   const cardCode = String(body.cardCode || '').trim();
   const itemCodes = Array.isArray(body.itemCodes)
     ? body.itemCodes.map((c) => String(c || '').trim()).filter((c) => c !== '')
     : [];
+
+  console.log('Consultando precios para:', cardCode, itemCodes);
 
   if (!cardCode) {
     return res
@@ -2402,23 +2427,45 @@ app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) =
       return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
     });
     if (faltantes.length) {
-      const listNum = await obtenerListNumCliente(cardCode);
-      if (Number.isFinite(Number(listNum))) {
-        const fallback = await preciosDesdeHana(listNum, faltantes);
-        for (const code of faltantes) {
-          const fb = fallback[code];
-          if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
-            const prev = result[code] || {};
-            result[code] = {
-              precio: Number(fb.precio),
-              descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
-              moneda: fb.moneda || prev.moneda || '',
-            };
+      console.log('Fallback HANA para ítems sin precio:', faltantes);
+      // 1) Fallback directo por CardCode (INNER JOIN OCRD)
+      const fallbackDirecto = await preciosDesdeHanaPorCliente(cardCode, faltantes);
+      for (const code of faltantes) {
+        const fb = fallbackDirecto[code];
+        if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
+          const prev = result[code] || {};
+          result[code] = {
+            precio: Number(fb.precio),
+            descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
+            moneda: fb.moneda || prev.moneda || '',
+          };
+        }
+      }
+      // 2) Fallback adicional por ListNum (si aún quedan sin precio)
+      const aunFaltantes = faltantes.filter((code) => {
+        const r = result[code];
+        return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
+      });
+      if (aunFaltantes.length) {
+        const listNum = await obtenerListNumCliente(cardCode);
+        if (Number.isFinite(Number(listNum))) {
+          const fallback = await preciosDesdeHana(listNum, aunFaltantes);
+          for (const code of aunFaltantes) {
+            const fb = fallback[code];
+            if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
+              const prev = result[code] || {};
+              result[code] = {
+                precio: Number(fb.precio),
+                descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
+                moneda: fb.moneda || prev.moneda || '',
+              };
+            }
           }
         }
       }
     }
 
+    console.log('Precios devueltos:', result);
     return res.json(result);
   } catch (error) {
     if (error.response && error.response.status === 401) {
