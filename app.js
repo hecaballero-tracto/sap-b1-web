@@ -2159,7 +2159,13 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     }
     const line = { ItemCode: itemCode, Quantity: quantity };
     if (l.warehouseCode) line.WarehouseCode = String(l.warehouseCode);
-    // UnitPrice: solo si viene con valor (si no, Service Layer aplica la lógica nativa)
+    // Precio con IVA (PriceAfterVAT) y UnitPrice: solo si vienen con valor
+    if (l.priceAfterVAT !== undefined && l.priceAfterVAT !== null && l.priceAfterVAT !== '') {
+      const pav = Number(l.priceAfterVAT);
+      if (Number.isFinite(pav) && pav >= 0) {
+        line.PriceAfterVAT = pav;
+      }
+    }
     if (l.unitPrice !== undefined && l.unitPrice !== null && l.unitPrice !== '') {
       const unitPrice = Number(l.unitPrice);
       if (Number.isFinite(unitPrice) && unitPrice >= 0) {
@@ -2306,19 +2312,37 @@ app.get('/api/articulos/:itemCode/precio', requireAuth, async (req, res) => {
       .json({ error: { message: 'El parámetro listNum es obligatorio y numérico' } });
   }
 
-  const sql = `SELECT "Price", "Currency" FROM "TRACTOAGRO".ITM1 WHERE "ItemCode" = ? AND "PriceList" = ?`;
+  const sql = `SELECT COALESCE(T0."PriceAfVAT", T0."Price") AS "precioConIva", T0."Price" AS "precioNeto", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."ItemCode" = ? AND T0."PriceList" = ?`;
 
   try {
     const rows = await hanaExec(sql, [itemCode, listNum]);
     if (!rows || !rows.length) {
-      return res.json({ ItemCode: itemCode, PriceList: listNum, Price: 0, Currency: '' });
+      return res.json({
+        ItemCode: itemCode,
+        PriceList: listNum,
+        precioConIva: 0,
+        precioNeto: 0,
+        moneda: '',
+        // Compatibilidad con el frontend anterior
+        Price: 0,
+        Currency: '',
+      });
     }
     const r = rows[0];
+    const precioConIva =
+      r.precioConIva !== undefined && r.precioConIva !== null ? Number(r.precioConIva) : 0;
+    const precioNeto =
+      r.precioNeto !== undefined && r.precioNeto !== null ? Number(r.precioNeto) : 0;
+    const moneda = r.moneda !== undefined && r.moneda !== null ? String(r.moneda) : '';
     return res.json({
       ItemCode: itemCode,
       PriceList: listNum,
-      Price: r.Price !== undefined && r.Price !== null ? Number(r.Price) : 0,
-      Currency: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+      precioConIva,
+      precioNeto,
+      moneda,
+      // Compatibilidad con el frontend anterior
+      Price: precioConIva,
+      Currency: moneda,
     });
   } catch (err) {
     console.error('Error en /api/articulos/:itemCode/precio:', err.message);

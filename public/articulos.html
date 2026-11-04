@@ -661,9 +661,11 @@
                 <tr>
                   <th>Código</th>
                   <th>Descripción</th>
-                  <th style="width: 90px;">Cant.</th>
-                  <th style="width: 120px;">Precio</th>
-                  <th style="width: 130px;">Almacén</th>
+                  <th style="width: 80px;">Cant.</th>
+                  <th style="width: 130px;">Precio (IVA incl.)</th>
+                  <th style="width: 90px;">% Desc.</th>
+                  <th style="width: 120px;" class="text-end">Subtotal</th>
+                  <th style="width: 120px;">Almacén</th>
                   <th style="width: 40px;"></th>
                 </tr>
               </thead>
@@ -907,6 +909,9 @@
           IsCommited: Number(item.IsCommited) || 0,
           cantidad: 1,
           precio: 0,
+          descuento: cotCondiciones && Number(cotCondiciones.Discount)
+            ? Number(cotCondiciones.Discount)
+            : 0,
           almacen: whSugerido,
         });
       }
@@ -2760,19 +2765,20 @@
       }
     }
 
+    function calcularSubtotalLinea(it) {
+      const precio = Number(it.precio) || 0;
+      const cant = Number(it.cantidad) || 0;
+      const desc = Number(it.descuento) || 0;
+      return precio * cant * (1 - desc / 100);
+    }
+
     function recalcularTotalesCot() {
       let subtotal = 0;
       for (const it of window.cotizacionActual) {
-        const precio = Number(it.precio) || 0;
-        const cant = Number(it.cantidad) || 0;
-        subtotal += precio * cant;
+        subtotal += calcularSubtotalLinea(it);
       }
-      const desc = cotCondiciones && Number(cotCondiciones.Discount)
-        ? Number(cotCondiciones.Discount)
-        : 0;
-      const total = subtotal * (1 - desc / 100);
       if (cotSubtotal) cotSubtotal.textContent = numberFmtPy.format(subtotal);
-      if (cotTotal) cotTotal.textContent = numberFmtPy.format(total);
+      if (cotTotal) cotTotal.textContent = numberFmtPy.format(subtotal);
     }
 
     async function aplicarCondicionesCliente() {
@@ -2795,12 +2801,18 @@
       }
 
       const listNum = cotCondiciones.ListNum;
+      const descSocio = Number(cotCondiciones.Discount) || 0;
       if (Number.isFinite(Number(listNum))) {
-        // Recalcular precio base de cada ítem según la lista del cliente
+        // Recalcular precio base (con IVA) y descuento por defecto de cada ítem
         for (const it of window.cotizacionActual) {
           const p = await fetchPrecioItem(it.ItemCode, listNum);
-          if (p && Number.isFinite(Number(p.Price))) {
-            it.precio = Number(p.Price);
+          if (p) {
+            const precioConIva = Number(p.precioConIva ?? p.Price) || 0;
+            it.precio = precioConIva;
+          }
+          // Precargar descuento del socio si el ítem no tiene uno definido
+          if (it.descuento === undefined || it.descuento === null) {
+            it.descuento = descSocio;
           }
         }
       }
@@ -2844,7 +2856,9 @@
         return;
       }
       cotItemsBody.innerHTML = items
-        .map((it, idx) => `
+        .map((it, idx) => {
+          const subtotalLinea = calcularSubtotalLinea(it);
+          return `
           <tr>
             <td><strong>${escapeHtml(it.ItemCode)}</strong></td>
             <td>${escapeHtml(it.ItemName || '')}</td>
@@ -2855,6 +2869,10 @@
               <input type="number" min="0" step="any" class="form-control form-control-sm" data-cot-price="${idx}" value="${it.precio || 0}" />
             </td>
             <td>
+              <input type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" data-cot-disc="${idx}" value="${Number(it.descuento) || 0}" />
+            </td>
+            <td class="text-end fw-bold" data-cot-subtotal="${idx}">${numberFmtPy.format(subtotalLinea)}</td>
+            <td>
               <input type="text" class="form-control form-control-sm" data-cot-wh="${idx}" value="${escapeHtml(it.almacen || '')}" placeholder="Almacén" />
             </td>
             <td class="text-center">
@@ -2862,23 +2880,62 @@
                 <i class="bi bi-trash"></i>
               </button>
             </td>
-          </tr>`)
+          </tr>`;
+        })
         .join('');
 
+      function actualizarSubtotalFila(i) {
+        const cell = cotItemsBody.querySelector(`[data-cot-subtotal="${i}"]`);
+        if (cell && window.cotizacionActual[i]) {
+          cell.textContent = numberFmtPy.format(calcularSubtotalLinea(window.cotizacionActual[i]));
+        }
+      }
+
       cotItemsBody.querySelectorAll('input[data-cot-qty]').forEach((inp) => {
-        inp.addEventListener('change', () => {
+        inp.addEventListener('input', () => {
           const i = parseInt(inp.getAttribute('data-cot-qty'), 10);
           const v = parseInt(inp.value, 10);
           if (Number.isFinite(v) && v > 0) window.cotizacionActual[i].cantidad = v;
-          else inp.value = window.cotizacionActual[i].cantidad;
+          actualizarSubtotalFila(i);
+          recalcularTotalesCot();
+        });
+        inp.addEventListener('change', () => {
+          const i = parseInt(inp.getAttribute('data-cot-qty'), 10);
+          const v = parseInt(inp.value, 10);
+          if (!Number.isFinite(v) || v <= 0) {
+            inp.value = window.cotizacionActual[i].cantidad;
+          }
+          actualizarSubtotalFila(i);
           recalcularTotalesCot();
         });
       });
       cotItemsBody.querySelectorAll('input[data-cot-price]').forEach((inp) => {
-        inp.addEventListener('change', () => {
+        inp.addEventListener('input', () => {
           const i = parseInt(inp.getAttribute('data-cot-price'), 10);
           const v = Number(inp.value);
           window.cotizacionActual[i].precio = Number.isFinite(v) && v >= 0 ? v : 0;
+          actualizarSubtotalFila(i);
+          recalcularTotalesCot();
+        });
+      });
+      cotItemsBody.querySelectorAll('input[data-cot-disc]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          const i = parseInt(inp.getAttribute('data-cot-disc'), 10);
+          let v = Number(inp.value);
+          if (!Number.isFinite(v) || v < 0) v = 0;
+          if (v > 100) v = 100;
+          window.cotizacionActual[i].descuento = v;
+          actualizarSubtotalFila(i);
+          recalcularTotalesCot();
+        });
+        inp.addEventListener('change', () => {
+          const i = parseInt(inp.getAttribute('data-cot-disc'), 10);
+          let v = Number(inp.value);
+          if (!Number.isFinite(v) || v < 0) v = 0;
+          if (v > 100) v = 100;
+          inp.value = v;
+          window.cotizacionActual[i].descuento = v;
+          actualizarSubtotalFila(i);
           recalcularTotalesCot();
         });
       });
@@ -3074,16 +3131,18 @@
           alert('Debe agregar al menos un ítem.');
           return;
         }
-        const descPct = cotCondiciones && Number(cotCondiciones.Discount)
-          ? Number(cotCondiciones.Discount)
-          : 0;
-        const lines = window.cotizacionActual.map((it) => ({
-          itemCode: it.ItemCode,
-          quantity: Number(it.cantidad) || 1,
-          warehouseCode: it.almacen || undefined,
-          unitPrice: Number(it.precio) > 0 ? Number(it.precio) : undefined,
-          discountPercent: descPct > 0 ? descPct : undefined,
-        }));
+        const lines = window.cotizacionActual.map((it) => {
+          const precio = Number(it.precio) > 0 ? Number(it.precio) : undefined;
+          const desc = Number(it.descuento);
+          return {
+            itemCode: it.ItemCode,
+            quantity: Number(it.cantidad) || 1,
+            warehouseCode: it.almacen || undefined,
+            priceAfterVAT: precio,
+            unitPrice: precio,
+            discountPercent: Number.isFinite(desc) && desc > 0 ? desc : undefined,
+          };
+        });
 
         // Vendedor: si el select está visible, usar el valor elegido
         let salesPersonCode = undefined;
