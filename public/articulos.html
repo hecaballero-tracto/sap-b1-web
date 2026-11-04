@@ -885,38 +885,59 @@
       }
     }
 
-    function agregarAlPresupuesto(item) {
+    async function agregarAlPresupuesto(item) {
       if (!item) return;
       const existing = window.cotizacionActual.find(
         (p) => p.ItemCode === item.ItemCode
       );
       if (existing) {
         existing.cantidad += 1;
-      } else {
-        // Almacén sugerido: el primero con disponible > 0
-        let whSugerido = '';
-        if (Array.isArray(item.Warehouses) && item.Warehouses.length) {
-          const conStock = item.Warehouses.find((w) => Number(w.Available) > 0);
-          whSugerido = (conStock || item.Warehouses[0]).WarehouseCode || '';
-        }
-        window.cotizacionActual.push({
-          ItemCode: item.ItemCode,
-          ItemName: item.ItemName,
-          U_Marca: item.U_Marca || '',
-          rubro: item.rubro || '',
-          Available: Number(item.Available) || 0,
-          QuantityOnStock: Number(item.QuantityOnStock) || 0,
-          IsCommited: Number(item.IsCommited) || 0,
-          cantidad: 1,
-          precio: 0,
-          descuento: cotCondiciones && Number(cotCondiciones.Discount)
-            ? Number(cotCondiciones.Discount)
-            : 0,
-          almacen: whSugerido,
-        });
+        updatePresupuestoBar();
+        mostrarToastCotizacion('Artículo añadido al presupuesto');
+        return;
       }
+
+      // Almacén sugerido: el primero con disponible > 0
+      let whSugerido = '';
+      if (Array.isArray(item.Warehouses) && item.Warehouses.length) {
+        const conStock = item.Warehouses.find((w) => Number(w.Available) > 0);
+        whSugerido = (conStock || item.Warehouses[0]).WarehouseCode || '';
+      }
+
+      const descSocio = cotCondiciones && Number(cotCondiciones.Discount)
+        ? Number(cotCondiciones.Discount)
+        : 0;
+
+      const nuevoItem = {
+        ItemCode: item.ItemCode,
+        ItemName: item.ItemName,
+        U_Marca: item.U_Marca || '',
+        rubro: item.rubro || '',
+        Available: Number(item.Available) || 0,
+        QuantityOnStock: Number(item.QuantityOnStock) || 0,
+        IsCommited: Number(item.IsCommited) || 0,
+        cantidad: 1,
+        precio: 0,
+        descuento: descSocio,
+        almacen: whSugerido,
+      };
+
+      // Si ya hay cliente seleccionado, buscar el precio con su lista
+      if (cotCondiciones && Number.isFinite(Number(cotCondiciones.ListNum))) {
+        const p = await fetchPrecioItem(item.ItemCode, cotCondiciones.ListNum);
+        if (p) {
+          nuevoItem.precio = Number(p.precioConIva ?? p.Price) || 0;
+        }
+      }
+
+      window.cotizacionActual.push(nuevoItem);
       updatePresupuestoBar();
       mostrarToastCotizacion('Artículo añadido al presupuesto');
+
+      // Si el modal está abierto, refrescar la tabla
+      if (modalCotizacionEl && modalCotizacionEl.classList.contains('show')) {
+        renderCotItems();
+      }
     }
 
     // Toast temporal para confirmar que se agregó un artículo
@@ -1587,9 +1608,9 @@
       grid.innerHTML = list.map((a) => renderArticuloCard(a)).join('');
 
       grid.querySelectorAll('button[data-cotizar-index]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const idx = parseInt(btn.getAttribute('data-cotizar-index'), 10);
-          agregarAlPresupuesto(list[idx]);
+          await agregarAlPresupuesto(list[idx]);
           btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Agregado';
           btn.classList.remove('btn-warning');
           btn.classList.add('btn-success');
@@ -2803,18 +2824,20 @@
       const listNum = cotCondiciones.ListNum;
       const descSocio = Number(cotCondiciones.Discount) || 0;
       if (Number.isFinite(Number(listNum))) {
-        // Recalcular precio base (con IVA) y descuento por defecto de cada ítem
-        for (const it of window.cotizacionActual) {
-          const p = await fetchPrecioItem(it.ItemCode, listNum);
+        // Recalcular precio base (con IVA) y descuento del socio para cada ítem
+        // Se consultan los precios en paralelo para mayor velocidad.
+        const items = window.cotizacionActual;
+        const precios = await Promise.all(
+          items.map((it) => fetchPrecioItem(it.ItemCode, listNum))
+        );
+        items.forEach((it, i) => {
+          const p = precios[i];
           if (p) {
-            const precioConIva = Number(p.precioConIva ?? p.Price) || 0;
-            it.precio = precioConIva;
+            it.precio = Number(p.precioConIva ?? p.Price) || 0;
           }
-          // Precargar descuento del socio si el ítem no tiene uno definido
-          if (it.descuento === undefined || it.descuento === null) {
-            it.descuento = descSocio;
-          }
-        }
+          // Precargar/actualizar descuento del socio
+          it.descuento = descSocio;
+        });
       }
       renderCotItems();
       recalcularTotalesCot();
@@ -2994,7 +3017,7 @@
           .join('');
         cotClienteResults.classList.remove('d-none');
         cotClienteResults.querySelectorAll('button[data-cot-card]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             cotCliente = {
               CardCode: btn.getAttribute('data-cot-card'),
               CardName: btn.getAttribute('data-cot-name'),
@@ -3002,8 +3025,8 @@
             cotClienteSearch.value = `${cotCliente.CardCode} — ${cotCliente.CardName}`;
             cotClienteResults.classList.add('d-none');
             renderCotClienteSelected();
-            // Consultar condiciones del cliente y recalcular precios
-            cargarCondicionesCliente(cotCliente.CardCode);
+            // Consultar condiciones del cliente y recalcular precios/descuentos
+            await cargarCondicionesCliente(cotCliente.CardCode);
           });
         });
       } catch (_) {
