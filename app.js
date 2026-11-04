@@ -2248,6 +2248,78 @@ function handleCotizacionError(res, error) {
   });
 }
 
+app.get('/api/clientes/:cardCode', requireAuth, async (req, res) => {
+  const cardCode = String(req.params.cardCode || '').trim();
+  if (!cardCode) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El código de cliente es obligatorio' } });
+  }
+
+  const sql = `SELECT "CardCode", "CardName", "ListNum", COALESCE("Discount", 0) AS "Discount" FROM "TRACTOAGRO".OCRD WHERE "CardCode" = ?`;
+
+  try {
+    const rows = await hanaExec(sql, [cardCode]);
+    if (!rows || !rows.length) {
+      return res
+        .status(404)
+        .json({ error: { message: 'Cliente no encontrado' } });
+    }
+    const r = rows[0];
+    return res.json({
+      CardCode: r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : cardCode,
+      CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
+      ListNum: r.ListNum !== undefined && r.ListNum !== null ? Number(r.ListNum) : null,
+      Discount: r.Discount !== undefined && r.Discount !== null ? Number(r.Discount) : 0,
+    });
+  } catch (err) {
+    console.error('Error en /api/clientes/:cardCode:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar cliente en HANA' } });
+  }
+});
+
+app.post('/api/articulos/precios-cliente', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const listNum = parseInt(body.listNum, 10);
+  const itemCodes = Array.isArray(body.itemCodes)
+    ? body.itemCodes.map((c) => String(c || '').trim()).filter((c) => c !== '')
+    : [];
+
+  if (!Number.isFinite(listNum)) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El parámetro listNum es obligatorio y numérico' } });
+  }
+  if (!itemCodes.length) {
+    return res.json({});
+  }
+
+  const placeholders = itemCodes.map(() => '?').join(', ');
+  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."PriceAfVAT", 0), NULLIF(T0."Price", 0), 0) AS "precioConIva", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."PriceList" = ? AND T0."ItemCode" IN (${placeholders})`;
+
+  try {
+    const params = [listNum, ...itemCodes];
+    const rows = await hanaExec(sql, params);
+    const result = {};
+    for (const r of rows || []) {
+      const code = r.ItemCode !== undefined && r.ItemCode !== null ? String(r.ItemCode) : '';
+      if (!code) continue;
+      result[code] = {
+        precio: r.precioConIva !== undefined && r.precioConIva !== null ? Number(r.precioConIva) : 0,
+        moneda: r.moneda !== undefined && r.moneda !== null ? String(r.moneda) : '',
+      };
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('Error en /api/articulos/precios-cliente:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar precios en HANA' } });
+  }
+});
+
 app.get('/api/clientes/:cardCode/condiciones', requireAuth, async (req, res) => {
   const cardCode = String(req.params.cardCode || '').trim();
   if (!cardCode) {

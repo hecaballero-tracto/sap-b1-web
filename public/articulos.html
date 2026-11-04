@@ -2852,7 +2852,7 @@
       }
       try {
         const res = await apiFetch(
-          `/api/clientes/${encodeURIComponent(cardCode)}/condiciones`
+          `/api/clientes/${encodeURIComponent(cardCode)}`
         );
         if (!res.ok) {
           cotCondiciones = null;
@@ -2868,6 +2868,76 @@
       } catch (_) {
         cotCondiciones = null;
       }
+    }
+
+    // Selecciona un cliente y actualiza precios/descuentos de la cotización
+    async function seleccionarCliente(cliente) {
+      if (!cliente) return;
+      console.log('Cliente seleccionado:', cliente);
+
+      cotCliente = {
+        CardCode: cliente.CardCode,
+        CardName: cliente.CardName,
+      };
+      if (cotClienteSearch) {
+        cotClienteSearch.value = `${cotCliente.CardCode} — ${cotCliente.CardName}`;
+      }
+      if (cotClienteResults) cotClienteResults.classList.add('d-none');
+      renderCotClienteSelected();
+
+      // a) Guardar ListNum
+      const listNum = cliente.ListNum !== undefined && cliente.ListNum !== null
+        ? Number(cliente.ListNum)
+        : null;
+      const descuento = Number(cliente.Discount) || 0;
+
+      cotCondiciones = {
+        ListNum: listNum,
+        Discount: descuento,
+        Currency: cliente.Currency || '',
+      };
+
+      // Mostrar info de condiciones
+      if (cotCondicionesInfo) {
+        cotCondicionesInfo.classList.remove('d-none');
+        cotCondicionesInfo.innerHTML =
+          `<i class="bi bi-info-circle me-1"></i>Lista de precios: <strong>${escapeHtml(String(listNum ?? '-'))}</strong>` +
+          ` · Descuento: <strong>${descuento}%</strong>`;
+      }
+
+      // b) Extraer itemCodes
+      const itemCodes = window.cotizacionActual
+        .map((it) => it.ItemCode)
+        .filter((c) => c);
+
+      // c) Consultar precios masivos si hay ítems y listNum válido
+      let preciosMap = {};
+      if (itemCodes.length && Number.isFinite(listNum)) {
+        try {
+          const res = await apiFetch('/api/articulos/precios-cliente', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ listNum, itemCodes }),
+          });
+          if (res.ok) {
+            preciosMap = await res.json();
+          }
+        } catch (_) {
+          preciosMap = {};
+        }
+      }
+
+      // d) Asignar precio y descuento a cada ítem
+      for (const it of window.cotizacionActual) {
+        const p = preciosMap[it.ItemCode];
+        it.precio = p && Number.isFinite(Number(p.precio)) ? Number(p.precio) : 0;
+        it.descuento = descuento;
+      }
+
+      // e) Re-renderizar la tabla con los valores actualizados
+      renderCotItems();
+      recalcularTotalesCot();
     }
 
     function renderCotItems() {
@@ -3018,15 +3088,28 @@
         cotClienteResults.classList.remove('d-none');
         cotClienteResults.querySelectorAll('button[data-cot-card]').forEach((btn) => {
           btn.addEventListener('click', async () => {
-            cotCliente = {
-              CardCode: btn.getAttribute('data-cot-card'),
-              CardName: btn.getAttribute('data-cot-name'),
-            };
-            cotClienteSearch.value = `${cotCliente.CardCode} — ${cotCliente.CardName}`;
-            cotClienteResults.classList.add('d-none');
-            renderCotClienteSelected();
-            // Consultar condiciones del cliente y recalcular precios/descuentos
-            await cargarCondicionesCliente(cotCliente.CardCode);
+            const cardCode = btn.getAttribute('data-cot-card');
+            const cardName = btn.getAttribute('data-cot-name');
+            // Obtener condiciones completas del cliente (ListNum, Discount)
+            let cliente = { CardCode: cardCode, CardName: cardName, ListNum: null, Discount: 0 };
+            try {
+              const res = await apiFetch(
+                `/api/clientes/${encodeURIComponent(cardCode)}`
+              );
+              if (res.ok) {
+                const data = await res.json();
+                cliente = {
+                  CardCode: data.CardCode || cardCode,
+                  CardName: data.CardName || cardName,
+                  ListNum: data.ListNum,
+                  Discount: Number(data.Discount) || 0,
+                  Currency: data.Currency || '',
+                };
+              }
+            } catch (_) {
+              /* usar valores por defecto */
+            }
+            await seleccionarCliente(cliente);
           });
         });
       } catch (_) {
