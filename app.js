@@ -2287,7 +2287,7 @@ async function preciosDesdeHana(listNum, itemCodes) {
     return result;
   }
   const placeholders = itemCodes.map(() => '?').join(', ');
-  const sql = `SELECT "ItemCode", COALESCE(NULLIF("PriceAfVAT", 0), NULLIF("Price", 0), 0) AS "precio", "Currency" FROM "TRACTOAGRO".ITM1 WHERE "PriceList" = ? AND "ItemCode" IN (${placeholders})`;
+  const sql = `SELECT "ItemCode", COALESCE(NULLIF("Price", 0), 0) AS "precio", "Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 WHERE "PriceList" = ? AND "ItemCode" IN (${placeholders})`;
   try {
     const params = [Number(listNum), ...itemCodes];
     const rows = await hanaExec(sql, params);
@@ -2296,7 +2296,7 @@ async function preciosDesdeHana(listNum, itemCodes) {
       if (!code) continue;
       result[code] = {
         precio: r.precio !== undefined && r.precio !== null ? Number(r.precio) : 0,
-        moneda: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+        moneda: r.moneda !== undefined && r.moneda !== null ? String(r.moneda) : '',
       };
     }
   } catch (err) {
@@ -2326,7 +2326,7 @@ async function preciosDesdeHanaPorCliente(cardCode, itemCodes) {
   const result = {};
   if (!cardCode || !Array.isArray(itemCodes) || !itemCodes.length) return result;
   const placeholders = itemCodes.map(() => '?').join(', ');
-  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."PriceAfVAT", 0), NULLIF(T0."Price", 0), 0) AS "precio", T0."Currency" FROM "TRACTOAGRO".ITM1 T0 INNER JOIN "TRACTOAGRO".OCRD T1 ON T1."ListNum" = T0."PriceList" WHERE T1."CardCode" = ? AND T0."ItemCode" IN (${placeholders})`;
+  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."Price", 0), 0) AS "precio", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 INNER JOIN "TRACTOAGRO".OCRD T1 ON T1."ListNum" = T0."PriceList" WHERE T1."CardCode" = ? AND T0."ItemCode" IN (${placeholders})`;
   try {
     const params = [cardCode, ...itemCodes];
     const rows = await hanaExec(sql, params);
@@ -2335,7 +2335,7 @@ async function preciosDesdeHanaPorCliente(cardCode, itemCodes) {
       if (!code) continue;
       result[code] = {
         precio: r.precio !== undefined && r.precio !== null ? Number(r.precio) : 0,
-        moneda: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+        moneda: r.moneda !== undefined && r.moneda !== null ? String(r.moneda) : '',
       };
     }
   } catch (err) {
@@ -2362,172 +2362,106 @@ app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) =
     return res.json({});
   }
 
-  const today = new Date().toISOString().split('T')[0];
-
   try {
-    await ensureSession();
-
+    // 1) Prioridad: consulta directa a HANA (ITM1 INNER JOIN OCRD por CardCode)
     const result = {};
-    // Consultar en paralelo (con límite razonable) para mayor velocidad
-    const CONCURRENCY = 8;
-    for (let i = 0; i < itemCodes.length; i += CONCURRENCY) {
-      const batch = itemCodes.slice(i, i + CONCURRENCY);
-      const responses = await Promise.all(
-        batch.map(async (itemCode) => {
-          try {
-            const resp = await sapClient.post(
-              '/b1s/v1/ItemPriceService_GetItemPrice',
-              {
-                ItemPriceParams: {
-                  CardCode: cardCode,
-                  ItemCode: itemCode,
-                  Date: today,
-                },
-              },
-              { headers: { Cookie: buildCookieHeader() } }
-            );
-            return { itemCode, data: resp.data || {} };
-          } catch (err) {
-            // Si la sesión expiró, propagar para reintentar arriba
-            if (err.response && err.response.status === 401) {
-              throw err;
-            }
-            console.warn(
-              `No se pudo obtener precio para ${itemCode}:`,
-              err.response ? err.response.status : err.message
-            );
-            return { itemCode, data: null };
-          }
-        })
-      );
-
-      for (const { itemCode, data } of responses) {
-        if (!data) continue;
-        const price =
-          data.Price !== undefined && data.Price !== null ? Number(data.Price) : 0;
-        const discount =
-          data.Discount !== undefined && data.Discount !== null
-            ? Number(data.Discount)
-            : 0;
-        const currency =
-          data.Currency !== undefined && data.Currency !== null
-            ? String(data.Currency)
-            : '';
-        result[itemCode] = {
-          precio: Number.isFinite(price) ? price : 0,
-          descuento: Number.isFinite(discount) ? discount : 0,
-          moneda: currency,
+    const directo = await preciosDesdeHanaPorCliente(cardCode, itemCodes);
+    for (const code of itemCodes) {
+      const r = directo[code];
+      if (r && Number.isFinite(Number(r.precio)) && Number(r.precio) > 0) {
+        result[code] = {
+          precio: Number(r.precio),
+          descuento: 0,
+          moneda: r.moneda || '',
         };
       }
     }
 
-    // Fallback HANA para ítems sin precio (0) o que fallaron en Service Layer
+    // 2) Fallback por ListNum para los que aún no tienen precio
     const faltantes = itemCodes.filter((code) => {
       const r = result[code];
       return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
     });
     if (faltantes.length) {
-      console.log('Fallback HANA para ítems sin precio:', faltantes);
-      // 1) Fallback directo por CardCode (INNER JOIN OCRD)
-      const fallbackDirecto = await preciosDesdeHanaPorCliente(cardCode, faltantes);
-      for (const code of faltantes) {
-        const fb = fallbackDirecto[code];
-        if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
-          const prev = result[code] || {};
-          result[code] = {
-            precio: Number(fb.precio),
-            descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
-            moneda: fb.moneda || prev.moneda || '',
-          };
+      console.log('Fallback HANA por ListNum para:', faltantes);
+      const listNum = await obtenerListNumCliente(cardCode);
+      if (Number.isFinite(Number(listNum))) {
+        const fallback = await preciosDesdeHana(listNum, faltantes);
+        for (const code of faltantes) {
+          const fb = fallback[code];
+          if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
+            result[code] = {
+              precio: Number(fb.precio),
+              descuento: 0,
+              moneda: fb.moneda || '',
+            };
+          }
         }
       }
-      // 2) Fallback adicional por ListNum (si aún quedan sin precio)
-      const aunFaltantes = faltantes.filter((code) => {
-        const r = result[code];
-        return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
-      });
-      if (aunFaltantes.length) {
-        const listNum = await obtenerListNumCliente(cardCode);
-        if (Number.isFinite(Number(listNum))) {
-          const fallback = await preciosDesdeHana(listNum, aunFaltantes);
-          for (const code of aunFaltantes) {
-            const fb = fallback[code];
-            if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
-              const prev = result[code] || {};
-              result[code] = {
-                precio: Number(fb.precio),
-                descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
-                moneda: fb.moneda || prev.moneda || '',
+    }
+
+    // 3) Si aún quedan sin precio, intentar Service Layer (ItemPriceService_GetItemPrice)
+    const aunFaltantes = itemCodes.filter((code) => {
+      const r = result[code];
+      return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
+    });
+    if (aunFaltantes.length) {
+      try {
+        await ensureSession();
+        const today = new Date().toISOString().split('T')[0];
+        const CONCURRENCY = 8;
+        for (let i = 0; i < aunFaltantes.length; i += CONCURRENCY) {
+          const batch = aunFaltantes.slice(i, i + CONCURRENCY);
+          const responses = await Promise.all(
+            batch.map(async (itemCode) => {
+              try {
+                const resp = await sapClient.post(
+                  '/b1s/v1/ItemPriceService_GetItemPrice',
+                  {
+                    ItemPriceParams: {
+                      CardCode: cardCode,
+                      ItemCode: itemCode,
+                      Date: today,
+                    },
+                  },
+                  { headers: { Cookie: buildCookieHeader() } }
+                );
+                return { itemCode, data: resp.data || {} };
+              } catch (err) {
+                console.warn(
+                  `Service Layer sin precio para ${itemCode}:`,
+                  err.response ? err.response.status : err.message
+                );
+                return { itemCode, data: null };
+              }
+            })
+          );
+          for (const { itemCode, data } of responses) {
+            if (!data) continue;
+            const price = Number(data.Price) || 0;
+            const discount = Number(data.Discount) || 0;
+            const currency = data.Currency || '';
+            if (price > 0) {
+              result[itemCode] = {
+                precio: price,
+                descuento: Number.isFinite(discount) ? discount : 0,
+                moneda: currency,
               };
             }
           }
         }
+      } catch (slErr) {
+        console.warn('Service Layer falló, se mantiene el resultado de HANA:', slErr.message);
       }
     }
 
     console.log('Precios devueltos:', result);
     return res.json(result);
   } catch (error) {
-    if (error.response && error.response.status === 401) {
-      try {
-        sapSession = { b1session: null, routeid: null };
-        await login();
-        // Reintentar una vez
-        const result = {};
-        for (const itemCode of itemCodes) {
-          try {
-            const resp = await sapClient.post(
-              '/b1s/v1/ItemPriceService_GetItemPrice',
-              {
-                ItemPriceParams: {
-                  CardCode: cardCode,
-                  ItemCode: itemCode,
-                  Date: today,
-                },
-              },
-              { headers: { Cookie: buildCookieHeader() } }
-            );
-            const data = resp.data || {};
-            result[itemCode] = {
-              precio: Number(data.Price) || 0,
-              descuento: Number(data.Discount) || 0,
-              moneda: data.Currency || '',
-            };
-          } catch (_) {
-            /* ignorar ítem individual */
-          }
-        }
-        // Fallback HANA también en el reintento
-        const faltantes = itemCodes.filter((code) => {
-          const r = result[code];
-          return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
-        });
-        if (faltantes.length) {
-          const listNum = await obtenerListNumCliente(cardCode);
-          if (Number.isFinite(Number(listNum))) {
-            const fallback = await preciosDesdeHana(listNum, faltantes);
-            for (const code of faltantes) {
-              const fb = fallback[code];
-              if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
-                const prev = result[code] || {};
-                result[code] = {
-                  precio: Number(fb.precio),
-                  descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
-                  moneda: fb.moneda || prev.moneda || '',
-                };
-              }
-            }
-          }
-        }
-        return res.json(result);
-      } catch (retryError) {
-        return handleError(res, retryError);
-      }
-    }
     console.error('Error en /api/articulos/precios-service-layer:', error.message);
     return res
       .status(500)
-      .json({ error: { message: 'Error al consultar precios en Service Layer' } });
+      .json({ error: { message: 'Error al consultar precios' } });
   }
 });
 
@@ -2548,7 +2482,7 @@ app.post('/api/articulos/precios-cliente', requireAuth, async (req, res) => {
   }
 
   const placeholders = itemCodes.map(() => '?').join(', ');
-  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."PriceAfVAT", 0), NULLIF(T0."Price", 0), 0) AS "precioConIva", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."PriceList" = ? AND T0."ItemCode" IN (${placeholders})`;
+  const sql = `SELECT T0."ItemCode", COALESCE(NULLIF(T0."Price", 0), 0) AS "precioConIva", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."PriceList" = ? AND T0."ItemCode" IN (${placeholders})`;
 
   try {
     const params = [listNum, ...itemCodes];
@@ -2580,7 +2514,7 @@ app.get('/api/clientes/:cardCode/condiciones', requireAuth, async (req, res) => 
   }
 
   const safe = escapeODataString(cardCode);
-  const query = `/b1s/v1/BusinessPartners('${safe}')?$select=CardCode,CardName,ListNum,Discount,Currency`;
+  const query = `/b1s/v1/BusinessPartners('${safe}')?$select=CardCode,CardName,PriceListNum,Discount,Currency`;
 
   try {
     await ensureSession();
@@ -2591,7 +2525,7 @@ app.get('/api/clientes/:cardCode/condiciones', requireAuth, async (req, res) => 
     return res.json({
       CardCode: bp.CardCode || cardCode,
       CardName: bp.CardName || '',
-      ListNum: bp.ListNum !== undefined && bp.ListNum !== null ? Number(bp.ListNum) : null,
+      ListNum: bp.PriceListNum !== undefined && bp.PriceListNum !== null ? Number(bp.PriceListNum) : null,
       Discount: bp.Discount !== undefined && bp.Discount !== null ? Number(bp.Discount) : 0,
       Currency: bp.Currency || '',
     });
@@ -2607,7 +2541,7 @@ app.get('/api/clientes/:cardCode/condiciones', requireAuth, async (req, res) => 
         return res.json({
           CardCode: bp.CardCode || cardCode,
           CardName: bp.CardName || '',
-          ListNum: bp.ListNum !== undefined && bp.ListNum !== null ? Number(bp.ListNum) : null,
+          ListNum: bp.PriceListNum !== undefined && bp.PriceListNum !== null ? Number(bp.PriceListNum) : null,
           Discount: bp.Discount !== undefined && bp.Discount !== null ? Number(bp.Discount) : 0,
           Currency: bp.Currency || '',
         });
@@ -2635,7 +2569,7 @@ app.get('/api/articulos/:itemCode/precio', requireAuth, async (req, res) => {
       .json({ error: { message: 'El parámetro listNum es obligatorio y numérico' } });
   }
 
-  const sql = `SELECT COALESCE(T0."PriceAfVAT", T0."Price") AS "precioConIva", T0."Price" AS "precioNeto", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."ItemCode" = ? AND T0."PriceList" = ?`;
+  const sql = `SELECT COALESCE(NULLIF(T0."Price", 0), 0) AS "precioConIva", T0."Price" AS "precioNeto", T0."Currency" AS "moneda" FROM "TRACTOAGRO".ITM1 T0 WHERE T0."ItemCode" = ? AND T0."PriceList" = ?`;
 
   try {
     const rows = await hanaExec(sql, [itemCode, listNum]);
