@@ -2280,6 +2280,124 @@ app.get('/api/clientes/:cardCode', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const cardCode = String(body.cardCode || '').trim();
+  const itemCodes = Array.isArray(body.itemCodes)
+    ? body.itemCodes.map((c) => String(c || '').trim()).filter((c) => c !== '')
+    : [];
+
+  if (!cardCode) {
+    return res
+      .status(400)
+      .json({ error: { message: 'El parámetro cardCode es obligatorio' } });
+  }
+  if (!itemCodes.length) {
+    return res.json({});
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+
+  try {
+    await ensureSession();
+
+    const result = {};
+    // Consultar en paralelo (con límite razonable) para mayor velocidad
+    const CONCURRENCY = 8;
+    for (let i = 0; i < itemCodes.length; i += CONCURRENCY) {
+      const batch = itemCodes.slice(i, i + CONCURRENCY);
+      const responses = await Promise.all(
+        batch.map(async (itemCode) => {
+          try {
+            const resp = await sapClient.post(
+              '/b1s/v1/ItemPriceService_GetItemPrice',
+              {
+                ItemPriceParams: {
+                  CardCode: cardCode,
+                  ItemCode: itemCode,
+                  Date: today,
+                },
+              },
+              { headers: { Cookie: buildCookieHeader() } }
+            );
+            return { itemCode, data: resp.data || {} };
+          } catch (err) {
+            // Si la sesión expiró, propagar para reintentar arriba
+            if (err.response && err.response.status === 401) {
+              throw err;
+            }
+            console.warn(
+              `No se pudo obtener precio para ${itemCode}:`,
+              err.response ? err.response.status : err.message
+            );
+            return { itemCode, data: null };
+          }
+        })
+      );
+
+      for (const { itemCode, data } of responses) {
+        if (!data) continue;
+        const price =
+          data.Price !== undefined && data.Price !== null ? Number(data.Price) : 0;
+        const discount =
+          data.Discount !== undefined && data.Discount !== null
+            ? Number(data.Discount)
+            : 0;
+        const currency =
+          data.Currency !== undefined && data.Currency !== null
+            ? String(data.Currency)
+            : '';
+        result[itemCode] = {
+          precio: Number.isFinite(price) ? price : 0,
+          descuento: Number.isFinite(discount) ? discount : 0,
+          moneda: currency,
+        };
+      }
+    }
+
+    return res.json(result);
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        // Reintentar una vez
+        const result = {};
+        for (const itemCode of itemCodes) {
+          try {
+            const resp = await sapClient.post(
+              '/b1s/v1/ItemPriceService_GetItemPrice',
+              {
+                ItemPriceParams: {
+                  CardCode: cardCode,
+                  ItemCode: itemCode,
+                  Date: today,
+                },
+              },
+              { headers: { Cookie: buildCookieHeader() } }
+            );
+            const data = resp.data || {};
+            result[itemCode] = {
+              precio: Number(data.Price) || 0,
+              descuento: Number(data.Discount) || 0,
+              moneda: data.Currency || '',
+            };
+          } catch (_) {
+            /* ignorar ítem individual */
+          }
+        }
+        return res.json(result);
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    console.error('Error en /api/articulos/precios-service-layer:', error.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar precios en Service Layer' } });
+  }
+});
+
 app.post('/api/articulos/precios-cliente', requireAuth, async (req, res) => {
   const body = req.body || {};
   const listNum = parseInt(body.listNum, 10);

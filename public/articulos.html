@@ -2910,15 +2910,18 @@
         .map((it) => it.ItemCode)
         .filter((c) => c);
 
-      // c) Consultar precios masivos si hay ítems y listNum válido
+      // c) Consultar precios vía Service Layer (ItemPriceService_GetItemPrice)
       let preciosMap = {};
-      if (itemCodes.length && Number.isFinite(listNum)) {
+      if (itemCodes.length) {
         try {
-          const res = await apiFetch('/api/articulos/precios-cliente', {
+          const res = await apiFetch('/api/articulos/precios-service-layer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ listNum, itemCodes }),
+            body: JSON.stringify({
+              cardCode: cotCliente.CardCode,
+              itemCodes,
+            }),
           });
           if (res.ok) {
             preciosMap = await res.json();
@@ -2931,8 +2934,15 @@
       // d) Asignar precio y descuento a cada ítem
       for (const it of window.cotizacionActual) {
         const p = preciosMap[it.ItemCode];
-        it.precio = p && Number.isFinite(Number(p.precio)) ? Number(p.precio) : 0;
-        it.descuento = descuento;
+        if (p) {
+          it.precio = Number.isFinite(Number(p.precio)) ? Number(p.precio) : 0;
+          it.descuento = Number.isFinite(Number(p.descuento))
+            ? Number(p.descuento)
+            : descuento;
+        } else {
+          it.precio = 0;
+          it.descuento = descuento;
+        }
       }
 
       // e) Re-renderizar la tabla con los valores actualizados
