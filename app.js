@@ -2280,6 +2280,47 @@ app.get('/api/clientes/:cardCode', requireAuth, async (req, res) => {
   }
 });
 
+// Fallback: consulta precios directamente en HANA (ITM1) para una lista de precios
+async function preciosDesdeHana(listNum, itemCodes) {
+  const result = {};
+  if (!Number.isFinite(Number(listNum)) || !Array.isArray(itemCodes) || !itemCodes.length) {
+    return result;
+  }
+  const placeholders = itemCodes.map(() => '?').join(', ');
+  const sql = `SELECT "ItemCode", COALESCE(NULLIF("PriceAfVAT", 0), NULLIF("Price", 0), 0) AS "precio", "Currency" FROM "TRACTOAGRO".ITM1 WHERE "PriceList" = ? AND "ItemCode" IN (${placeholders})`;
+  try {
+    const params = [Number(listNum), ...itemCodes];
+    const rows = await hanaExec(sql, params);
+    for (const r of rows || []) {
+      const code = r.ItemCode !== undefined && r.ItemCode !== null ? String(r.ItemCode) : '';
+      if (!code) continue;
+      result[code] = {
+        precio: r.precio !== undefined && r.precio !== null ? Number(r.precio) : 0,
+        moneda: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : '',
+      };
+    }
+  } catch (err) {
+    console.warn('Fallback HANA ITM1 falló:', err.message);
+  }
+  return result;
+}
+
+// Obtiene el ListNum del cliente desde OCRD (HANA)
+async function obtenerListNumCliente(cardCode) {
+  try {
+    const rows = await hanaExec(
+      `SELECT "ListNum" FROM "TRACTOAGRO".OCRD WHERE "CardCode" = ?`,
+      [cardCode]
+    );
+    if (rows && rows.length && rows[0].ListNum !== undefined && rows[0].ListNum !== null) {
+      return Number(rows[0].ListNum);
+    }
+  } catch (err) {
+    console.warn('No se pudo obtener ListNum del cliente:', err.message);
+  }
+  return null;
+}
+
 app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) => {
   const body = req.body || {};
   const cardCode = String(body.cardCode || '').trim();
@@ -2355,6 +2396,29 @@ app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) =
       }
     }
 
+    // Fallback HANA para ítems sin precio (0) o que fallaron en Service Layer
+    const faltantes = itemCodes.filter((code) => {
+      const r = result[code];
+      return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
+    });
+    if (faltantes.length) {
+      const listNum = await obtenerListNumCliente(cardCode);
+      if (Number.isFinite(Number(listNum))) {
+        const fallback = await preciosDesdeHana(listNum, faltantes);
+        for (const code of faltantes) {
+          const fb = fallback[code];
+          if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
+            const prev = result[code] || {};
+            result[code] = {
+              precio: Number(fb.precio),
+              descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
+              moneda: fb.moneda || prev.moneda || '',
+            };
+          }
+        }
+      }
+    }
+
     return res.json(result);
   } catch (error) {
     if (error.response && error.response.status === 401) {
@@ -2384,6 +2448,28 @@ app.post('/api/articulos/precios-service-layer', requireAuth, async (req, res) =
             };
           } catch (_) {
             /* ignorar ítem individual */
+          }
+        }
+        // Fallback HANA también en el reintento
+        const faltantes = itemCodes.filter((code) => {
+          const r = result[code];
+          return !r || !Number.isFinite(Number(r.precio)) || Number(r.precio) <= 0;
+        });
+        if (faltantes.length) {
+          const listNum = await obtenerListNumCliente(cardCode);
+          if (Number.isFinite(Number(listNum))) {
+            const fallback = await preciosDesdeHana(listNum, faltantes);
+            for (const code of faltantes) {
+              const fb = fallback[code];
+              if (fb && Number.isFinite(Number(fb.precio)) && Number(fb.precio) > 0) {
+                const prev = result[code] || {};
+                result[code] = {
+                  precio: Number(fb.precio),
+                  descuento: Number.isFinite(Number(prev.descuento)) ? Number(prev.descuento) : 0,
+                  moneda: fb.moneda || prev.moneda || '',
+                };
+              }
+            }
           }
         }
         return res.json(result);

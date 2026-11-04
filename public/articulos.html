@@ -2933,7 +2933,8 @@
 
       // d) Asignar precio y descuento a cada ítem
       for (const it of window.cotizacionActual) {
-        const p = preciosMap[it.ItemCode];
+        const codigo = it.codigo || it.CODIGO_TRACTO || it.ItemCode;
+        const p = preciosMap[codigo] || preciosMap[it.ItemCode];
         if (p) {
           it.precio = Number.isFinite(Number(p.precio)) ? Number(p.precio) : 0;
           it.descuento = Number.isFinite(Number(p.descuento))
@@ -2961,6 +2962,8 @@
       cotItemsBody.innerHTML = items
         .map((it, idx) => {
           const subtotalLinea = calcularSubtotalLinea(it);
+          const precioVal = Number(it.precio) || 0;
+          const descVal = Number(it.descuento) || 0;
           return `
           <tr>
             <td><strong>${escapeHtml(it.ItemCode)}</strong></td>
@@ -2969,10 +2972,10 @@
               <input type="number" min="1" step="1" class="form-control form-control-sm" data-cot-qty="${idx}" value="${it.cantidad}" />
             </td>
             <td>
-              <input type="number" min="0" step="any" class="form-control form-control-sm" data-cot-price="${idx}" value="${it.precio || 0}" />
+              <input type="number" min="0" step="any" class="form-control form-control-sm" data-cot-price="${idx}" value="${precioVal}" />
             </td>
             <td>
-              <input type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" data-cot-disc="${idx}" value="${Number(it.descuento) || 0}" />
+              <input type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" data-cot-disc="${idx}" value="${descVal}" />
             </td>
             <td class="text-end fw-bold" data-cot-subtotal="${idx}">${numberFmtPy.format(subtotalLinea)}</td>
             <td>
