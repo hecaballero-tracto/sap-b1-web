@@ -616,12 +616,12 @@
         </div>
         <div class="modal-body">
           <div class="row g-2 mb-3">
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-4">
               <label class="form-label small text-muted mb-1">Vendedor</label>
               <input type="text" class="form-control form-control-sm" id="cotVendedor" readonly />
               <select id="selectVendedorCotizacion" class="form-select form-select-sm mt-2 d-none"></select>
             </div>
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-4">
               <label for="cotizacionSucursal" class="form-label small text-muted mb-1">Sucursal <span class="text-danger">*</span></label>
               <select id="cotizacionSucursal" class="form-select form-select-sm" required>
                 <option value="01">01 - CENTRAL</option>
@@ -639,6 +639,18 @@
                 <option value="13">13 - CAMPO 9</option>
                 <option value="14">14 - SAN JUAN BAUTISTA</option>
                 <option value="15">15 - SANTA ROSA LIC.</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label for="cotizacionTipoVenta" class="form-label small text-muted mb-1">Tipo Venta <span class="text-danger">*</span></label>
+              <select id="cotizacionTipoVenta" class="form-select form-select-sm" required>
+                <option value="2" selected>MOSTRADOR</option>
+                <option value="1">LICITACION</option>
+                <option value="3">MAYORISTA</option>
+                <option value="4">CAMPO</option>
+                <option value="5">CONSIGNACION</option>
+                <option value="6">FINANCIEROS</option>
+                <option value="7">EXPORTACION</option>
               </select>
             </div>
           </div>
@@ -2747,6 +2759,7 @@
     const cotVendedor = document.getElementById('cotVendedor');
     const selectVendedorCotizacion = document.getElementById('selectVendedorCotizacion');
     const cotizacionSucursal = document.getElementById('cotizacionSucursal');
+    const cotizacionTipoVenta = document.getElementById('cotizacionTipoVenta');
     let vendedoresCache = null;
     const cotClienteSearch = document.getElementById('cotClienteSearch');
     const cotClienteResults = document.getElementById('cotClienteResults');
@@ -3294,6 +3307,13 @@
           return;
         }
 
+        // Tipo Venta obligatorio
+        const uTipoOfer = cotizacionTipoVenta ? cotizacionTipoVenta.value : '';
+        if (!uTipoOfer) {
+          alert('Debe seleccionar un tipo de venta.');
+          return;
+        }
+
         const originalHtml = btnGenerarOferta.innerHTML;
         btnGenerarOferta.disabled = true;
         btnGenerarOferta.innerHTML =
@@ -3310,6 +3330,7 @@
               lines,
               salesPersonCode,
               U_Sucursal: uSucursal,
+              U_TipoOfer: uTipoOfer,
             }),
           });
           const data = await res.json().catch(() => ({}));

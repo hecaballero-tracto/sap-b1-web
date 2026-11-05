@@ -2116,6 +2116,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
   const comments = String(body.comments || '').trim();
   const lines = Array.isArray(body.lines) ? body.lines : [];
   const uSucursal = String(body.U_Sucursal || body.uSucursal || '').trim();
+  const uTipoOfer = String(body.U_TipoOfer || body.uTipoOfer || '2').trim() || '2';
 
   if (!uSucursal) {
     return res
@@ -2186,6 +2187,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     CardCode: cardCode,
     SalesPersonCode: Number(salesPersonCode),
     U_Sucursal: uSucursal,
+    U_TipoOfer: uTipoOfer,
     DocumentLines: documentLines,
   };
   // DocumentsOwner: siempre desde la sesión (empleado vinculado al usuario AD)
