@@ -741,6 +741,32 @@
     </div>
   </div>
 
+  <!-- Modal de confirmación por margen (error 209) -->
+  <div class="modal fade" id="modalMargen" tabindex="-1" aria-labelledby="modalMargenLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning-subtle">
+          <h5 class="modal-title" id="modalMargenLabel">
+            <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Margen por debajo del mínimo
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3" id="modalMargenMensaje"></p>
+          <p class="mb-0 fw-semibold">¿Desea enviar la oferta al circuito de aprobación gerencial?</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btnMargenModificar">
+            <i class="bi bi-pencil-square me-1"></i>Modificar Descuentos
+          </button>
+          <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnMargenAutorizar">
+            <i class="bi bi-send-check me-1"></i>Sí, enviar a Autorización
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de precios -->
   <div class="modal fade" id="priceModal" tabindex="-1" aria-labelledby="priceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -2796,6 +2822,15 @@
     const cotToastBody = document.getElementById('cotToastBody');
     const cotToast = cotToastEl ? new bootstrap.Toast(cotToastEl, { delay: 5000 }) : null;
 
+    // Modal de confirmación por margen (error 209)
+    const modalMargenEl = document.getElementById('modalMargen');
+    const modalMargen = modalMargenEl ? new bootstrap.Modal(modalMargenEl) : null;
+    const modalMargenMensaje = document.getElementById('modalMargenMensaje');
+    const btnMargenAutorizar = document.getElementById('btnMargenAutorizar');
+    const btnMargenModificar = document.getElementById('btnMargenModificar');
+    // Callback pendiente cuando el usuario confirma "Seguir a autorización"
+    let margenReintentoCallback = null;
+
     let cotCliente = null; // { CardCode, CardName }
     let cotSearchTimer = null;
     // Condiciones del cliente: { ListNum, Discount, Currency }
@@ -3303,127 +3338,170 @@
       });
     }
 
+    // Envía la cotización al backend. `authMargen` permite forzar
+    // U_AuthVentaMargen = 'Seguir a autorizacion' tras confirmar el modal.
+    async function enviarCotizacion({ authMargen = false } = {}) {
+      if (!cotCliente) {
+        alert('Debe seleccionar un cliente.');
+        return;
+      }
+      if (!window.cotizacionActual.length) {
+        alert('Debe agregar al menos un ítem.');
+        return;
+      }
+      const invalido = window.cotizacionActual.some((it) => {
+        const precio = Number(it.precio) || 0;
+        const cant = Number(it.cantidad) || 0;
+        return precio <= 0 || cant <= 0;
+      });
+      if (invalido) {
+        alert('Todos los ítems deben tener cantidad y precio mayores a 0.');
+        return;
+      }
+
+      const lines = window.cotizacionActual.map((it) => {
+        const precio = Number(it.precio) > 0 ? Number(it.precio) : undefined;
+        const desc = Number(it.descuento);
+        return {
+          itemCode: it.ItemCode,
+          quantity: Number(it.cantidad) || 1,
+          warehouseCode: it.almacen || undefined,
+          priceAfterVAT: precio,
+          unitPrice: precio,
+          discountPercent: Number.isFinite(desc) && desc > 0 ? desc : undefined,
+          uoMCode: it.uoMCode || undefined,
+          unitMsr: it.unitMsr || undefined,
+        };
+      });
+
+      let salesPersonCode = undefined;
+      if (
+        selectVendedorCotizacion &&
+        !selectVendedorCotizacion.classList.contains('d-none')
+      ) {
+        const v = selectVendedorCotizacion.value;
+        if (!v) {
+          alert('Debe seleccionar un vendedor.');
+          return;
+        }
+        const n = parseInt(v, 10);
+        if (Number.isFinite(n)) salesPersonCode = n;
+      }
+
+      const uSucursal = cotizacionSucursal ? cotizacionSucursal.value : '';
+      if (!uSucursal) {
+        alert('Debe seleccionar una sucursal.');
+        return;
+      }
+
+      const uTipoOfer = cotizacionTipoVenta ? cotizacionTipoVenta.value : '';
+      if (!uTipoOfer) {
+        alert('Debe seleccionar un tipo de venta.');
+        return;
+      }
+
+      const uMotivoVenta = cotizacionMotivoVenta ? cotizacionMotivoVenta.value : '';
+      if (!uMotivoVenta) {
+        alert('Debe seleccionar un motivo de venta.');
+        return;
+      }
+
+      const originalHtml = btnGenerarOferta.innerHTML;
+      btnGenerarOferta.disabled = true;
+      btnGenerarOferta.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generando...';
+
+      try {
+        const body = {
+          cardCode: cotCliente.CardCode,
+          comments: cotComments ? cotComments.value.trim() : '',
+          lines,
+          salesPersonCode,
+          U_Sucursal: uSucursal,
+          U_TipoOfer: uTipoOfer,
+          U_MotivoVenta: uMotivoVenta,
+        };
+        if (authMargen) {
+          body.U_AuthVentaMargen = 'Seguir a autorizacion';
+        }
+
+        const res = await apiFetch('/api/cotizaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        // Error de margen (209): mostrar modal de confirmación
+        if (res.status === 422 && data && data.errorMargen === true) {
+          if (modalMargenMensaje) {
+            modalMargenMensaje.textContent =
+              data.mensaje || 'El margen de la oferta está por debajo del mínimo permitido.';
+          }
+          margenReintentoCallback = () => enviarCotizacion({ authMargen: true });
+          if (modalMargen) modalMargen.show();
+          return;
+        }
+
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudo generar la oferta de ventas';
+          alert(msg);
+          return;
+        }
+
+        if (cotToast && cotToastBody) {
+          cotToastBody.innerHTML = `Oferta de ventas generada: <strong>DocNum ${escapeHtml(String(data.docNum))}</strong>`;
+          cotToast.show();
+        }
+        window.cotizacionActual.length = 0;
+        cotCliente = null;
+        cotCondiciones = null;
+        if (cotClienteSearch) cotClienteSearch.value = '';
+        if (cotComments) cotComments.value = '';
+        if (cotCondicionesInfo) cotCondicionesInfo.classList.add('d-none');
+        renderCotClienteSelected();
+        renderCotItems();
+        recalcularTotalesCot();
+        updatePresupuestoBar();
+        if (modalCotizacion) modalCotizacion.hide();
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
+        alert('Error de conexión al generar la oferta de ventas');
+      } finally {
+        btnGenerarOferta.disabled = false;
+        btnGenerarOferta.innerHTML = originalHtml;
+      }
+    }
+
     if (btnGenerarOferta) {
-      btnGenerarOferta.addEventListener('click', async () => {
-        if (!cotCliente) {
-          alert('Debe seleccionar un cliente.');
-          return;
-        }
-        if (!window.cotizacionActual.length) {
-          alert('Debe agregar al menos un ítem.');
-          return;
-        }
-        // Validar que todos los ítems tengan cantidad y precio > 0
-        const invalido = window.cotizacionActual.some((it) => {
-          const precio = Number(it.precio) || 0;
-          const cant = Number(it.cantidad) || 0;
-          return precio <= 0 || cant <= 0;
-        });
-        if (invalido) {
-          alert('Todos los ítems deben tener cantidad y precio mayores a 0.');
-          return;
-        }
+      btnGenerarOferta.addEventListener('click', () => enviarCotizacion());
+    }
 
-        const lines = window.cotizacionActual.map((it) => {
-          const precio = Number(it.precio) > 0 ? Number(it.precio) : undefined;
-          const desc = Number(it.descuento);
-          return {
-            itemCode: it.ItemCode,
-            quantity: Number(it.cantidad) || 1,
-            warehouseCode: it.almacen || undefined,
-            priceAfterVAT: precio,
-            unitPrice: precio,
-            discountPercent: Number.isFinite(desc) && desc > 0 ? desc : undefined,
-            uoMCode: it.uoMCode || undefined,
-            unitMsr: it.unitMsr || undefined,
-          };
-        });
+    if (btnMargenAutorizar) {
+      btnMargenAutorizar.addEventListener('click', () => {
+        if (modalMargen) modalMargen.hide();
+        const cb = margenReintentoCallback;
+        margenReintentoCallback = null;
+        if (typeof cb === 'function') cb();
+      });
+    }
 
-        // Vendedor: si el select está visible, usar el valor elegido
-        let salesPersonCode = undefined;
-        if (
-          selectVendedorCotizacion &&
-          !selectVendedorCotizacion.classList.contains('d-none')
-        ) {
-          const v = selectVendedorCotizacion.value;
-          if (!v) {
-            alert('Debe seleccionar un vendedor.');
-            return;
-          }
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n)) salesPersonCode = n;
-        }
-
-        // Sucursal obligatoria
-        const uSucursal = cotizacionSucursal ? cotizacionSucursal.value : '';
-        if (!uSucursal) {
-          alert('Debe seleccionar una sucursal.');
-          return;
-        }
-
-        // Tipo Venta obligatorio
-        const uTipoOfer = cotizacionTipoVenta ? cotizacionTipoVenta.value : '';
-        if (!uTipoOfer) {
-          alert('Debe seleccionar un tipo de venta.');
-          return;
-        }
-
-        // Motivo Venta obligatorio
-        const uMotivoVenta = cotizacionMotivoVenta ? cotizacionMotivoVenta.value : '';
-        if (!uMotivoVenta) {
-          alert('Debe seleccionar un motivo de venta.');
-          return;
-        }
-
-        const originalHtml = btnGenerarOferta.innerHTML;
-        btnGenerarOferta.disabled = true;
-        btnGenerarOferta.innerHTML =
-          '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generando...';
-
-        try {
-          const res = await apiFetch('/api/cotizaciones', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              cardCode: cotCliente.CardCode,
-              comments: cotComments ? cotComments.value.trim() : '',
-              lines,
-              salesPersonCode,
-              U_Sucursal: uSucursal,
-              U_TipoOfer: uTipoOfer,
-              U_MotivoVenta: uMotivoVenta,
-            }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            const msg =
-              (data && data.error && data.error.message) ||
-              'No se pudo generar la oferta de ventas';
-            alert(msg);
-            return;
-          }
-          if (cotToast && cotToastBody) {
-            cotToastBody.innerHTML = `Oferta de ventas generada: <strong>DocNum ${escapeHtml(String(data.docNum))}</strong>`;
-            cotToast.show();
-          }
-          window.cotizacionActual.length = 0;
-          cotCliente = null;
-          cotCondiciones = null;
-          if (cotClienteSearch) cotClienteSearch.value = '';
-          if (cotComments) cotComments.value = '';
-          if (cotCondicionesInfo) cotCondicionesInfo.classList.add('d-none');
-          renderCotClienteSelected();
-          renderCotItems();
-          recalcularTotalesCot();
-          updatePresupuestoBar();
-          if (modalCotizacion) modalCotizacion.hide();
-        } catch (err) {
-          if (err && err.message === 'Sesión expirada') return;
-          alert('Error de conexión al generar la oferta de ventas');
-        } finally {
-          btnGenerarOferta.disabled = false;
-          btnGenerarOferta.innerHTML = originalHtml;
+    if (btnMargenModificar) {
+      btnMargenModificar.addEventListener('click', () => {
+        if (modalMargen) modalMargen.hide();
+        margenReintentoCallback = null;
+        // Enfocar el primer input de % descuento para corregir
+        const firstDisc = cotItemsBody
+          ? cotItemsBody.querySelector('input[data-cot-disc]')
+          : null;
+        if (firstDisc) {
+          firstDisc.focus();
+          firstDisc.select();
+          firstDisc.classList.add('is-invalid');
+          setTimeout(() => firstDisc.classList.remove('is-invalid'), 2000);
         }
       });
     }

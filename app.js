@@ -2286,12 +2286,29 @@ function handleCotizacionError(res, error) {
   const status = error.response ? error.response.status : 500;
   const data = error.response ? error.response.data : { message: error.message };
   console.error('Error creando cotización en SAP B1:', status, data);
+
   let message = 'No se pudo crear la oferta de ventas en SAP B1';
   if (data && data.error && data.error.message && data.error.message.value) {
     message = data.error.message.value;
   } else if (data && data.message) {
     message = data.message;
   }
+
+  // Detectar error de margen del Transaction Notification (código 209)
+  const messageText = String(message || '');
+  const isMargenError =
+    /(^|\D)209(\D|$)/.test(messageText) ||
+    /margen/i.test(messageText) ||
+    /margen/i.test(JSON.stringify(data || {}));
+
+  if (isMargenError) {
+    return res.status(422).json({
+      success: false,
+      errorMargen: true,
+      mensaje: messageText,
+    });
+  }
+
   return res.status(status >= 400 && status < 600 ? status : 500).json({
     error: { message },
   });
