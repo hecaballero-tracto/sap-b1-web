@@ -491,7 +491,10 @@
         <div class="px-3 pt-3">
           <div class="row g-2">
             <div class="col-12 col-sm-6 col-lg-3">
-              <label class="form-label small mb-1">Grupo de Artículos</label>
+              <label class="form-label small mb-1 d-flex align-items-center gap-1">
+                Grupo de Artículos
+                <button id="btnConfigGrupos" class="btn btn-sm btn-link p-0 text-secondary d-none" title="Parametrizar grupos"><i class="bi bi-gear-fill"></i></button>
+              </label>
               <div class="dropdown w-100" id="ddGrupo">
                 <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                   <span id="ddGrupoLabel">Todos</span>
@@ -795,6 +798,32 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de configuración de grupos de artículos -->
+  <div class="modal fade" id="modalConfigGrupos" tabindex="-1" aria-labelledby="modalConfigGruposLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalConfigGruposLabel">
+            <i class="bi bi-gear-fill me-2"></i>Parametrizar grupos de artículos
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-2">Seleccione los grupos de artículos que desea mostrar en el filtro desplegable.</p>
+          <div class="input-group input-group-sm mb-2">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" id="gruposConfigSearch" placeholder="Buscar grupo..." />
+          </div>
+          <div id="gruposConfigList" class="list-group" style="max-height: 400px; overflow-y: auto;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnSaveGruposConfig">Guardar configuración</button>
         </div>
       </div>
     </div>
@@ -1263,6 +1292,13 @@
     const priceConfigList = document.getElementById('priceConfigList');
     const btnPriceConfig = document.getElementById('btnPriceConfig');
     const btnSavePriceConfig = document.getElementById('btnSavePriceConfig');
+    const btnConfigGrupos = document.getElementById('btnConfigGrupos');
+    const modalConfigGruposEl = document.getElementById('modalConfigGrupos');
+    const modalConfigGrupos = modalConfigGruposEl ? new bootstrap.Modal(modalConfigGruposEl) : null;
+    const gruposConfigList = document.getElementById('gruposConfigList');
+    const gruposConfigSearch = document.getElementById('gruposConfigSearch');
+    const btnSaveGruposConfig = document.getElementById('btnSaveGruposConfig');
+    let gruposConfigData = [];
     const inputIaPrompt = document.getElementById('inputIaPrompt');
     const btnIaPrompt = document.getElementById('btnIaPrompt');
     const iaUsageBadge = document.getElementById('iaUsageBadge');
@@ -1977,6 +2013,98 @@
     });
 
     btnPriceConfig.addEventListener('click', openPriceConfig);
+
+    // ---------------------------------------------------------------------
+    // Configuración de grupos de artículos visibles (TI/Directorio)
+    // ---------------------------------------------------------------------
+    function renderGruposConfigList() {
+      if (!gruposConfigList) return;
+      const term = (gruposConfigSearch && gruposConfigSearch.value ? gruposConfigSearch.value : '')
+        .trim()
+        .toLowerCase();
+      const filtered = gruposConfigData.filter(
+        (g) => !term || String(g.name).toLowerCase().includes(term) || String(g.code).includes(term)
+      );
+      if (!filtered.length) {
+        gruposConfigList.innerHTML = '<div class="text-muted small px-2 py-2">Sin resultados</div>';
+        return;
+      }
+      gruposConfigList.innerHTML = filtered
+        .map(
+          (g) => `
+          <label class="list-group-item d-flex align-items-center gap-2">
+            <input type="checkbox" class="form-check-input mt-0" data-grupo-code="${g.code}" ${g.visible ? 'checked' : ''} />
+            <span><strong>${escapeHtml(String(g.code))}</strong> - ${escapeHtml(g.name)}</span>
+          </label>`
+        )
+        .join('');
+    }
+
+    async function abrirModalConfigGrupos() {
+      if (!modalConfigGrupos) return;
+      gruposConfigList.innerHTML = `
+        <div class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span class="ms-2 text-muted">Cargando grupos...</span>
+        </div>`;
+      if (gruposConfigSearch) gruposConfigSearch.value = '';
+      modalConfigGrupos.show();
+      try {
+        const res = await apiFetch('/api/config/grupos-articulos');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = (data && data.error && data.error.message) || 'No se pudieron cargar los grupos';
+          gruposConfigList.innerHTML = `<div class="text-danger small px-2 py-2">${escapeHtml(msg)}</div>`;
+          return;
+        }
+        gruposConfigData = Array.isArray(data.grupos) ? data.grupos : [];
+        renderGruposConfigList();
+      } catch (err) {
+        if (err && err.message === 'Sesión expirada') return;
+        gruposConfigList.innerHTML = '<div class="text-danger small px-2 py-2">Error de conexión</div>';
+      }
+    }
+
+    if (btnConfigGrupos) {
+      btnConfigGrupos.addEventListener('click', abrirModalConfigGrupos);
+    }
+    if (gruposConfigSearch) {
+      gruposConfigSearch.addEventListener('input', renderGruposConfigList);
+    }
+    if (btnSaveGruposConfig) {
+      btnSaveGruposConfig.addEventListener('click', async () => {
+        const checks = gruposConfigList.querySelectorAll('input[data-grupo-code]');
+        const selected = [];
+        checks.forEach((chk) => {
+          if (chk.checked) selected.push(Number(chk.getAttribute('data-grupo-code')));
+        });
+        btnSaveGruposConfig.disabled = true;
+        try {
+          const res = await apiFetch('/api/config/grupos-articulos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ visibleGroups: selected }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg = (data && data.error && data.error.message) || 'No se pudo guardar la configuración';
+            alert(msg);
+            return;
+          }
+          if (modalConfigGrupos) modalConfigGrupos.hide();
+          // Refrescar catálogos y filtro desplegable de inmediato
+          await cargarCatalogos();
+          paging.page = 1;
+          cargarArticulos();
+        } catch (err) {
+          if (err && err.message === 'Sesión expirada') return;
+          alert('Error de conexión al guardar la configuración');
+        } finally {
+          btnSaveGruposConfig.disabled = false;
+        }
+      });
+    }
 
     function updatePagingControls() {
       const { page, totalPages } = paging;
@@ -3528,6 +3656,14 @@
             btnPriceConfig.classList.remove('d-none');
           } else {
             btnPriceConfig.classList.add('d-none');
+          }
+          // Mostrar el engranaje de grupos solo a TI/Directorio
+          if (btnConfigGrupos) {
+            if (user.canConfigurePriceLists === true) {
+              btnConfigGrupos.classList.remove('d-none');
+            } else {
+              btnConfigGrupos.classList.add('d-none');
+            }
           }
           // Mostrar el módulo de IA solo si el usuario tiene permiso
           const iaWrapper = document.getElementById('iaPromptWrapper');

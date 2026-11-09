@@ -473,6 +473,54 @@ function writePriceListsConfig(config) {
   }
 }
 
+// Configuración global persistente de grupos de artículos visibles
+const GRUPOS_ARTICULOS_CONFIG_FILE = path.join(
+  PRICE_LISTS_CONFIG_DIR,
+  'grupos_articulos.json'
+);
+
+function readGruposArticulosConfig() {
+  try {
+    if (!fs.existsSync(GRUPOS_ARTICULOS_CONFIG_FILE)) {
+      return { visibleGroups: [] };
+    }
+    const raw = fs.readFileSync(GRUPOS_ARTICULOS_CONFIG_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const visibleGroups = Array.isArray(parsed && parsed.visibleGroups)
+      ? parsed.visibleGroups.map(Number).filter((n) => Number.isFinite(n))
+      : [];
+    return { visibleGroups };
+  } catch (err) {
+    console.warn('No se pudo leer la configuración de grupos de artículos:', err.message);
+    return { visibleGroups: [] };
+  }
+}
+
+function writeGruposArticulosConfig(config) {
+  try {
+    if (!fs.existsSync(PRICE_LISTS_CONFIG_DIR)) {
+      fs.mkdirSync(PRICE_LISTS_CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(
+      GRUPOS_ARTICULOS_CONFIG_FILE,
+      JSON.stringify(config, null, 2),
+      'utf8'
+    );
+    return true;
+  } catch (err) {
+    console.error('No se pudo guardar la configuración de grupos de artículos:', err.message);
+    return false;
+  }
+}
+
+// Verifica si el usuario pertenece a TI o Directorio (mismos grupos que listas de precios)
+function isAdminUser(user) {
+  if (!user) return false;
+  if (user.canConfigurePriceLists === true) return true;
+  const groups = Array.isArray(user.groups) ? user.groups.map((g) => String(g).toLowerCase()) : [];
+  return groups.some((g) => PRICE_LIST_ADMIN_GROUPS.includes(g));
+}
+
 async function loadWarehouses() {
   if (warehousesCache) return warehousesCache;
   if (warehousesCachePromise) return warehousesCachePromise;
@@ -1452,6 +1500,64 @@ function buildArticulosQuery({
 app.get('/api/articulos/config-precios', requireAuth, (req, res) => {
   const config = readPriceListsConfig();
   return res.json(config);
+});
+
+app.get('/api/config/grupos-articulos', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  const esAdmin = isAdminUser(user);
+
+  try {
+    const rows = await hanaExec(
+      `SELECT "ItmsGrpCod" AS "code", "ItmsGrpNam" AS "name" FROM "TRACTOAGRO".OITB ORDER BY "ItmsGrpNam" ASC`
+    );
+    const grupos = (rows || [])
+      .map((r) => ({
+        code: r.code !== undefined && r.code !== null ? Number(r.code) : null,
+        name: r.name !== undefined && r.name !== null ? String(r.name) : '',
+      }))
+      .filter((g) => g.code !== null);
+
+    const config = readGruposArticulosConfig();
+    const visibleSet = new Set(config.visibleGroups);
+    // Si no hay configuración guardada, todos visibles por defecto
+    const sinConfig = config.visibleGroups.length === 0;
+
+    const data = grupos.map((g) => ({
+      code: g.code,
+      name: g.name,
+      visible: sinConfig ? true : visibleSet.has(g.code),
+    }));
+
+    return res.json({ esAdmin, grupos: data });
+  } catch (err) {
+    console.error('Error en /api/config/grupos-articulos:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar grupos de artículos en HANA' } });
+  }
+});
+
+app.post('/api/config/grupos-articulos', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!isAdminUser(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para configurar grupos de artículos' } });
+  }
+
+  const body = req.body || {};
+  const visibleGroups = Array.isArray(body.visibleGroups)
+    ? body.visibleGroups.map(Number).filter((n) => Number.isFinite(n))
+    : [];
+
+  const ok = writeGruposArticulosConfig({ visibleGroups });
+  if (!ok) {
+    return res
+      .status(500)
+      .json({ error: { message: 'No se pudo guardar la configuración' } });
+  }
+
+  return res.json({ ok: true, visibleGroups });
 });
 
 app.post('/api/articulos/config-precios', requireAuth, (req, res) => {
@@ -2949,8 +3055,14 @@ app.get('/api/articulos/catalogos', requireAuth, async (req, res) => {
       }
     }
 
+    // Filtrar grupos según la configuración de visibilidad (TI/Directorio)
+    const gruposConfig = readGruposArticulosConfig();
+    const gruposVisiblesSet = new Set(gruposConfig.visibleGroups);
+    const sinConfigGrupos = gruposConfig.visibleGroups.length === 0;
+
     const rubros = Array.from(itemGroups.entries())
       .map(([code, name]) => ({ code: Number(code), name }))
+      .filter((g) => sinConfigGrupos || gruposVisiblesSet.has(g.code))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const fabricantes = Array.from(manufacturers.entries())
