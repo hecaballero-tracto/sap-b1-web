@@ -2118,6 +2118,9 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
   const uSucursal = String(body.U_Sucursal || body.uSucursal || '').trim();
   const uTipoOfer = String(body.U_TipoOfer || body.uTipoOfer || '2').trim() || '2';
   const uMotivoVenta = String(body.U_MotivoVenta || body.uMotivoVenta || '2').trim() || '2';
+  const uAuthVentaMargen = String(body.U_AuthVentaMargen || '').toLowerCase().includes('autoriz')
+    ? 'SeguirAAutorizacion'
+    : 'VolverAEditar';
 
   if (!uSucursal) {
     return res
@@ -2233,7 +2236,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     U_Sucursal: uSucursal,
     U_TipoOfer: uTipoOfer,
     U_MotivoVenta: uMotivoVenta,
-    U_AuthVentaMargen: 'Seguir a autorizacion', // regla error 209
+    U_AuthVentaMargen: uAuthVentaMargen, // regla error 209
     DocumentLines: documentLines,
   };
   // DocumentsOwner: siempre desde la sesión (empleado vinculado al usuario AD)
