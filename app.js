@@ -2145,6 +2145,16 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
       .json({ error: { message: 'Debe agregar al menos un ítem a la cotización' } });
   }
 
+  // Validar SalesPersonCode (regla error 112: no puede ser -1)
+  if (!Number.isFinite(Number(salesPersonCode)) || Number(salesPersonCode) === -1) {
+    return res.status(400).json({
+      error: {
+        message:
+          'El usuario no tiene un vendedor válido asignado en SAP B1 (SalesPersonCode no puede ser -1).',
+      },
+    });
+  }
+
   const documentLines = [];
   for (const l of lines) {
     const itemCode = String(l.itemCode || '').trim();
@@ -2156,24 +2166,44 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     }
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return res.status(400).json({
-        error: { message: `Cantidad inválida para el ítem ${itemCode}` },
+        error: { message: `Cantidad inválida para el ítem ${itemCode} (debe ser > 0)` },
       });
     }
+
     const line = { ItemCode: itemCode, Quantity: quantity };
-    if (l.warehouseCode) line.WarehouseCode = String(l.warehouseCode);
-    // Precio con IVA (PriceAfterVAT) y UnitPrice: solo si vienen con valor
+
+    // WarehouseCode obligatorio y válido (regla error 137)
+    const whCode = l.warehouseCode ? String(l.warehouseCode).trim() : '';
+    if (!whCode) {
+      return res.status(400).json({
+        error: {
+          message: `El ítem ${itemCode} no tiene un almacén (WarehouseCode) asignado.`,
+        },
+      });
+    }
+    line.WarehouseCode = whCode;
+
+    // Precio: PriceAfterVAT o UnitPrice debe ser > 0 (regla error 118/119)
+    let priceAfterVAT = null;
     if (l.priceAfterVAT !== undefined && l.priceAfterVAT !== null && l.priceAfterVAT !== '') {
       const pav = Number(l.priceAfterVAT);
-      if (Number.isFinite(pav) && pav >= 0) {
-        line.PriceAfterVAT = pav;
-      }
+      if (Number.isFinite(pav) && pav > 0) priceAfterVAT = pav;
     }
+    let unitPrice = null;
     if (l.unitPrice !== undefined && l.unitPrice !== null && l.unitPrice !== '') {
-      const unitPrice = Number(l.unitPrice);
-      if (Number.isFinite(unitPrice) && unitPrice >= 0) {
-        line.UnitPrice = unitPrice;
-      }
+      const up = Number(l.unitPrice);
+      if (Number.isFinite(up) && up > 0) unitPrice = up;
     }
+    if (priceAfterVAT === null && unitPrice === null) {
+      return res.status(400).json({
+        error: {
+          message: `El ítem ${itemCode} no tiene un precio válido (> 0).`,
+        },
+      });
+    }
+    if (priceAfterVAT !== null) line.PriceAfterVAT = priceAfterVAT;
+    if (unitPrice !== null) line.UnitPrice = unitPrice;
+
     // DiscountPercent: solo si viene con valor
     if (l.discountPercent !== undefined && l.discountPercent !== null && l.discountPercent !== '') {
       const disc = Number(l.discountPercent);
@@ -2181,15 +2211,29 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
         line.DiscountPercent = disc;
       }
     }
+
+    // Unidad de medida (si viene)
+    if (l.uoMCode) line.UoMCode = String(l.uoMCode);
+    if (l.unitMsr) line.UnitMsr = String(l.unitMsr);
+
     documentLines.push(line);
   }
 
+  // Fechas: DocDate = hoy, DocDueDate = hoy + 10 días (regla error 113)
+  const today = new Date();
+  const fmtDate = (d) => d.toISOString().split('T')[0];
+  const dueDate = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000);
+
   const payload = {
     CardCode: cardCode,
+    DocDate: fmtDate(today),
+    DocDueDate: fmtDate(dueDate),
+    DiscountPercent: 0, // regla error 1151
     SalesPersonCode: Number(salesPersonCode),
     U_Sucursal: uSucursal,
     U_TipoOfer: uTipoOfer,
     U_MotivoVenta: uMotivoVenta,
+    U_AuthVentaMargen: 'Seguir a autorizacion', // regla error 209
     DocumentLines: documentLines,
   };
   // DocumentsOwner: siempre desde la sesión (empleado vinculado al usuario AD)
@@ -2197,6 +2241,7 @@ app.post('/api/cotizaciones', requireAuth, async (req, res) => {
     payload.DocumentsOwner = Number(user.empId);
   }
   if (comments) payload.Comments = comments;
+  // NUNCA enviar U_EstadoOferta, U_FechaOferta ni U_Telefono (regla error 23001)
 
   try {
     await ensureSession();
