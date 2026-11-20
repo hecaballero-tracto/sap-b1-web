@@ -345,8 +345,22 @@
 
     function formatMoney(value, currency) {
       const n = Number(value) || 0;
-      const cur = currency ? ` ${currency}` : '';
-      return numberFmtPy.format(n) + cur;
+      const cur = String(currency || '').toUpperCase();
+      if (cur === 'GS' || cur === 'PYG') {
+        const fmtGs = new Intl.NumberFormat('es-PY', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        });
+        return fmtGs.format(n) + ' GS';
+      }
+      if (cur === 'USD') {
+        const fmtUsd = new Intl.NumberFormat('es-PY', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        return fmtUsd.format(n) + ' USD';
+      }
+      return numberFmtPy.format(n) + (cur ? ` ${cur}` : '');
     }
 
     function updateSummary() {

@@ -2207,8 +2207,13 @@ function buildOrdenesCierreAutoSql({ soloSi }) {
       DAYS_BETWEEN(T0."DocDate", CURRENT_DATE) AS "DiasAbierta",
       T0."CardCode" AS "CardCode",
       T0."CardName" AS "CardName",
-      T0."DocTotal" AS "DocTotal",
-      T0."DocCur" AS "DocCur",
+      CASE
+        WHEN COALESCE(T0."DocCur", 'GS') NOT IN ('GS', 'PYG')
+          AND COALESCE(T0."DocTotalFC", 0) > 0
+        THEN T0."DocTotalFC"
+        ELSE T0."DocTotal"
+      END AS "DocTotal",
+      COALESCE(NULLIF(T0."DocCur", ''), 'GS') AS "DocCur",
       COALESCE(T3."SlpName", '') AS "Vendedor",
       COALESCE(T0."U_cierreauto", 'SI') AS "U_cierreauto"
     FROM "TRACTOAGRO".ORDR T0
