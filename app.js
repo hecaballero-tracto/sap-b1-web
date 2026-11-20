@@ -2301,68 +2301,100 @@ app.patch('/api/ordenes-cierre-auto/:docEntry', requireAuth, async (req, res) =>
   }
 });
 
+async function ejecutarCierreAutomaticoOrdenes(origen = 'MANUAL') {
+  const inicio = new Date();
+  console.log(
+    `[CIERRE AUTO][${origen}] Inicio ejecución: ${inicio.toISOString()}`
+  );
+
+  const sql = buildOrdenesCierreAutoSql({ soloSi: true });
+  const rows = await hanaExec(sql);
+  const elegibles = (rows || [])
+    .map((r) => ({
+      DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
+      DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+    }))
+    .filter((r) => Number.isFinite(r.DocEntry) && r.DocEntry > 0);
+
+  if (!elegibles.length) {
+    console.log(
+      `[CIERRE AUTO][${origen}] Sin órdenes elegibles para cerrar.`
+    );
+    return { total: 0, cerradas: [], errores: [] };
+  }
+
+  await ensureSession();
+
+  const cerradas = [];
+  const errores = [];
+
+  for (const ord of elegibles) {
+    const url = `/b1s/v1/Orders(${ord.DocEntry})/Close`;
+    try {
+      await sapClient.post(url, {}, {
+        headers: { Cookie: buildCookieHeader() },
+      });
+      cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
+    } catch (error) {
+      // Reintentar una vez si la sesión expiró
+      if (error.response && error.response.status === 401) {
+        try {
+          sapSession = { b1session: null, routeid: null };
+          await login();
+          await sapClient.post(url, {}, {
+            headers: { Cookie: buildCookieHeader() },
+          });
+          cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
+          continue;
+        } catch (retryError) {
+          const data = retryError.response ? retryError.response.data : { message: retryError.message };
+          errores.push({
+            DocEntry: ord.DocEntry,
+            DocNum: ord.DocNum,
+            message: extractSapErrorMessage(data),
+          });
+          continue;
+        }
+      }
+      const data = error.response ? error.response.data : { message: error.message };
+      errores.push({
+        DocEntry: ord.DocEntry,
+        DocNum: ord.DocNum,
+        message: extractSapErrorMessage(data),
+      });
+    }
+  }
+
+  const fin = new Date();
+  const duracionMs = fin.getTime() - inicio.getTime();
+  console.log(
+    `[CIERRE AUTO][${origen}] Fin ejecución: ${fin.toISOString()} (duración ${duracionMs} ms) — ` +
+      `Total: ${elegibles.length}, Cerradas: ${cerradas.length}, Errores: ${errores.length}`
+  );
+  if (cerradas.length) {
+    console.log(
+      `[CIERRE AUTO][${origen}] Órdenes cerradas:`,
+      cerradas.map((c) => c.DocNum || c.DocEntry).join(', ')
+    );
+  }
+  if (errores.length) {
+    console.warn(
+      `[CIERRE AUTO][${origen}] Errores:`,
+      errores.map((e) => `${e.DocNum || e.DocEntry}: ${e.message}`).join(' | ')
+    );
+  }
+
+  return { total: elegibles.length, cerradas, errores };
+}
+
 app.post('/api/ordenes-cierre-auto/ejecutar-cierre', requireAuth, async (req, res) => {
   try {
-    const sql = buildOrdenesCierreAutoSql({ soloSi: true });
-    const rows = await hanaExec(sql);
-    const elegibles = (rows || [])
-      .map((r) => ({
-        DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
-        DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
-      }))
-      .filter((r) => Number.isFinite(r.DocEntry) && r.DocEntry > 0);
-
-    if (!elegibles.length) {
-      return res.json({ ok: true, cerradas: [], errores: [], total: 0 });
-    }
-
-    await ensureSession();
-
-    const cerradas = [];
-    const errores = [];
-
-    for (const ord of elegibles) {
-      const url = `/b1s/v1/Orders(${ord.DocEntry})/Close`;
-      try {
-        await sapClient.post(url, {}, {
-          headers: { Cookie: buildCookieHeader() },
-        });
-        cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
-      } catch (error) {
-        // Reintentar una vez si la sesión expiró
-        if (error.response && error.response.status === 401) {
-          try {
-            sapSession = { b1session: null, routeid: null };
-            await login();
-            await sapClient.post(url, {}, {
-              headers: { Cookie: buildCookieHeader() },
-            });
-            cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
-            continue;
-          } catch (retryError) {
-            const data = retryError.response ? retryError.response.data : { message: retryError.message };
-            errores.push({
-              DocEntry: ord.DocEntry,
-              DocNum: ord.DocNum,
-              message: extractSapErrorMessage(data),
-            });
-            continue;
-          }
-        }
-        const data = error.response ? error.response.data : { message: error.message };
-        errores.push({
-          DocEntry: ord.DocEntry,
-          DocNum: ord.DocNum,
-          message: extractSapErrorMessage(data),
-        });
-      }
-    }
-
+    const resultado = await ejecutarCierreAutomaticoOrdenes('MANUAL');
     return res.json({
       ok: true,
-      total: elegibles.length,
-      cerradas,
-      errores,
+      total: resultado.total,
+      cerradas: resultado.cerradas,
+      errores: resultado.errores,
     });
   } catch (err) {
     console.error('Error en /api/ordenes-cierre-auto/ejecutar-cierre:', err.message);
@@ -2383,6 +2415,76 @@ function extractSapErrorMessage(data) {
   } catch (_) {
     return 'Error desconocido';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Programador del cierre automático diario (hora Paraguay)
+// ---------------------------------------------------------------------------
+const CIERRE_AUTO_HORA = String(process.env.CIERRE_AUTO_HORA || '18:30').trim();
+let ultimaFechaCierreAuto = null; // 'YYYY-MM-DD' en hora Paraguay
+let cierreAutoEnEjecucion = false;
+
+function obtenerFechaHoraParaguay() {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Asuncion',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const get = (type) => {
+    const p = parts.find((x) => x.type === type);
+    return p ? p.value : '';
+  };
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const minute = get('minute');
+  return {
+    fecha: `${year}-${month}-${day}`,
+    hora: `${hour}:${minute}`,
+  };
+}
+
+async function tickCierreAutoProgramado() {
+  if (cierreAutoEnEjecucion) return;
+  try {
+    const { fecha, hora } = obtenerFechaHoraParaguay();
+    if (hora !== CIERRE_AUTO_HORA) return;
+    if (ultimaFechaCierreAuto === fecha) return;
+
+    cierreAutoEnEjecucion = true;
+    ultimaFechaCierreAuto = fecha;
+    console.log(
+      `[CIERRE AUTO][CRON_AUTOMATICO] Disparando cierre programado para ${fecha} ${hora} (America/Asuncion)`
+    );
+    try {
+      await ejecutarCierreAutomaticoOrdenes('CRON_AUTOMATICO');
+    } catch (err) {
+      console.error(
+        '[CIERRE AUTO][CRON_AUTOMATICO] Error durante la ejecución programada:',
+        err && err.message ? err.message : err
+      );
+    }
+  } catch (err) {
+    console.error(
+      '[CIERRE AUTO][CRON_AUTOMATICO] Error en el tick del programador:',
+      err && err.message ? err.message : err
+    );
+  } finally {
+    cierreAutoEnEjecucion = false;
+  }
+}
+
+function iniciarProgramadorCierreAuto() {
+  console.log(
+    `[CIERRE AUTO] Programador iniciado. Hora diaria configurada: ${CIERRE_AUTO_HORA} (America/Asuncion)`
+  );
+  setInterval(tickCierreAutoProgramado, 60 * 1000);
 }
 
 app.get('/api/vendedores', requireAuth, async (req, res) => {
@@ -3701,3 +3803,5 @@ if (SSL_PFX_PATH) {
     );
   });
 }
+
+iniciarProgramadorCierreAuto();
