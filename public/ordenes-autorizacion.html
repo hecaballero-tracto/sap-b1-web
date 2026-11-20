@@ -397,6 +397,7 @@
                   class="btn btn-danger btn-sm fw-bold"
                   data-cancelar="${o.DocEntry}"
                   data-wdd="${o.WddCode}"
+                  data-draft="${o.DraftEntry || ''}"
                   data-docnum="${escapeHtml(String(o.DocNum || ''))}"
                 >
                   <i class="bi bi-x-circle me-1"></i>Cancelar Auth y Cerrar OV
@@ -415,7 +416,12 @@
             alert('Datos de la orden incompletos.');
             return;
           }
-          pendingAction = { docEntry, wddCode };
+          const draftEntry = parseInt(btn.getAttribute('data-draft'), 10);
+          pendingAction = {
+            docEntry,
+            wddCode,
+            draftEntry: Number.isFinite(draftEntry) && draftEntry > 0 ? draftEntry : null,
+          };
           if (modalOrdenNum) modalOrdenNum.textContent = docNum || String(docEntry);
           if (modalConfirmar) modalConfirmar.show();
         });
@@ -460,7 +466,7 @@
 
     async function ejecutarCancelarCerrar() {
       if (!pendingAction) return;
-      const { docEntry, wddCode } = pendingAction;
+      const { docEntry, wddCode, draftEntry } = pendingAction;
       const originalHtml = btnConfirmar.innerHTML;
       btnConfirmar.disabled = true;
       btnConfirmar.innerHTML =
@@ -472,7 +478,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ wddCode }),
+            body: JSON.stringify({ wddCode, draftEntry }),
           }
         );
         const data = await res.json().catch(() => ({}));

@@ -2462,6 +2462,7 @@ function buildOrdenesAutorizacionPendienteSql() {
       COALESCE(NULLIF(T0."DocCur", ''), 'GS') AS "DocCur",
       COALESCE(T3."SlpName", '') AS "Vendedor",
       W."WddCode" AS "WddCode",
+      W."DraftEntry" AS "DraftEntry",
       W."CreateDate" AS "FechaSolicitud",
       COALESCE(W."Remarks", '') AS "MotivoAutorizacion"
     FROM "TRACTOAGRO".ORDR T0
@@ -2497,6 +2498,10 @@ app.get(
         DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
         Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
         WddCode: r.WddCode !== undefined && r.WddCode !== null ? Number(r.WddCode) : null,
+        DraftEntry:
+          r.DraftEntry !== undefined && r.DraftEntry !== null
+            ? Number(r.DraftEntry)
+            : null,
         FechaSolicitud:
           r.FechaSolicitud !== undefined && r.FechaSolicitud !== null
             ? String(r.FechaSolicitud)
@@ -2516,21 +2521,49 @@ app.get(
   }
 );
 
+// Intenta cancelar la autorización en Service Layer.
+// Devuelve { ok: true } si se canceló, o { ok: false, error } si ambos
+// intentos fallaron (por ejemplo, error -10 por usuario originador distinto).
 async function cancelarAutorizacionSL(wddCode) {
   const url = `/b1s/v1/ApprovalRequests(${wddCode})/Cancel`;
   try {
     await sapClient.post(url, {}, {
       headers: { Cookie: buildCookieHeader() },
     });
-    return;
+    return { ok: true };
   } catch (error) {
     // Fallback: PATCH con Status = arsCancelled
-    const patchUrl = `/b1s/v1/ApprovalRequests(${wddCode})`;
-    await sapClient.patch(
-      patchUrl,
-      { Status: 'arsCancelled' },
-      { headers: { Cookie: buildCookieHeader() } }
-    );
+    try {
+      const patchUrl = `/b1s/v1/ApprovalRequests(${wddCode})`;
+      await sapClient.patch(
+        patchUrl,
+        { Status: 'arsCancelled' },
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+      return { ok: true };
+    } catch (patchError) {
+      return { ok: false, error: patchError };
+    }
+  }
+}
+
+// Descarta el borrador pendiente de aprobación (Drafts) asociado a la OV.
+// Devuelve { ok: true } si se eliminó o no existía, o { ok: false, error }.
+async function descartarDraftSL(draftEntry) {
+  if (!Number.isFinite(Number(draftEntry)) || Number(draftEntry) <= 0) {
+    return { ok: true, skipped: true };
+  }
+  try {
+    await sapClient.delete(`/b1s/v1/Drafts(${draftEntry})`, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+    return { ok: true };
+  } catch (error) {
+    // Si el borrador ya no existe (404), se considera exitoso
+    if (error.response && error.response.status === 404) {
+      return { ok: true, skipped: true };
+    }
+    return { ok: false, error };
   }
 }
 
@@ -2549,10 +2582,45 @@ app.post(
     if (!Number.isFinite(wddCode) || wddCode <= 0) {
       return res.status(400).json({ error: { message: 'wddCode inválido' } });
     }
+    const draftEntryRaw = parseInt(body.draftEntry, 10);
+    const draftEntry = Number.isFinite(draftEntryRaw) && draftEntryRaw > 0
+      ? draftEntryRaw
+      : null;
 
     const ejecutar = async () => {
       await ensureSession();
-      await cancelarAutorizacionSL(wddCode);
+
+      // 1) Intentar cancelar la autorización (tolerante a errores como -10)
+      const cancelResult = await cancelarAutorizacionSL(wddCode);
+      if (!cancelResult.ok) {
+        const data = cancelResult.error && cancelResult.error.response
+          ? cancelResult.error.response.data
+          : { message: cancelResult.error ? cancelResult.error.message : 'Error desconocido' };
+        console.warn(
+          `[AUTORIZACION OV] No se pudo cancelar la autorización ${wddCode} ` +
+            `(DocEntry ${docEntry}): ${extractSapErrorMessage(data)}. ` +
+            `Se intentará descartar el borrador ${draftEntry || 'N/A'}.`
+        );
+
+        // 2) Fallback: descartar el borrador pendiente si existe
+        if (draftEntry) {
+          const draftResult = await descartarDraftSL(draftEntry);
+          if (!draftResult.ok) {
+            const draftData = draftResult.error && draftResult.error.response
+              ? draftResult.error.response.data
+              : { message: draftResult.error ? draftResult.error.message : 'Error desconocido' };
+            throw new Error(
+              `No se pudo cancelar la autorización ni descartar el borrador: ` +
+                `${extractSapErrorMessage(draftData)}`
+            );
+          }
+        } else {
+          // Sin draftEntry no hay forma de desbloquear: propagar el error original
+          throw new Error(extractSapErrorMessage(data));
+        }
+      }
+
+      // 3) Cerrar la orden
       await sapClient.post(
         `/b1s/v1/Orders(${docEntry})/Close`,
         {},
@@ -2562,14 +2630,14 @@ app.post(
 
     try {
       await ejecutar();
-      return res.json({ ok: true, docEntry, wddCode });
+      return res.json({ ok: true, docEntry, wddCode, draftEntry });
     } catch (error) {
       if (error.response && error.response.status === 401) {
         try {
           sapSession = { b1session: null, routeid: null };
           await login();
           await ejecutar();
-          return res.json({ ok: true, docEntry, wddCode });
+          return res.json({ ok: true, docEntry, wddCode, draftEntry });
         } catch (retryError) {
           const data = retryError.response
             ? retryError.response.data
