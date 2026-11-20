@@ -2547,16 +2547,20 @@ async function cancelarAutorizacionSL(wddCode) {
   }
 }
 
-// Descarta el borrador pendiente de aprobación (Drafts) asociado a la OV.
-// Devuelve { ok: true } si se eliminó o no existía, o { ok: false, error }.
-async function descartarDraftSL(draftEntry) {
+// Cierra el borrador preliminar (Drafts) asociado a la OV.
+// Equivale a "Cerrar" en el Informe de Borradores de SAP B1 y libera el
+// proceso de aprobación en OWDD sin requerir el usuario originador.
+// Devuelve { ok: true } si se cerró o no existía, o { ok: false, error }.
+async function cerrarDraftSL(draftEntry) {
   if (!Number.isFinite(Number(draftEntry)) || Number(draftEntry) <= 0) {
     return { ok: true, skipped: true };
   }
   try {
-    await sapClient.delete(`/b1s/v1/Drafts(${draftEntry})`, {
-      headers: { Cookie: buildCookieHeader() },
-    });
+    await sapClient.post(
+      `/b1s/v1/Drafts(${draftEntry})/Close`,
+      {},
+      { headers: { Cookie: buildCookieHeader() } }
+    );
     return { ok: true };
   } catch (error) {
     // Si el borrador ya no existe (404), se considera exitoso
@@ -2590,33 +2594,38 @@ app.post(
     const ejecutar = async () => {
       await ensureSession();
 
-      // 1) Intentar cancelar la autorización (tolerante a errores como -10)
-      const cancelResult = await cancelarAutorizacionSL(wddCode);
-      if (!cancelResult.ok) {
-        const data = cancelResult.error && cancelResult.error.response
-          ? cancelResult.error.response.data
-          : { message: cancelResult.error ? cancelResult.error.message : 'Error desconocido' };
-        console.warn(
-          `[AUTORIZACION OV] No se pudo cancelar la autorización ${wddCode} ` +
-            `(DocEntry ${docEntry}): ${extractSapErrorMessage(data)}. ` +
-            `Se intentará descartar el borrador ${draftEntry || 'N/A'}.`
-        );
-
-        // 2) Fallback: descartar el borrador pendiente si existe
-        if (draftEntry) {
-          const draftResult = await descartarDraftSL(draftEntry);
-          if (!draftResult.ok) {
-            const draftData = draftResult.error && draftResult.error.response
-              ? draftResult.error.response.data
-              : { message: draftResult.error ? draftResult.error.message : 'Error desconocido' };
-            throw new Error(
-              `No se pudo cancelar la autorización ni descartar el borrador: ` +
-                `${extractSapErrorMessage(draftData)}`
-            );
-          }
+      // 1) Intentar cerrar el borrador preliminar (equivale a "Cerrar" en
+      //    el Informe de Borradores de SAP B1). Esto libera el proceso de
+      //    aprobación en OWDD sin requerir el usuario originador.
+      let draftCerrado = false;
+      if (draftEntry) {
+        const draftResult = await cerrarDraftSL(draftEntry);
+        if (draftResult.ok) {
+          draftCerrado = true;
         } else {
-          // Sin draftEntry no hay forma de desbloquear: propagar el error original
-          throw new Error(extractSapErrorMessage(data));
+          const draftData = draftResult.error && draftResult.error.response
+            ? draftResult.error.response.data
+            : { message: draftResult.error ? draftResult.error.message : 'Error desconocido' };
+          console.warn(
+            `[AUTORIZACION OV] No se pudo cerrar el borrador ${draftEntry} ` +
+              `(DocEntry ${docEntry}): ${extractSapErrorMessage(draftData)}. ` +
+              `Se intentará cancelar la autorización ${wddCode}.`
+          );
+        }
+      }
+
+      // 2) Si no se cerró el borrador (o no existe), intentar cancelar la
+      //    autorización (tolerante a errores como -10).
+      if (!draftCerrado) {
+        const cancelResult = await cancelarAutorizacionSL(wddCode);
+        if (!cancelResult.ok) {
+          const data = cancelResult.error && cancelResult.error.response
+            ? cancelResult.error.response.data
+            : { message: cancelResult.error ? cancelResult.error.message : 'Error desconocido' };
+          throw new Error(
+            `No se pudo cerrar el borrador ni cancelar la autorización: ` +
+              `${extractSapErrorMessage(data)}`
+          );
         }
       }
 
