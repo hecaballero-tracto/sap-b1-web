@@ -922,6 +922,41 @@ function requireAuth(req, res, next) {
   return res.redirect(`/login.html?redirect=${redirect}`);
 }
 
+// Verifica si el usuario pertenece EXCLUSIVAMENTE al grupo AD 'Informatica'
+function esUsuarioInformatica(user) {
+  if (!user) return false;
+  const list = Array.isArray(user.groups) ? user.groups : [];
+  for (const g of list) {
+    const text = String(g || '').trim().toLowerCase();
+    if (!text) continue;
+    if (text === 'informatica') return true;
+    if (text.startsWith('cn=informatica,')) return true;
+  }
+  return false;
+}
+
+// Middleware de autorización exclusivo para el grupo 'Informatica'
+function requireInformatica(req, res, next) {
+  const user = req.session && req.session.user;
+  if (!user) {
+    const isApi = req.path.startsWith('/api/');
+    if (isApi) {
+      return res.status(401).json({ error: { message: 'No autenticado' } });
+    }
+    const redirect = encodeURIComponent(req.originalUrl || '/');
+    return res.redirect(`/login.html?redirect=${redirect}`);
+  }
+  if (esUsuarioInformatica(user)) return next();
+
+  const isApi = req.path.startsWith('/api/');
+  if (isApi) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para acceder a este módulo' } });
+  }
+  return res.redirect('/articulos.html');
+}
+
 // Middleware de autorización para el módulo de IA
 function requireIA(req, res, next) {
   const user = req.session && req.session.user;
@@ -1098,7 +1133,13 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.user) {
-    return res.json({ user: req.session.user });
+    const user = req.session.user;
+    return res.json({
+      user: {
+        ...user,
+        esInformatica: esUsuarioInformatica(user),
+      },
+    });
   }
   return res.status(401).json({ error: { message: 'No autenticado' } });
 });
@@ -1113,6 +1154,17 @@ app.get(['/clientes.html', '/articulos.html', '/cierre-ordenes.html'], requireAu
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', req.path));
 });
+
+// Vista exclusiva del grupo 'Informatica'
+app.get(
+  '/ordenes-autorizacion.html',
+  requireAuth,
+  requireInformatica,
+  (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(__dirname, 'public', 'ordenes-autorizacion.html'));
+  }
+);
 
 // Archivos estáticos públicos (login, logout, manifest, sw, icons)
 app.use(
@@ -2386,6 +2438,161 @@ async function ejecutarCierreAutomaticoOrdenes(origen = 'MANUAL') {
 
   return { total: elegibles.length, cerradas, errores };
 }
+
+// ---------------------------------------------------------------------------
+// Órdenes de Venta con autorizaciones pendientes (solo grupo 'Informatica')
+// ---------------------------------------------------------------------------
+const AUTORIZACION_OV_GRUPOS = [105, 106, 108, 111];
+
+function buildOrdenesAutorizacionPendienteSql() {
+  const grupos = AUTORIZACION_OV_GRUPOS.join(', ');
+  return `SELECT DISTINCT
+      T0."DocEntry" AS "DocEntry",
+      T0."DocNum" AS "DocNum",
+      T0."DocDate" AS "DocDate",
+      DAYS_BETWEEN(T0."DocDate", CURRENT_DATE) AS "DiasAbierta",
+      T0."CardCode" AS "CardCode",
+      T0."CardName" AS "CardName",
+      CASE
+        WHEN COALESCE(T0."DocCur", 'GS') NOT IN ('GS', 'PYG')
+          AND COALESCE(T0."DocTotalFC", 0) > 0
+        THEN T0."DocTotalFC"
+        ELSE T0."DocTotal"
+      END AS "DocTotal",
+      COALESCE(NULLIF(T0."DocCur", ''), 'GS') AS "DocCur",
+      COALESCE(T3."SlpName", '') AS "Vendedor",
+      W."WddCode" AS "WddCode",
+      W."CreateDate" AS "FechaSolicitud",
+      COALESCE(W."Remarks", '') AS "MotivoAutorizacion"
+    FROM "TRACTOAGRO".ORDR T0
+    INNER JOIN "TRACTOAGRO".RDR1 T1 ON T1."DocEntry" = T0."DocEntry"
+    INNER JOIN "TRACTOAGRO".OITM T2 ON T2."ItemCode" = T1."ItemCode"
+    INNER JOIN "TRACTOAGRO".OWDD W
+      ON W."DocEntry" = T0."DocEntry"
+      AND W."ObjType" = '17'
+      AND W."Status" = 'W'
+    LEFT JOIN "TRACTOAGRO".OSLP T3 ON T3."SlpCode" = T0."SlpCode"
+    WHERE T0."DocStatus" = 'O'
+      AND T1."TargetType" = -1
+      AND T2."ItmsGrpCod" IN (${grupos})
+    ORDER BY T0."DocDate" ASC, T0."DocNum" ASC`;
+}
+
+app.get(
+  '/api/ordenes-autorizacion-pendiente',
+  requireAuth,
+  requireInformatica,
+  async (req, res) => {
+    try {
+      const sql = buildOrdenesAutorizacionPendienteSql();
+      const rows = await hanaExec(sql);
+      const data = (rows || []).map((r) => ({
+        DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
+        DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+        DocDate: r.DocDate !== undefined && r.DocDate !== null ? String(r.DocDate) : null,
+        DiasAbierta: r.DiasAbierta !== undefined && r.DiasAbierta !== null ? Number(r.DiasAbierta) : 0,
+        CardCode: r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : '',
+        CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
+        DocTotal: r.DocTotal !== undefined && r.DocTotal !== null ? Number(r.DocTotal) : 0,
+        DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
+        Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
+        WddCode: r.WddCode !== undefined && r.WddCode !== null ? Number(r.WddCode) : null,
+        FechaSolicitud:
+          r.FechaSolicitud !== undefined && r.FechaSolicitud !== null
+            ? String(r.FechaSolicitud)
+            : null,
+        MotivoAutorizacion:
+          r.MotivoAutorizacion !== undefined && r.MotivoAutorizacion !== null
+            ? String(r.MotivoAutorizacion)
+            : '',
+      }));
+      return res.json({ data });
+    } catch (err) {
+      console.error('Error en /api/ordenes-autorizacion-pendiente:', err.message);
+      return res.status(500).json({
+        error: { message: 'Error al consultar órdenes con autorizaciones pendientes' },
+      });
+    }
+  }
+);
+
+async function cancelarAutorizacionSL(wddCode) {
+  const url = `/b1s/v1/ApprovalRequests(${wddCode})/Cancel`;
+  try {
+    await sapClient.post(url, {}, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+    return;
+  } catch (error) {
+    // Fallback: PATCH con Status = arsCancelled
+    const patchUrl = `/b1s/v1/ApprovalRequests(${wddCode})`;
+    await sapClient.patch(
+      patchUrl,
+      { Status: 'arsCancelled' },
+      { headers: { Cookie: buildCookieHeader() } }
+    );
+  }
+}
+
+app.post(
+  '/api/ordenes-autorizacion-pendiente/:docEntry/cancelar-y-cerrar',
+  requireAuth,
+  requireInformatica,
+  async (req, res) => {
+    const docEntry = parseInt(req.params.docEntry, 10);
+    if (!Number.isFinite(docEntry) || docEntry <= 0) {
+      return res.status(400).json({ error: { message: 'DocEntry inválido' } });
+    }
+
+    const body = req.body || {};
+    const wddCode = parseInt(body.wddCode, 10);
+    if (!Number.isFinite(wddCode) || wddCode <= 0) {
+      return res.status(400).json({ error: { message: 'wddCode inválido' } });
+    }
+
+    const ejecutar = async () => {
+      await ensureSession();
+      await cancelarAutorizacionSL(wddCode);
+      await sapClient.post(
+        `/b1s/v1/Orders(${docEntry})/Close`,
+        {},
+        { headers: { Cookie: buildCookieHeader() } }
+      );
+    };
+
+    try {
+      await ejecutar();
+      return res.json({ ok: true, docEntry, wddCode });
+    } catch (error) {
+      if (error.response && error.response.status === 401) {
+        try {
+          sapSession = { b1session: null, routeid: null };
+          await login();
+          await ejecutar();
+          return res.json({ ok: true, docEntry, wddCode });
+        } catch (retryError) {
+          const data = retryError.response
+            ? retryError.response.data
+            : { message: retryError.message };
+          console.error(
+            'Error en cancelar-y-cerrar (retry):',
+            extractSapErrorMessage(data)
+          );
+          return res.status(500).json({
+            error: {
+              message: extractSapErrorMessage(data),
+            },
+          });
+        }
+      }
+      const data = error.response ? error.response.data : { message: error.message };
+      console.error('Error en cancelar-y-cerrar:', extractSapErrorMessage(data));
+      return res.status(500).json({
+        error: { message: extractSapErrorMessage(data) },
+      });
+    }
+  }
+);
 
 app.post('/api/ordenes-cierre-auto/ejecutar-cierre', requireAuth, async (req, res) => {
   try {

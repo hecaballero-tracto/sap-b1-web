@@ -148,6 +148,11 @@
               <i class="bi bi-clock-history me-1"></i>Cierre OV (+15d)
             </a>
           </li>
+          <li class="nav-item d-none" id="navAutorizacionesOv">
+            <a class="nav-link" href="/ordenes-autorizacion.html">
+              <i class="bi bi-shield-exclamation me-1"></i>Autorizaciones OV
+            </a>
+          </li>
         </ul>
         <div class="d-flex align-items-center gap-2">
           <span id="userName" class="small" style="color: #1a1a1a;"></span>
@@ -645,6 +650,10 @@
         if (user) {
           currentUser = user;
           userNameEl.textContent = user.displayName || user.username || '';
+          const navAutorizaciones = document.getElementById('navAutorizacionesOv');
+          if (navAutorizaciones && user.esInformatica === true) {
+            navAutorizaciones.classList.remove('d-none');
+          }
         }
       } catch (_) {
         /* silencioso */

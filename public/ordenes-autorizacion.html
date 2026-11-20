@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6c343" />
+  <meta name="description" content="Órdenes de Venta con autorizaciones pendientes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="SAP B1" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/img/tractor-icon.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <title>Autorizaciones OV</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+    rel="stylesheet"
+  />
+  <style>
+    body { background-color: #f8f9fa; }
+    .navbar-tracto {
+      background-color: #f6c343 !important;
+      color: #1a1a1a;
+    }
+    .navbar-tracto .navbar-brand,
+    .navbar-tracto .nav-link,
+    .navbar-tracto .navbar-text,
+    .navbar-tracto .navbar-toggler,
+    .navbar-tracto .navbar-toggler-icon,
+    .navbar-tracto i {
+      color: #1a1a1a !important;
+    }
+    .navbar-tracto .nav-link:hover,
+    .navbar-tracto .nav-link:focus,
+    .navbar-tracto .navbar-brand:hover,
+    .navbar-tracto .navbar-brand:focus {
+      color: #000000 !important;
+    }
+    .navbar-tracto .nav-link.active {
+      color: #000000 !important;
+      font-weight: 600;
+    }
+    .navbar-tracto .navbar-toggler {
+      border-color: rgba(0, 0, 0, 0.35);
+    }
+    .navbar-tracto .navbar-toggler-icon {
+      background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='%231a1a1a' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
+    }
+    .summary-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .summary-card .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    .summary-card .value {
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-top: 4px;
+    }
+    .summary-card.total .value { color: #0d6efd; }
+    .summary-card.dias .value { color: #d97706; }
+    .summary-card.monto .value { color: #dc2626; font-size: 1.5rem; }
+    .table thead th {
+      white-space: nowrap;
+      background-color: #f8f9fa;
+      box-shadow: inset 0 -2px 0 #dee2e6;
+    }
+    .table td { vertical-align: middle; }
+    .table tbody tr:hover { background-color: #fff9e6 !important; }
+    .dias-badge {
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .dias-badge.warn { color: #d97706; }
+    .dias-badge.danger { color: #dc2626; }
+    .motivo-cell {
+      max-width: 260px;
+      white-space: normal;
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+    @media (max-width: 768px) {
+      .summary-card .value { font-size: 1.5rem; }
+      .summary-card.monto .value { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-tracto mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1 d-flex align-items-center gap-2">
+        <img
+          src="/img/logo-tracto.png"
+          alt="Tracto"
+          style="height: 36px; width: auto; vertical-align: middle;"
+        />
+      </span>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#mainNav"
+        aria-controls="mainNav"
+        aria-expanded="false"
+        aria-label="Alternar navegación"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link" href="/clientes.html">
+              <i class="bi bi-people-fill me-1"></i>Clientes
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/articulos.html">
+              <i class="bi bi-box-seam me-1"></i>Productos
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/cierre-ordenes.html">
+              <i class="bi bi-clock-history me-1"></i>Cierre OV (+15d)
+            </a>
+          </li>
+          <li class="nav-item d-none" id="navAutorizacionesOv">
+            <a class="nav-link active" aria-current="page" href="/ordenes-autorizacion.html">
+              <i class="bi bi-shield-exclamation me-1"></i>Autorizaciones OV
+            </a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2">
+          <span id="userName" class="small" style="color: #1a1a1a;"></span>
+          <button id="btnRefresh" class="btn btn-dark btn-sm">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+          </button>
+          <button id="btnLogout" class="btn btn-outline-dark btn-sm">
+            <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid">
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4">
+        <div class="summary-card total">
+          <div class="label">Órdenes con autorización pendiente</div>
+          <div class="value" id="sumTotal">0</div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="summary-card dias">
+          <div class="label">Días promedio abiertas</div>
+          <div class="value" id="sumDias">0</div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="summary-card monto">
+          <div class="label">Monto total (Gs.)</div>
+          <div class="value" id="sumMonto">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-white d-flex flex-wrap gap-2 align-items-center justify-content-between">
+        <div class="input-group" style="max-width: 420px;">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input
+            id="searchInput"
+            type="text"
+            class="form-control"
+            placeholder="Buscar por N° orden, cliente o vendedor..."
+          />
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div id="alertBox"></div>
+        <div class="table-responsive" style="max-height: calc(100vh - 340px); overflow-y: auto;">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>N° Orden</th>
+                <th>Fecha</th>
+                <th class="text-end">Días</th>
+                <th>Cliente</th>
+                <th>Vendedor</th>
+                <th class="text-end">Total</th>
+                <th>N° Solicitud / Motivo</th>
+                <th class="text-center">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="ordenesBody">
+              <tr>
+                <td colspan="8" class="text-center py-4 text-muted">
+                  <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                  Cargando órdenes...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+        <small class="text-muted" id="footerInfo"></small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de confirmación -->
+  <div class="modal fade" id="modalConfirmar" tabindex="-1" aria-labelledby="modalConfirmarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger-subtle">
+          <h5 class="modal-title" id="modalConfirmarLabel">
+            <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Confirmar cancelación y cierre
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">Se cancelará la autorización pendiente y se cerrará la orden <strong id="modalOrdenNum">-</strong>.</p>
+          <p class="mb-0 text-muted small">Esta acción no se puede deshacer. La orden cerrada no podrá modificarse.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger btn-sm fw-bold" id="btnConfirmar">
+            <i class="bi bi-check2-circle me-1"></i>Sí, cancelar y cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let ordenes = [];
+    let pendingAction = null;
+
+    const numberFmtPy = new Intl.NumberFormat('es-PY', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+
+    const ordenesBody = document.getElementById('ordenesBody');
+    const alertBox = document.getElementById('alertBox');
+    const searchInput = document.getElementById('searchInput');
+    const btnRefresh = document.getElementById('btnRefresh');
+    const btnLogout = document.getElementById('btnLogout');
+    const userNameEl = document.getElementById('userName');
+    const sumTotal = document.getElementById('sumTotal');
+    const sumDias = document.getElementById('sumDias');
+    const sumMonto = document.getElementById('sumMonto');
+    const footerInfo = document.getElementById('footerInfo');
+    const modalConfirmarEl = document.getElementById('modalConfirmar');
+    const modalConfirmar = modalConfirmarEl ? new bootstrap.Modal(modalConfirmarEl) : null;
+    const modalOrdenNum = document.getElementById('modalOrdenNum');
+    const btnConfirmar = document.getElementById('btnConfirmar');
+
+    async function apiFetch(url, options) {
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        window.location.href =
+          '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Sesión expirada');
+      }
+      if (res.status === 403) {
+        window.location.href = '/articulos.html';
+        throw new Error('Sin permisos');
+      }
+      return res;
+    }
+
+    function escapeHtml(value) {
+      if (value === null || value === undefined) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatDate(value) {
+      if (!value) return '';
+      const m = /\/Date\((\d+)\)\//.exec(String(value));
+      let d;
+      if (m) d = new Date(parseInt(m[1], 10));
+      else d = new Date(value);
+      if (isNaN(d.getTime())) return escapeHtml(value);
+      return d.toLocaleDateString('es-PY');
+    }
+
+    function formatMoney(value, currency) {
+      const n = Number(value) || 0;
+      const cur = String(currency || '').toUpperCase();
+      if (cur === 'GS' || cur === 'PYG') {
+        const fmtGs = new Intl.NumberFormat('es-PY', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        });
+        return fmtGs.format(n) + ' GS';
+      }
+      if (cur === 'USD') {
+        const fmtUsd = new Intl.NumberFormat('es-PY', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        return fmtUsd.format(n) + ' USD';
+      }
+      return numberFmtPy.format(n) + (cur ? ` ${cur}` : '');
+    }
+
+    function updateSummary() {
+      const total = ordenes.length;
+      const diasProm = total
+        ? Math.round(
+            ordenes.reduce((acc, o) => acc + (Number(o.DiasAbierta) || 0), 0) / total
+          )
+        : 0;
+      const montoGs = ordenes
+        .filter((o) => {
+          const cur = String(o.DocCur || '').toUpperCase();
+          return cur === 'GS' || cur === 'PYG' || cur === '';
+        })
+        .reduce((acc, o) => acc + (Number(o.DocTotal) || 0), 0);
+      sumTotal.textContent = String(total);
+      sumDias.textContent = String(diasProm);
+      sumMonto.textContent = numberFmtPy.format(montoGs);
+      footerInfo.textContent = `${total} orden${total === 1 ? '' : 'es'} con autorización pendiente`;
+    }
+
+    function getFiltered() {
+      const term = (searchInput.value || '').trim().toLowerCase();
+      if (!term) return ordenes;
+      return ordenes.filter((o) => {
+        const haystack = [
+          String(o.DocNum || ''),
+          String(o.CardCode || ''),
+          String(o.CardName || ''),
+          String(o.Vendedor || ''),
+          String(o.WddCode || ''),
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(term);
+      });
+    }
+
+    function render() {
+      const list = getFiltered();
+      if (!list.length) {
+        ordenesBody.innerHTML = `
+          <tr>
+            <td colspan="8" class="text-center py-4 text-muted">
+              <i class="bi bi-inbox me-1"></i>No hay órdenes que coincidan con los filtros.
+            </td>
+          </tr>`;
+        return;
+      }
+      ordenesBody.innerHTML = list
+        .map((o) => {
+          const dias = Number(o.DiasAbierta) || 0;
+          const diasClass = dias > 30 ? 'danger' : 'warn';
+          return `
+            <tr data-docentry="${o.DocEntry}">
+              <td><strong>${escapeHtml(String(o.DocNum || ''))}</strong></td>
+              <td>${formatDate(o.DocDate)}</td>
+              <td class="text-end"><span class="dias-badge ${diasClass}">${dias}</span></td>
+              <td>
+                <div class="fw-semibold">${escapeHtml(o.CardCode || '')}</div>
+                <div class="small text-muted">${escapeHtml(o.CardName || '')}</div>
+              </td>
+              <td>${escapeHtml(o.Vendedor || '')}</td>
+              <td class="text-end">${formatMoney(o.DocTotal, o.DocCur)}</td>
+              <td>
+                <div class="fw-semibold small">#${escapeHtml(String(o.WddCode || ''))}</div>
+                <div class="motivo-cell">${escapeHtml(o.MotivoAutorizacion || '')}</div>
+              </td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  class="btn btn-danger btn-sm fw-bold"
+                  data-cancelar="${o.DocEntry}"
+                  data-wdd="${o.WddCode}"
+                  data-docnum="${escapeHtml(String(o.DocNum || ''))}"
+                >
+                  <i class="bi bi-x-circle me-1"></i>Cancelar Auth y Cerrar OV
+                </button>
+              </td>
+            </tr>`;
+        })
+        .join('');
+
+      ordenesBody.querySelectorAll('button[data-cancelar]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const docEntry = parseInt(btn.getAttribute('data-cancelar'), 10);
+          const wddCode = parseInt(btn.getAttribute('data-wdd'), 10);
+          const docNum = btn.getAttribute('data-docnum');
+          if (!Number.isFinite(docEntry) || !Number.isFinite(wddCode)) {
+            alert('Datos de la orden incompletos.');
+            return;
+          }
+          pendingAction = { docEntry, wddCode };
+          if (modalOrdenNum) modalOrdenNum.textContent = docNum || String(docEntry);
+          if (modalConfirmar) modalConfirmar.show();
+        });
+      });
+    }
+
+    async function cargarOrdenes() {
+      alertBox.innerHTML = '';
+      ordenesBody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-center py-4 text-muted">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+            Cargando órdenes...
+          </td>
+        </tr>`;
+      try {
+        const res = await apiFetch('/api/ordenes-autorizacion-pendiente');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudieron cargar las órdenes';
+          alertBox.innerHTML = `
+            <div class="alert alert-danger m-3 mb-0">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>${escapeHtml(msg)}
+            </div>`;
+          ordenesBody.innerHTML = '';
+          return;
+        }
+        ordenes = Array.isArray(data.data) ? data.data : [];
+        updateSummary();
+        render();
+      } catch (err) {
+        if (err && (err.message === 'Sesión expirada' || err.message === 'Sin permisos')) return;
+        alertBox.innerHTML = `
+          <div class="alert alert-danger m-3 mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Error de conexión al cargar las órdenes.
+          </div>`;
+        ordenesBody.innerHTML = '';
+      }
+    }
+
+    async function ejecutarCancelarCerrar() {
+      if (!pendingAction) return;
+      const { docEntry, wddCode } = pendingAction;
+      const originalHtml = btnConfirmar.innerHTML;
+      btnConfirmar.disabled = true;
+      btnConfirmar.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Procesando...';
+      try {
+        const res = await apiFetch(
+          `/api/ordenes-autorizacion-pendiente/${docEntry}/cancelar-y-cerrar`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ wddCode }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            'No se pudo cancelar la autorización y cerrar la orden';
+          alert(msg);
+          return;
+        }
+        if (modalConfirmar) modalConfirmar.hide();
+        pendingAction = null;
+        await cargarOrdenes();
+      } catch (err) {
+        if (err && (err.message === 'Sesión expirada' || err.message === 'Sin permisos')) return;
+        alert('Error de conexión al procesar la orden');
+      } finally {
+        btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = originalHtml;
+      }
+    }
+
+    btnRefresh.addEventListener('click', cargarOrdenes);
+    searchInput.addEventListener('input', render);
+    btnConfirmar.addEventListener('click', ejecutarCancelarCerrar);
+
+    btnLogout.addEventListener('click', async () => {
+      try {
+        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) {
+        /* ignorar */
+      }
+      window.location.href = '/login.html';
+    });
+
+    async function cargarUsuario() {
+      try {
+        const res = await apiFetch('/api/me');
+        if (!res.ok) return;
+        const data = await res.json();
+        const user = data && data.user;
+        if (user) {
+          userNameEl.textContent = user.displayName || user.username || '';
+          const nav = document.getElementById('navAutorizacionesOv');
+          if (nav && user.esInformatica === true) {
+            nav.classList.remove('d-none');
+          }
+        }
+      } catch (_) {
+        /* silencioso */
+      }
+    }
+
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      let swRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        window.location.reload();
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => {
+            reg.update().catch(() => {});
+            setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+          })
+          .catch((err) => {
+            console.warn('No se pudo registrar el service worker:', err);
+          });
+      });
+    }
+
+    cargarUsuario();
+    cargarOrdenes();
+  </script>
+</body>
+</html>
