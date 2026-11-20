@@ -1109,7 +1109,7 @@ app.get('/', (req, res) => {
 });
 
 // Proteger vistas HTML ANTES de servir estáticos
-app.get(['/clientes.html', '/articulos.html'], requireAuth, (req, res) => {
+app.get(['/clientes.html', '/articulos.html', '/cierre-ordenes.html'], requireAuth, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', req.path));
 });
@@ -2191,6 +2191,194 @@ app.post('/api/articulos/ia-pagina', requireAuth, requireIA, async (req, res) =>
       .json({ error: { message: 'Error al paginar resultados de IA en HANA' } });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Cierre automático de Órdenes de Venta abiertas > 15 días
+// ---------------------------------------------------------------------------
+const CIERRE_AUTO_GRUPOS = [105, 106, 108, 111];
+
+function buildOrdenesCierreAutoSql({ soloSi }) {
+  const grupos = CIERRE_AUTO_GRUPOS.join(', ');
+  const filtroCierre = soloSi ? `AND COALESCE(T0."U_cierreauto", 'SI') = 'SI'` : '';
+  return `SELECT DISTINCT
+      T0."DocEntry" AS "DocEntry",
+      T0."DocNum" AS "DocNum",
+      T0."DocDate" AS "DocDate",
+      DAYS_BETWEEN(T0."DocDate", CURRENT_DATE) AS "DiasAbierta",
+      T0."CardCode" AS "CardCode",
+      T0."CardName" AS "CardName",
+      T0."DocTotal" AS "DocTotal",
+      T0."DocCur" AS "DocCur",
+      COALESCE(T3."SlpName", '') AS "Vendedor",
+      COALESCE(T0."U_cierreauto", 'SI') AS "U_cierreauto"
+    FROM "TRACTOAGRO".ORDR T0
+    INNER JOIN "TRACTOAGRO".RDR1 T1 ON T1."DocEntry" = T0."DocEntry"
+    INNER JOIN "TRACTOAGRO".OITM T2 ON T2."ItemCode" = T1."ItemCode"
+    LEFT JOIN "TRACTOAGRO".OSLP T3 ON T3."SlpCode" = T0."SlpCode"
+    WHERE T0."DocStatus" = 'O'
+      AND T0."TargetType" = -1
+      AND T2."ItmsGrpCod" IN (${grupos})
+      AND DAYS_BETWEEN(T0."DocDate", CURRENT_DATE) > 15
+      AND NOT EXISTS (
+        SELECT 1 FROM "TRACTOAGRO".OWDD W
+        WHERE W."ObjType" = '17'
+          AND W."Status" = 'W'
+          AND W."DraftEntry" = T0."DocEntry"
+      )
+      ${filtroCierre}
+    ORDER BY T0."DocDate" ASC, T0."DocNum" ASC`;
+}
+
+app.get('/api/ordenes-cierre-auto', requireAuth, async (req, res) => {
+  try {
+    const sql = buildOrdenesCierreAutoSql({ soloSi: false });
+    const rows = await hanaExec(sql);
+    const data = (rows || []).map((r) => ({
+      DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
+      DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+      DocDate: r.DocDate !== undefined && r.DocDate !== null ? String(r.DocDate) : null,
+      DiasAbierta: r.DiasAbierta !== undefined && r.DiasAbierta !== null ? Number(r.DiasAbierta) : 0,
+      CardCode: r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : '',
+      CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
+      DocTotal: r.DocTotal !== undefined && r.DocTotal !== null ? Number(r.DocTotal) : 0,
+      DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
+      Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
+      U_cierreauto: r.U_cierreauto !== undefined && r.U_cierreauto !== null ? String(r.U_cierreauto) : 'SI',
+    }));
+    return res.json({ data });
+  } catch (err) {
+    console.error('Error en /api/ordenes-cierre-auto:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar órdenes para cierre automático' } });
+  }
+});
+
+app.patch('/api/ordenes-cierre-auto/:docEntry', requireAuth, async (req, res) => {
+  const docEntry = parseInt(req.params.docEntry, 10);
+  if (!Number.isFinite(docEntry) || docEntry <= 0) {
+    return res
+      .status(400)
+      .json({ error: { message: 'DocEntry inválido' } });
+  }
+
+  const body = req.body || {};
+  const cierreAuto = String(body.cierreAuto || '').toUpperCase();
+  if (cierreAuto !== 'SI' && cierreAuto !== 'NO') {
+    return res
+      .status(400)
+      .json({ error: { message: "El campo cierreAuto debe ser 'SI' o 'NO'" } });
+  }
+
+  const payload = { U_cierreauto: cierreAuto };
+  const url = `/b1s/v1/Orders(${docEntry})`;
+
+  try {
+    await ensureSession();
+    await sapClient.patch(url, payload, {
+      headers: { Cookie: buildCookieHeader() },
+    });
+    return res.json({ ok: true, docEntry, cierreAuto });
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      try {
+        sapSession = { b1session: null, routeid: null };
+        await login();
+        await sapClient.patch(url, payload, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        return res.json({ ok: true, docEntry, cierreAuto });
+      } catch (retryError) {
+        return handleError(res, retryError);
+      }
+    }
+    return handleError(res, error);
+  }
+});
+
+app.post('/api/ordenes-cierre-auto/ejecutar-cierre', requireAuth, async (req, res) => {
+  try {
+    const sql = buildOrdenesCierreAutoSql({ soloSi: true });
+    const rows = await hanaExec(sql);
+    const elegibles = (rows || [])
+      .map((r) => ({
+        DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
+        DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+      }))
+      .filter((r) => Number.isFinite(r.DocEntry) && r.DocEntry > 0);
+
+    if (!elegibles.length) {
+      return res.json({ ok: true, cerradas: [], errores: [], total: 0 });
+    }
+
+    await ensureSession();
+
+    const cerradas = [];
+    const errores = [];
+
+    for (const ord of elegibles) {
+      const url = `/b1s/v1/Orders(${ord.DocEntry})/Close`;
+      try {
+        await sapClient.post(url, {}, {
+          headers: { Cookie: buildCookieHeader() },
+        });
+        cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
+      } catch (error) {
+        // Reintentar una vez si la sesión expiró
+        if (error.response && error.response.status === 401) {
+          try {
+            sapSession = { b1session: null, routeid: null };
+            await login();
+            await sapClient.post(url, {}, {
+              headers: { Cookie: buildCookieHeader() },
+            });
+            cerradas.push({ DocEntry: ord.DocEntry, DocNum: ord.DocNum });
+            continue;
+          } catch (retryError) {
+            const data = retryError.response ? retryError.response.data : { message: retryError.message };
+            errores.push({
+              DocEntry: ord.DocEntry,
+              DocNum: ord.DocNum,
+              message: extractSapErrorMessage(data),
+            });
+            continue;
+          }
+        }
+        const data = error.response ? error.response.data : { message: error.message };
+        errores.push({
+          DocEntry: ord.DocEntry,
+          DocNum: ord.DocNum,
+          message: extractSapErrorMessage(data),
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      total: elegibles.length,
+      cerradas,
+      errores,
+    });
+  } catch (err) {
+    console.error('Error en /api/ordenes-cierre-auto/ejecutar-cierre:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al ejecutar el cierre de órdenes' } });
+  }
+});
+
+function extractSapErrorMessage(data) {
+  if (!data) return 'Error desconocido';
+  if (data.error && data.error.message && data.error.message.value) {
+    return String(data.error.message.value);
+  }
+  if (data.message) return String(data.message);
+  try {
+    return JSON.stringify(data);
+  } catch (_) {
+    return 'Error desconocido';
+  }
+}
 
 app.get('/api/vendedores', requireAuth, async (req, res) => {
   const sql = `SELECT "SlpCode" AS "slpCode", "SlpName" AS "slpName" FROM "TRACTOAGRO".OSLP WHERE "Active" = 'Y' ORDER BY "SlpName" ASC`;
