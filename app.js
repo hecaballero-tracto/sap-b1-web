@@ -2216,14 +2216,14 @@ function buildOrdenesCierreAutoSql({ soloSi }) {
     INNER JOIN "TRACTOAGRO".OITM T2 ON T2."ItemCode" = T1."ItemCode"
     LEFT JOIN "TRACTOAGRO".OSLP T3 ON T3."SlpCode" = T0."SlpCode"
     WHERE T0."DocStatus" = 'O'
-      AND T0."TargetType" = -1
+      AND T1."TargetType" = -1
       AND T2."ItmsGrpCod" IN (${grupos})
       AND DAYS_BETWEEN(T0."DocDate", CURRENT_DATE) > 15
       AND NOT EXISTS (
         SELECT 1 FROM "TRACTOAGRO".OWDD W
         WHERE W."ObjType" = '17'
           AND W."Status" = 'W'
-          AND W."DraftEntry" = T0."DocEntry"
+          AND W."DocEntry" = T0."DocEntry"
       )
       ${filtroCierre}
     ORDER BY T0."DocDate" ASC, T0."DocNum" ASC`;
