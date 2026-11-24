@@ -406,6 +406,11 @@
               <i class="bi bi-clock-history me-1"></i>Cierre OV (+15d)
             </a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/creditos.html">
+              <i class="bi bi-cash-coin me-1"></i>Créditos y Aprobaciones
+            </a>
+          </li>
           <li class="nav-item d-none" id="navAutorizacionesOv">
             <a class="nav-link" href="/ordenes-autorizacion.html">
               <i class="bi bi-shield-exclamation me-1"></i>Autorizaciones OV
@@ -736,6 +741,9 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarCredito">
+            <i class="bi bi-cash-coin me-1"></i>Solicitar Crédito
+          </button>
           <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnGenerarOferta">
             <i class="bi bi-check2-circle me-1"></i>Generar Oferta de Ventas
           </button>
@@ -3616,6 +3624,22 @@
 
     if (btnGenerarOferta) {
       btnGenerarOferta.addEventListener('click', () => enviarCotizacion());
+    }
+
+    const btnSolicitarCredito = document.getElementById('btnSolicitarCredito');
+    if (btnSolicitarCredito) {
+      btnSolicitarCredito.addEventListener('click', () => {
+        if (!cotCliente) {
+          alert('Debe seleccionar un cliente antes de solicitar crédito.');
+          return;
+        }
+        const params = new URLSearchParams();
+        params.set('tab', 'solicitud');
+        params.set('cardCode', cotCliente.CardCode || '');
+        params.set('cardName', cotCliente.CardName || '');
+        params.set('tipoDoc', 'OFERTA');
+        window.location.href = '/creditos.html?' + params.toString();
+      });
     }
 
     if (btnMargenAutorizar) {

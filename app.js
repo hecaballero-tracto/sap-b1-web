@@ -9,6 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
+const multer = require('multer');
 const { authenticate } = require('ldap-authentication');
 const ldap = require('ldapjs');
 const hana = require('@sap/hana-client');
@@ -61,6 +62,37 @@ const PRICE_LIST_ADMIN_GROUPS = ['informatica', 'directorio', 'directorio_rw'];
 
 // Grupos de AD con permiso para usar el módulo de IA (en minúsculas)
 const IA_ALLOWED_GROUPS = ['informatica', 'directorio', 'directorio_rw'];
+
+// Grupos de AD con permiso para aprobar solicitudes de crédito (en minúsculas)
+const CREDITO_ANALISTA_GROUPS = ['analisis de credito', 'informatica'];
+
+// Requisitos obligatorios para solicitudes de crédito del rubro Agricultura
+const REQUISITOS_AGRICULTURA = [
+  'Fotocopia de cedula',
+  'Extractos de entregas de granos',
+  'Últimos 6 I.V.A.s',
+  'Factura de servicio publico',
+  'Últimos 3 balances o Renta de los últimos 3 años',
+  'Certificado Cumplimiento Tributario',
+  'Contratos',
+  'Estados Financieros últimos 3 años (de corresponder)',
+  'Constancia de Ruc',
+  'Solicitud de Crédito Firmada y Completa',
+];
+
+// Verifica si el usuario pertenece al grupo de Analistas de Crédito (o TI)
+function esAnalistaCredito(user) {
+  if (!user) return false;
+  const list = Array.isArray(user.groups) ? user.groups : [];
+  for (const g of list) {
+    const text = String(g || '').trim().toLowerCase();
+    if (!text) continue;
+    if (CREDITO_ANALISTA_GROUPS.includes(text)) return true;
+    if (text.startsWith('cn=analisis de credito,')) return true;
+    if (text.startsWith('cn=informatica,')) return true;
+  }
+  return false;
+}
 
 function extractGroupNames(memberOf) {
   if (!memberOf) return [];
@@ -478,6 +510,78 @@ const GRUPOS_ARTICULOS_CONFIG_FILE = path.join(
   PRICE_LISTS_CONFIG_DIR,
   'grupos_articulos.json'
 );
+
+// ---------------------------------------------------------------------------
+// Persistencia de Solicitudes de Crédito (metadatos + archivos adjuntos)
+// ---------------------------------------------------------------------------
+const DATA_DIR = path.join(__dirname, 'data');
+const SOLICITUDES_CREDITO_FILE = path.join(DATA_DIR, 'solicitudes-credito.json');
+const UPLOADS_CREDITO_DIR = path.join(__dirname, 'uploads', 'solicitudes-credito');
+
+function ensureCreditDirs() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(UPLOADS_CREDITO_DIR)) {
+      fs.mkdirSync(UPLOADS_CREDITO_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error('No se pudieron crear directorios de solicitudes de crédito:', err.message);
+  }
+}
+ensureCreditDirs();
+
+function readSolicitudesCredito() {
+  try {
+    if (!fs.existsSync(SOLICITUDES_CREDITO_FILE)) return [];
+    const raw = fs.readFileSync(SOLICITUDES_CREDITO_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn('No se pudo leer solicitudes-credito.json:', err.message);
+    return [];
+  }
+}
+
+function writeSolicitudesCredito(list) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(
+      SOLICITUDES_CREDITO_FILE,
+      JSON.stringify(list, null, 2),
+      'utf8'
+    );
+    return true;
+  } catch (err) {
+    console.error('No se pudo guardar solicitudes-credito.json:', err.message);
+    return false;
+  }
+}
+
+// Multer: almacenamiento en disco con nombre único por solicitud
+const creditoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    try {
+      if (!fs.existsSync(UPLOADS_CREDITO_DIR)) {
+        fs.mkdirSync(UPLOADS_CREDITO_DIR, { recursive: true });
+      }
+      cb(null, UPLOADS_CREDITO_DIR);
+    } catch (err) {
+      cb(err);
+    }
+  },
+  filename: (req, file, cb) => {
+    const safeOriginal = String(file.originalname || 'archivo')
+      .replace(/[^\w.\-]+/g, '_')
+      .slice(-80);
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeOriginal}`;
+    cb(null, unique);
+  },
+});
+
+const creditoUpload = multer({
+  storage: creditoStorage,
+  limits: { fileSize: 20 * 1024 * 1024, files: 20 },
+});
 
 function readGruposArticulosConfig() {
   try {
@@ -1124,6 +1228,15 @@ app.post('/api/logout', (req, res) => {
   if (!req.session) return res.json({ ok: true });
   const username = req.session.user && req.session.user.username;
   const sid = req.sessionID;
+  // Cerrar sesión SAP personal si existe
+  const sapPersonal = req.session.sapPersonal;
+  if (sapPersonal && sapPersonal.b1session) {
+    const cookieParts = [`B1SESSION=${sapPersonal.b1session}`];
+    if (sapPersonal.routeid) cookieParts.push(`ROUTEID=${sapPersonal.routeid}`);
+    sapClient
+      .post('/b1s/v1/Logout', {}, { headers: { Cookie: cookieParts.join('; ') } })
+      .catch(() => {});
+  }
   req.session.destroy(() => {
     unregisterUserSession(username, sid);
     res.clearCookie('sapb1.sid');
@@ -1138,6 +1251,9 @@ app.get('/api/me', (req, res) => {
       user: {
         ...user,
         esInformatica: esUsuarioInformatica(user),
+        esAnalistaCredito: esAnalistaCredito(user),
+        sapPersonalConectado: Boolean(req.session.sapPersonal && req.session.sapPersonal.b1session),
+        sapPersonalUser: req.session.sapPersonal ? req.session.sapPersonal.sapUser : null,
       },
     });
   }
@@ -1150,7 +1266,7 @@ app.get('/', (req, res) => {
 });
 
 // Proteger vistas HTML ANTES de servir estáticos
-app.get(['/clientes.html', '/articulos.html', '/cierre-ordenes.html'], requireAuth, (req, res) => {
+app.get(['/clientes.html', '/articulos.html', '/cierre-ordenes.html', '/creditos.html'], requireAuth, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', req.path));
 });
@@ -2700,6 +2816,447 @@ function extractSapErrorMessage(data) {
     return 'Error desconocido';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sesión SAP personal por analista de crédito
+// ---------------------------------------------------------------------------
+function buildPersonalCookieHeader(sapPersonal) {
+  if (!sapPersonal || !sapPersonal.b1session) return '';
+  const parts = [`B1SESSION=${sapPersonal.b1session}`];
+  if (sapPersonal.routeid) parts.push(`ROUTEID=${sapPersonal.routeid}`);
+  return parts.join('; ');
+}
+
+app.post('/api/sap-personal/login', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const sapUser = String(body.sapUser || '').trim();
+  const sapPassword = String(body.sapPassword || '');
+
+  if (!sapUser || !sapPassword) {
+    return res
+      .status(400)
+      .json({ error: { message: 'Usuario y contraseña SAP son obligatorios' } });
+  }
+
+  try {
+    const response = await sapClient.post('/b1s/v1/Login', {
+      CompanyDB: SAP_COMPANY_DB,
+      UserName: sapUser,
+      Password: sapPassword,
+    });
+
+    const setCookie = response.headers['set-cookie'] || [];
+    let b1session = null;
+    let routeid = null;
+    for (const cookie of setCookie) {
+      const [pair] = cookie.split(';');
+      const [name, value] = pair.split('=');
+      if (name === 'B1SESSION') b1session = value;
+      if (name === 'ROUTEID') routeid = value;
+    }
+    if (!b1session) {
+      return res
+        .status(502)
+        .json({ error: { message: 'No se recibió la cookie B1SESSION del login SAP' } });
+    }
+
+    // Obtener USERID y nombre desde HANA
+    let userId = null;
+    let userName = sapUser;
+    try {
+      const rows = await hanaExec(
+        `SELECT "USERID", "U_NAME" FROM "TRACTOAGRO".OUSR WHERE UPPER("USER_CODE") = UPPER(?)`,
+        [sapUser]
+      );
+      if (rows && rows.length) {
+        userId = rows[0].USERID !== undefined && rows[0].USERID !== null
+          ? Number(rows[0].USERID)
+          : null;
+        if (rows[0].U_NAME) userName = String(rows[0].U_NAME);
+      }
+    } catch (err) {
+      console.warn('No se pudo obtener USERID de OUSR:', err.message);
+    }
+
+    req.session.sapPersonal = {
+      b1session,
+      routeid,
+      sapUser,
+      userId,
+      userName,
+      loginAt: new Date().toISOString(),
+    };
+
+    return res.json({
+      ok: true,
+      sapUser,
+      userId,
+      userName,
+    });
+  } catch (err) {
+    const status = err.response ? err.response.status : 500;
+    const data = err.response ? err.response.data : { message: err.message };
+    console.error('Error en /api/sap-personal/login:', status, data);
+    if (status === 401) {
+      return res
+        .status(401)
+        .json({ error: { message: 'Credenciales SAP inválidas' } });
+    }
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al conectar con SAP Service Layer' } });
+  }
+});
+
+app.post('/api/sap-personal/logout', requireAuth, (req, res) => {
+  const sapPersonal = req.session && req.session.sapPersonal;
+  if (sapPersonal && sapPersonal.b1session) {
+    const cookie = buildPersonalCookieHeader(sapPersonal);
+    sapClient
+      .post('/b1s/v1/Logout', {}, { headers: { Cookie: cookie } })
+      .catch(() => {});
+  }
+  if (req.session) req.session.sapPersonal = null;
+  return res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Bandeja de aprobaciones pendientes (Analistas de Crédito)
+// ---------------------------------------------------------------------------
+function mapTipoDocumento(objType, isIns) {
+  const t = String(objType || '');
+  if (t === '23') return 'Oferta de Ventas';
+  if (t === '17') return 'Orden de Ventas';
+  if (t === '13') {
+    return String(isIns || '').toUpperCase() === 'Y'
+      ? 'Factura de Reserva'
+      : 'Factura de Deudores';
+  }
+  return 'Documento';
+}
+
+app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para aprobar solicitudes de crédito' } });
+  }
+
+  const sapPersonal = req.session && req.session.sapPersonal;
+  if (!sapPersonal || !sapPersonal.b1session || !sapPersonal.userId) {
+    return res.json({ requireSapLogin: true, data: [] });
+  }
+
+  const sql = `SELECT DISTINCT
+      W."WddCode" AS "WddCode",
+      W."DraftEntry" AS "DraftEntry",
+      W."ObjType" AS "ObjType",
+      D."isIns" AS "isIns",
+      D."DocNum" AS "DocNum",
+      D."DocDate" AS "DocDate",
+      D."CardCode" AS "CardCode",
+      D."CardName" AS "CardName",
+      CASE
+        WHEN COALESCE(D."DocCur", 'GS') NOT IN ('GS', 'PYG')
+          AND COALESCE(D."DocTotalFC", 0) > 0
+        THEN D."DocTotalFC"
+        ELSE D."DocTotal"
+      END AS "DocTotal",
+      COALESCE(NULLIF(D."DocCur", ''), 'GS') AS "DocCur",
+      COALESCE(S."SlpName", '') AS "Vendedor",
+      COALESCE(W."Remarks", '') AS "Remarks"
+    FROM "TRACTOAGRO".OWDD W
+    INNER JOIN "TRACTOAGRO".WDD1 W1
+      ON W1."WddCode" = W."WddCode"
+      AND W1."UserID" = ?
+      AND W1."Status" = 'W'
+    INNER JOIN "TRACTOAGRO".ODRF D ON D."DocEntry" = W."DraftEntry"
+    LEFT JOIN "TRACTOAGRO".OSLP S ON S."SlpCode" = D."SlpCode"
+    WHERE W."Status" = 'W'
+      AND W."ObjType" IN ('23', '17', '13')
+    ORDER BY D."DocDate" ASC, D."DocNum" ASC`;
+
+  try {
+    const rows = await hanaExec(sql, [sapPersonal.userId]);
+    const solicitudes = readSolicitudesCredito();
+
+    const data = (rows || []).map((r) => {
+      const objType = r.ObjType !== undefined && r.ObjType !== null ? String(r.ObjType) : '';
+      const isIns = r.isIns !== undefined && r.isIns !== null ? String(r.isIns) : '';
+      const cardCode = r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : '';
+      const draftEntry = r.DraftEntry !== undefined && r.DraftEntry !== null
+        ? Number(r.DraftEntry)
+        : null;
+
+      // Buscar solicitud de crédito asociada (por CardCode + DraftEntry o por CardCode)
+      const sol = solicitudes.find(
+        (s) =>
+          s.cardCode === cardCode &&
+          (s.draftEntry === draftEntry || s.draftEntry === null)
+      ) || solicitudes.find((s) => s.cardCode === cardCode);
+
+      let requisitos = [];
+      if (sol && Array.isArray(sol.requisitos)) {
+        requisitos = sol.requisitos.map((req) => ({
+          nombre: req.nombre,
+          archivo: req.archivo || null,
+          originalName: req.originalName || null,
+          adjunto: Boolean(req.archivo),
+        }));
+      } else {
+        requisitos = REQUISITOS_AGRICULTURA.map((nombre) => ({
+          nombre,
+          archivo: null,
+          originalName: null,
+          adjunto: false,
+        }));
+      }
+
+      return {
+        WddCode: r.WddCode !== undefined && r.WddCode !== null ? Number(r.WddCode) : null,
+        DraftEntry: draftEntry,
+        ObjType: objType,
+        TipoDocumento: mapTipoDocumento(objType, isIns),
+        DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+        DocDate: r.DocDate !== undefined && r.DocDate !== null ? String(r.DocDate) : null,
+        CardCode: cardCode,
+        CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
+        DocTotal: r.DocTotal !== undefined && r.DocTotal !== null ? Number(r.DocTotal) : 0,
+        DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
+        Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
+        Remarks: r.Remarks !== undefined && r.Remarks !== null ? String(r.Remarks) : '',
+        solicitudId: sol ? sol.id : null,
+        requisitos,
+      };
+    });
+
+    return res.json({ requireSapLogin: false, data });
+  } catch (err) {
+    console.error('Error en /api/creditos/aprobaciones-pendientes:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar aprobaciones pendientes en HANA' } });
+  }
+});
+
+app.post(
+  '/api/creditos/aprobaciones-pendientes/:wddCode/resolver',
+  requireAuth,
+  async (req, res) => {
+    const user = req.session && req.session.user;
+    if (!esAnalistaCredito(user)) {
+      return res
+        .status(403)
+        .json({ error: { message: 'No tiene permisos para aprobar solicitudes de crédito' } });
+    }
+
+    const wddCode = parseInt(req.params.wddCode, 10);
+    if (!Number.isFinite(wddCode) || wddCode <= 0) {
+      return res.status(400).json({ error: { message: 'wddCode inválido' } });
+    }
+
+    const body = req.body || {};
+    const accion = String(body.accion || '').toUpperCase();
+    const comentario = String(body.comentario || '').trim();
+
+    if (accion !== 'APROBAR' && accion !== 'RECHAZAR') {
+      return res
+        .status(400)
+        .json({ error: { message: "La acción debe ser 'APROBAR' o 'RECHAZAR'" } });
+    }
+
+    const sapPersonal = req.session && req.session.sapPersonal;
+    if (!sapPersonal || !sapPersonal.b1session) {
+      return res.status(428).json({ requireSapLogin: true });
+    }
+
+    const cookie = buildPersonalCookieHeader(sapPersonal);
+    const endpoint = accion === 'APROBAR' ? 'Approve' : 'Reject';
+    const url = `/b1s/v1/ApprovalRequests(${wddCode})/${endpoint}`;
+    const payload = comentario ? { Remarks: comentario } : {};
+
+    try {
+      await sapClient.post(url, payload, { headers: { Cookie: cookie } });
+      return res.json({ ok: true, wddCode, accion });
+    } catch (error) {
+      const status = error.response ? error.response.status : 500;
+      const data = error.response ? error.response.data : { message: error.message };
+      if (status === 401) {
+        // Sesión SAP personal expirada
+        req.session.sapPersonal = null;
+        return res.status(428).json({ requireSapLogin: true });
+      }
+      console.error('Error resolviendo aprobación:', status, data);
+      return res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: { message: extractSapErrorMessage(data) },
+      });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Solicitudes de Crédito (Vendedores)
+// ---------------------------------------------------------------------------
+app.post(
+  '/api/solicitudes-credito',
+  requireAuth,
+  creditoUpload.any(),
+  async (req, res) => {
+    const user = req.session && req.session.user;
+    if (!user) {
+      return res.status(401).json({ error: { message: 'No autenticado' } });
+    }
+
+    const body = req.body || {};
+    const cardCode = String(body.cardCode || '').trim();
+    const cardName = String(body.cardName || '').trim();
+    const tipoDoc = String(body.tipoDoc || '').trim().toUpperCase();
+    const docNum = body.docNum !== undefined && body.docNum !== '' ? Number(body.docNum) : null;
+    const draftEntry = body.draftEntry !== undefined && body.draftEntry !== ''
+      ? Number(body.draftEntry)
+      : null;
+    const observaciones = String(body.observaciones || '').trim();
+
+    if (!cardCode) {
+      return res
+        .status(400)
+        .json({ error: { message: 'El cliente (cardCode) es obligatorio' } });
+    }
+    if (!['OFERTA', 'ORDEN', 'FACTURA_RESERVA', 'FACTURA_DEUDORES'].includes(tipoDoc)) {
+      return res
+        .status(400)
+        .json({ error: { message: 'Tipo de documento inválido' } });
+    }
+
+    // Mapear archivos subidos por nombre de campo (req.files)
+    const files = Array.isArray(req.files) ? req.files : [];
+    const filesByField = {};
+    for (const f of files) {
+      filesByField[f.fieldname] = f;
+    }
+
+    // Validar los 10 requisitos obligatorios
+    const requisitos = [];
+    const faltantes = [];
+    for (let i = 0; i < REQUISITOS_AGRICULTURA.length; i += 1) {
+      const nombre = REQUISITOS_AGRICULTURA[i];
+      const fieldName = `req_${i}`;
+      const file = filesByField[fieldName];
+      if (!file) {
+        faltantes.push(nombre);
+        requisitos.push({ nombre, archivo: null, originalName: null });
+      } else {
+        requisitos.push({
+          nombre,
+          archivo: file.filename,
+          originalName: file.originalname,
+          size: file.size,
+          mimetype: file.mimetype,
+        });
+      }
+    }
+
+    if (faltantes.length) {
+      // Eliminar archivos subidos para no dejar basura
+      for (const f of files) {
+        try {
+          fs.unlinkSync(f.path);
+        } catch (_) {
+          /* ignorar */
+        }
+      }
+      return res.status(400).json({
+        error: {
+          message: `Faltan ${faltantes.length} requisito(s) obligatorio(s): ${faltantes.join(', ')}`,
+        },
+        faltantes,
+      });
+    }
+
+    const solicitudes = readSolicitudesCredito();
+    const id = `SC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const nueva = {
+      id,
+      cardCode,
+      cardName,
+      tipoDoc,
+      docNum,
+      draftEntry,
+      observaciones,
+      requisitos,
+      vendedor: {
+        username: user.username,
+        displayName: user.displayName,
+        slpCode: user.slpCode,
+        slpName: user.slpName,
+      },
+      createdAt: new Date().toISOString(),
+      estado: 'PENDIENTE',
+    };
+    solicitudes.push(nueva);
+
+    if (!writeSolicitudesCredito(solicitudes)) {
+      return res
+        .status(500)
+        .json({ error: { message: 'No se pudo guardar la solicitud de crédito' } });
+    }
+
+    return res.json({ ok: true, solicitud: nueva });
+  }
+);
+
+app.get('/api/solicitudes-credito', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user) {
+    return res.status(401).json({ error: { message: 'No autenticado' } });
+  }
+  const solicitudes = readSolicitudesCredito();
+  const esAnalista = esAnalistaCredito(user);
+  const filtered = esAnalista
+    ? solicitudes
+    : solicitudes.filter(
+        (s) => s.vendedor && s.vendedor.username === user.username
+      );
+  return res.json({ data: filtered });
+});
+
+app.get('/api/solicitudes-credito/descargar/:id/:archivo', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user) {
+    return res.status(401).json({ error: { message: 'No autenticado' } });
+  }
+  const id = String(req.params.id || '');
+  const archivo = String(req.params.archivo || '');
+  if (!id || !archivo) {
+    return res.status(400).json({ error: { message: 'Parámetros inválidos' } });
+  }
+
+  const solicitudes = readSolicitudesCredito();
+  const sol = solicitudes.find((s) => s.id === id);
+  if (!sol) {
+    return res.status(404).json({ error: { message: 'Solicitud no encontrada' } });
+  }
+
+  const esAnalista = esAnalistaCredito(user);
+  const esDueno = sol.vendedor && sol.vendedor.username === user.username;
+  if (!esAnalista && !esDueno) {
+    return res.status(403).json({ error: { message: 'No tiene permisos para descargar este archivo' } });
+  }
+
+  const reqItem = (sol.requisitos || []).find((r) => r.archivo === archivo);
+  if (!reqItem) {
+    return res.status(404).json({ error: { message: 'Archivo no encontrado' } });
+  }
+
+  const safeName = path.basename(archivo);
+  const filePath = path.join(UPLOADS_CREDITO_DIR, safeName);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: { message: 'Archivo no encontrado en disco' } });
+  }
+
+  return res.download(filePath, reqItem.originalName || safeName);
+});
 
 // ---------------------------------------------------------------------------
 // Programador del cierre automático diario (hora Paraguay)
