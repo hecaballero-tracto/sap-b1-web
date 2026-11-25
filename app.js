@@ -561,10 +561,13 @@ function writeSolicitudesCredito(list) {
 // ---------------------------------------------------------------------------
 // Plantillas de Contratos (persistencia + plantillas base)
 // ---------------------------------------------------------------------------
+const CONTRATOS_TEMPLATES_VERSION = 2;
+
 function buildContratoTemplateChequesDiferidos() {
   return {
     id: 'TPL-CHEQUES-DIFERIDOS',
-    nombre: 'Contrato Privado Compra-Venta (Cheques Diferidos)',
+    version: CONTRATOS_TEMPLATES_VERSION,
+    nombre: 'Modelo Cheques Diferidos (TRACTO AGRO VIAL S.A.)',
     activo: true,
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
@@ -591,7 +594,7 @@ QUINTA — GARANTÍA: LA VENDEDORA otorga garantía por defectos de fabricación
 
 SEXTA — TRANSFERENCIA DE DOMINIO: La transferencia de dominio de los equipos se perfeccionará una vez abonada la totalidad del precio convenido.
 
-SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 2% (dos por ciento) mensual sobre el saldo adeudado.
+SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 1,5% (uno coma cinco por ciento) mensual más un punitorio del 1,5% (uno coma cinco por ciento) mensual sobre el saldo adeudado.
 
 OCTAVA — RESCISIÓN: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR facultará a LA VENDEDORA a rescindir el presente contrato, con derecho a retener las sumas percibidas en concepto de indemnización.
 
@@ -612,7 +615,8 @@ En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo
 function buildContratoTemplateModelo2025() {
   return {
     id: 'TPL-MODELO-2025',
-    nombre: 'Contrato Privado Compra-Venta 2025 (Contado / Financiado / Pagarés)',
+    version: CONTRATOS_TEMPLATES_VERSION,
+    nombre: 'Modelo 2025 - Contado / Financiado / Pagarés (TRACTO AGRO VIAL S.A.E.)',
     activo: true,
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
@@ -631,41 +635,39 @@ SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MON
 
 TERCERA — MODALIDAD Y FORMA DE PAGO: La modalidad pactada es {{MODALIDAD}}. {{CASILLA_CONTADO}} CONTADO {{CASILLA_FINANCIADO}} FINANCIADO.
 
-a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo {{INICIAL_EFECTIVO}} {{MONEDA}} {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia {{CASILLA_INICIAL_CHEQUE}} Cheque. Detalle: {{PAGO_INICIAL_TEXTO}}
+a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo (USD/Gs {{INICIAL_EFECTIVO}}) {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia (detalle abajo) {{CASILLA_INICIAL_CHEQUE}} Cheque (detalle abajo). Detalle: {{PAGO_INICIAL_TEXTO}}
 
 b) Equipo usado entregado en parte de pago: {{USADO_MONTO_USD}} ({{USADO_MONTO_LETRAS}}), según Factura N° {{USADO_FACTURA}}.
 
-c) Transferencias bancarias:
+c) DATOS DE TRANSFERENCIA BANCARIA:
 
 {{TABLA_TRANSFERENCIAS}}
 
-d) Cheques diferidos:
+d) DATOS DE CHEQUES:
 
 {{TABLA_CHEQUES}}
 
-e) Pagarés en {{MONEDA_PAGARES}}:
+e) DATOS DE PAGARES — Moneda: Dólares {{CASILLA_MONEDA_PAGARES_USD}} Guaraníes {{CASILLA_MONEDA_PAGARES_GS}}:
 
 {{TABLA_PAGARES}}
 
-Tipo de cambio aplicable: 1 USD = {{TIPO_CAMBIO}} Gs.
+(Tipo de cambio aplicado a la operación: 1 USD = {{TIPO_CAMBIO}} Gs)
 
-CUARTA — ENTREGA: LA VENDEDORA entregará los equipos dentro de los 15 (quince) días hábiles siguientes a la firma del presente contrato y a la acreditación del pago inicial.
+CUARTA — CADUCIDAD DE PLAZOS Y MORA: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR producirá la caducidad de todos los plazos otorgados, quedando exigible la totalidad del saldo. La mora se producirá de pleno derecho por el simple vencimiento del plazo, sin necesidad de interpelación, generando un interés moratorio del 1,5% (uno coma cinco por ciento) mensual más un interés punitorio del 1,5% (uno coma cinco por ciento) mensual sobre el saldo adeudado, además de una retribución por uso del bien y el derecho de LA VENDEDORA a retirar el equipo sin intervención judicial.
 
-QUINTA — GARANTÍA: LA VENDEDORA otorga garantía por defectos de fabricación conforme a las condiciones del fabricante, por el plazo de 12 (doce) meses contados desde la entrega, excluyendo el desgaste normal por uso, accidentes o mantenimiento inadecuado.
+QUINTA — PLAZO DE TASACIÓN / REFINANCIACIÓN: Las partes acuerdan un plazo de 30 (treinta) días para la tasación del bien y/o la refinanciación de la deuda en caso de mora.
 
-SEXTA — TRANSFERENCIA DE DOMINIO: La transferencia de dominio de los equipos se perfeccionará una vez abonada la totalidad del precio convenido.
+SEXTA — CAUSA PENAL Y SECUESTRO: En caso de incumplimiento, EL COMPRADOR se obliga a abonar una causa penal equivalente al 20% (veinte por ciento) del saldo adeudado, y autoriza el secuestro del bien por parte de LA VENDEDORA.
 
-SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 2% (dos por ciento) mensual sobre el saldo adeudado.
+SÉPTIMA — ESCRITURA PÚBLICA Y PRENDA: Las partes se obligan a otorgar la escritura pública traslativa de dominio y a constituir prenda sobre el bien en la escribanía que LA VENDEDORA designe.
 
-OCTAVA — RESCISIÓN: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR facultará a LA VENDEDORA a rescindir el presente contrato, con derecho a retener las sumas percibidas en concepto de indemnización.
+OCTAVA — TENENCIA Y RESPONSABILIDAD: EL COMPRADOR asume la tenencia del bien y es responsable por su guarda, conservación y por los daños que el mismo pudiera ocasionar a terceros.
 
-NOVENA — LEY 6534/2020: Las partes dejan constancia que el presente contrato se rige por la Ley N° 6534/2020 "De fomento a la formalización y desarrollo de la micro, pequeña y mediana empresa", en lo que resulte aplicable, y por las disposiciones del Código Civil Paraguayo.
+NOVENA — AUTORIZACIONES: EL COMPRADOR autoriza expresamente a LA VENDEDORA a consultar sus antecedentes en los registros de la Ley N° 1682/2001, Ley N° 1969/2002, INFORMCONF y a tratar sus datos personales conforme al artículo 6 de la Ley N° 6534/2020 (consentimiento informado).
 
-DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero.
+DÉCIMA — ENDOSO: EL COMPRADOR autoriza el endoso de los títulos valores (cheques y pagarés) a bancos y/o financieras.
 
-UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
-
-En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
+UNDÉCIMA — JURISDICCIÓN Y FECHA: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero. Se firma en la ciudad y fecha indicadas ut supra.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -684,7 +686,36 @@ function readContratosTemplates() {
     }
     const raw = fs.readFileSync(CONTRATOS_TEMPLATES_FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+
+    // Auto-actualización: si alguna plantilla base tiene versión vieja,
+    // se reemplaza por la versión actual (v2) preservando las personalizadas.
+    const base = buildContratosTemplatesBase();
+    const baseById = new Map(base.map((b) => [b.id, b]));
+    let actualizado = false;
+    const nuevaLista = list.map((t) => {
+      if (!t || !t.esBase) return t;
+      const b = baseById.get(t.id);
+      if (!b) return t;
+      const versionActual = Number(t.version) || 1;
+      if (versionActual < CONTRATOS_TEMPLATES_VERSION) {
+        actualizado = true;
+        return { ...b, createdAt: t.createdAt || b.createdAt };
+      }
+      return t;
+    });
+    // Agregar plantillas base faltantes
+    const existentes = new Set(nuevaLista.map((t) => t && t.id));
+    for (const b of base) {
+      if (!existentes.has(b.id)) {
+        nuevaLista.push(b);
+        actualizado = true;
+      }
+    }
+    if (actualizado) {
+      writeContratosTemplates(nuevaLista);
+    }
+    return nuevaLista;
   } catch (err) {
     console.warn('No se pudo leer contratos-templates.json:', err.message);
     return buildContratosTemplatesBase();

@@ -258,20 +258,22 @@
       color: #0f172a;
     }
     .contrato-doc .casilla {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border: 1.2px solid #334155;
-      border-radius: 2px;
-      vertical-align: -2px;
+      display: inline-flex;
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #000;
+      border-radius: 0;
+      vertical-align: -3px;
       margin: 0 4px 0 2px;
-      text-align: center;
-      line-height: 10px;
-      font-size: 10px;
-      font-weight: 900;
-      color: #0f172a;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+      line-height: 1;
+      color: #000;
+      background: #fff;
     }
-    .contrato-doc .casilla.marcada::before { content: '\2713'; }
+    .contrato-doc .casilla.marcada::before { content: 'X'; }
     .contrato-doc table.doc-table {
       width: 100%;
       border-collapse: collapse;
@@ -348,6 +350,50 @@
       box-shadow: 0 4px 18px rgba(15, 23, 42, 0.15);
     }
 
+    #contratoPrintArea {
+      width: 100%;
+      max-width: 185mm;
+      margin: 0 auto;
+      padding: 8mm 10mm;
+      box-sizing: border-box;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      font-size: 9.5pt;
+      line-height: 1.38;
+      background: #fff;
+    }
+    #contratoPrintArea .contrato-doc {
+      padding: 0;
+      max-width: none;
+      box-shadow: none;
+      font-size: 9.5pt;
+      line-height: 1.38;
+    }
+    #contratoPrintArea table.doc-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    #contratoPrintArea table.doc-table th,
+    #contratoPrintArea table.doc-table td {
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: break-word;
+    }
+    #contratoPrintArea .cuotero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin: 6px 0 10px 0;
+    }
+    #contratoPrintArea .cuotero-grid table.doc-table {
+      margin: 0;
+      font-size: 8.5pt;
+    }
+    #contratoPrintArea .cuotero-grid table.doc-table th,
+    #contratoPrintArea .cuotero-grid table.doc-table td {
+      padding: 3px 4px;
+    }
+
     @media print {
       body * { visibility: hidden !important; }
       #contratoPrintArea, #contratoPrintArea * { visibility: visible !important; }
@@ -356,15 +402,17 @@
         left: 0;
         top: 0;
         width: 100%;
-        padding: 0;
-        margin: 0;
+        max-width: 185mm;
+        padding: 8mm 10mm;
+        margin: 0 auto;
+        box-sizing: border-box;
       }
       .contrato-doc {
-        padding: 15mm;
+        padding: 0;
         box-shadow: none !important;
         max-width: none;
       }
-      @page { size: A4; margin: 15mm; }
+      @page { size: A4; margin: 10mm; }
     }
   </style>
 </head>
@@ -1149,7 +1197,7 @@
             </div>
             <div class="col-12 col-md-4">
               <button type="button" class="btn btn-outline-success btn-sm w-100" id="btnGenerarPagares">
-                <i class="bi bi-magic me-1"></i>Generar N cuotas mensuales
+                <i class="bi bi-magic me-1"></i>Generar Cuotero / Pagarés
               </button>
             </div>
           </div>
@@ -2411,6 +2459,24 @@
       return `<span class="casilla${marcada ? ' marcada' : ''}"></span>`;
     }
 
+    function construirCuoteroGrid(pagarés, monedaPagares) {
+      if (!pagarés.length) {
+        return '<p class="clausula"><em>Sin cuotas cargadas.</em></p>';
+      }
+      // Distribuir en 3 columnas paralelas
+      const cols = [[], [], []];
+      pagarés.forEach((p, i) => {
+        cols[i % 3].push(p);
+      });
+      const renderCol = (items) => {
+        const rows = items
+          .map((p) => `<tr><td>${escapeHtml(p.num || '')}</td><td class="num">${formatearMonto(p.importe, p.moneda || monedaPagares)}</td><td>${escapeHtml(p.venc || '')}</td></tr>`)
+          .join('');
+        return `<table class="doc-table"><thead><tr><th>N°</th><th class="num">Importe</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table>`;
+      };
+      return `<div class="cuotero-grid">${cols.map(renderCol).join('')}</div>`;
+    }
+
     function construirContratoHtml(template, datos) {
       const equipos = datos.equipos || [];
       const cheques = datos.cheques || [];
@@ -2422,8 +2488,8 @@
       const totalPagares = pagarés.reduce((a, p) => a + (Number(p.importe) || 0), 0);
 
       const tablaEquipos = tablaHtml(
-        ['Marca', 'Descripción', 'Serie'],
-        equipos.map((e) => [e.marca, e.desc, e.serie])
+        ['Item N°', 'Marca', 'Descripción', 'Serie'],
+        equipos.map((e, i) => [String(i + 1), e.marca, e.desc, e.serie])
       );
       const tablaCheques = tablaHtml(
         ['N° Cheque', 'N° Cta. Cte.', 'Banco', 'Importe', 'Moneda', 'Emisión', 'Vencimiento'],
@@ -2441,14 +2507,7 @@
           totales: ['', 'TOTAL', formatearMonto(totalTransferencias, datos.moneda), datos.moneda, '', ''],
         }
       );
-      const tablaPagarés = tablaHtml(
-        ['N° Pagaré', 'Importe', 'Moneda', 'Vencimiento', 'Observación'],
-        pagarés.map((p) => [p.num, formatearMonto(p.importe, p.moneda), p.moneda, p.venc, p.obs]),
-        {
-          numeric: ['Importe'],
-          totales: ['', formatearMonto(totalPagares, datos.monedaPagares || datos.moneda), datos.monedaPagares || datos.moneda, 'TOTAL', ''],
-        }
-      );
+      const cuoteroGrid = construirCuoteroGrid(pagarés, datos.monedaPagares || datos.moneda);
 
       const montoNumero = formatearMonto(datos.monto, datos.moneda);
       const montoLetras = numeroALetras(datos.monto);
@@ -2493,7 +2552,10 @@
         '{{CASILLA_INICIAL_EFECTIVO}}': casilla(inicialEfectivo > 0),
         '{{CASILLA_INICIAL_TRANSFERENCIA}}': casilla(datos.inicialTransferencia === true),
         '{{CASILLA_INICIAL_CHEQUE}}': casilla(datos.inicialCheque === true),
+        '{{CASILLA_MONEDA_PAGARES_USD}}': casilla((datos.monedaPagares || 'USD') === 'USD'),
+        '{{CASILLA_MONEDA_PAGARES_GS}}': casilla((datos.monedaPagares || 'USD') === 'GS'),
         '{{INICIAL_EFECTIVO}}': formatearMonto(inicialEfectivo, datos.moneda),
+        '{{PAGO_INICIAL_TEXTO}': inicialTexto,
         '{{PAGO_INICIAL_TEXTO}}': inicialTexto,
         '{{USADO_MONTO_USD}}': usadoMontoUsd > 0 ? formatearMonto(usadoMontoUsd, 'USD') : '—',
         '{{USADO_MONTO_LETRAS}}': escapeHtml(usadoLetras || '—'),
@@ -2501,8 +2563,8 @@
         '{{DATOS_BANCO_CHEQUES}}': escapeHtml(datos.datosBanco || '').replace(/\n/g, '<br>'),
         '{{TABLA_CHEQUES}}': tablaCheques,
         '{{TABLA_TRANSFERENCIAS}}': tablaTransferencias,
-        '{{TABLA_PAGARES}}': tablaPagarés,
-        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || '—'),
+        '{{TABLA_PAGARES}}': cuoteroGrid,
+        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || '____'),
         '{{MONEDA_PAGARES}}': escapeHtml(datos.monedaPagares === 'USD' ? 'DÓLARES AMERICANOS' : 'GUARANÍES'),
         '{{CIUDAD_FIRMA}}': escapeHtml(datos.ciudad || ''),
         '{{FECHA_FIRMA_LARGA}}': escapeHtml(fechaLarga),
@@ -2556,9 +2618,9 @@
               <div class="firma-rol">EL COMPRADOR</div>
               <div class="firma-linea"></div>
               <div class="firma-datos">
-                <div><strong>${clienteNombre || '—'}</strong></div>
+                <div>Razón Social: <strong>${clienteNombre || '—'}</strong></div>
                 <div>RUC / C.I.: <strong>${clienteRuc || '—'}</strong></div>
-                <div>Domicilio: <strong>${clienteDireccion || '—'}</strong></div>
+                <div>Dirección: <strong>${clienteDireccion || '—'}</strong></div>
                 <div class="mt-2">Representante(s):</div>
                 ${firmaCompradorReps}
               </div>
@@ -2747,6 +2809,24 @@
         renderFilaEquipo({});
       }
 
+      // Generar cuotas por defecto según la condición de pago del documento
+      // (si el monto es > 0 y no hay pagarés cargados, se generan 12 cuotas
+      //  mensuales a partir de hoy para que la vista previa muestre el cuotero).
+      const montoInicial = Number(contratoMonto.value) || 0;
+      if (montoInicial > 0 && !contratoPagarésBody.querySelector('tr')) {
+        const nCuotas = 12;
+        const importeCuota = Math.round((montoInicial / nCuotas) * 100) / 100;
+        const hoy = new Date();
+        const primerVenc = new Date(hoy.getFullYear(), hoy.getMonth() + 1, hoy.getDate());
+        if (contratoPagaresNCuotas) contratoPagaresNCuotas.value = String(nCuotas);
+        if (contratoPagaresImporte) contratoPagaresImporte.value = String(importeCuota);
+        if (contratoPagaresPrimerVenc) {
+          contratoPagaresPrimerVenc.value = primerVenc.toISOString().slice(0, 10);
+        }
+        if (contratoPagaresMonedaGen) contratoPagaresMonedaGen.value = 'USD';
+        generarPagaresMensuales();
+      }
+
       actualizarPreviewContrato();
     }
 
@@ -2763,9 +2843,15 @@
 
       // Contenedor temporal con márgenes legales A4
       const wrapper = document.createElement('div');
-      wrapper.style.padding = '0';
+      wrapper.style.padding = '8mm 10mm';
       wrapper.style.background = '#fff';
-      wrapper.style.width = '210mm';
+      wrapper.style.width = '185mm';
+      wrapper.style.maxWidth = '185mm';
+      wrapper.style.boxSizing = 'border-box';
+      wrapper.style.overflowWrap = 'break-word';
+      wrapper.style.wordWrap = 'break-word';
+      wrapper.style.fontSize = '9.5pt';
+      wrapper.style.lineHeight = '1.38';
       wrapper.innerHTML = html;
       document.body.appendChild(wrapper);
 
@@ -2776,11 +2862,11 @@
       try {
         const nombreArchivo = `Contrato_${(datos.clienteNombre || 'Cliente').replace(/[^\w]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
         await html2pdf().set({
-          margin: [15, 15, 15, 15],
+          margin: [10, 10, 12, 10],
           filename: nombreArchivo,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+          html2canvas: { scale: 2, useCORS: true, scrollX: 0, scrollY: 0, logging: false, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['.clausula', '.doc-table', '.firmas', '.firma-bloque'] },
         }).from(wrapper).save();
       } catch (err) {
