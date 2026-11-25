@@ -3578,6 +3578,72 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
 });
 
 // ---------------------------------------------------------------------------
+// Detalle de artículos de un documento preliminar (DraftEntry)
+// ---------------------------------------------------------------------------
+app.get('/api/creditos/documento-detalle/:draftEntry', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para consultar el detalle del documento' } });
+  }
+
+  const draftEntry = parseInt(req.params.draftEntry, 10);
+  if (!Number.isFinite(draftEntry) || draftEntry <= 0) {
+    return res.status(400).json({ error: { message: 'DraftEntry inválido' } });
+  }
+
+  const sql = `SELECT
+      L."LineNum" AS "LineNum",
+      L."ItemCode" AS "ItemCode",
+      L."Dscription" AS "Dscription",
+      COALESCE(G."ItmsGrpNam", 'Sin grupo') AS "GrupoArticulo",
+      COALESCE(L."Quantity", 0) AS "Quantity",
+      COALESCE(L."PriceAfVAT", 0) AS "PriceAfVAT",
+      COALESCE(L."DiscPrcnt", 0) AS "DiscPrcnt",
+      COALESCE(NULLIF(L."Currency", ''), NULLIF(H."DocCur", ''), 'GS') AS "Currency",
+      CASE
+        WHEN COALESCE(NULLIF(L."Currency", ''), NULLIF(H."DocCur", ''), 'GS') NOT IN ('GS', 'PYG')
+          AND COALESCE(L."GTotalFC", 0) > 0
+        THEN L."GTotalFC"
+        ELSE COALESCE(L."GTotal", 0)
+      END AS "TotalLineaConIva"
+    FROM "TRACTOAGRO".DRF1 L
+    INNER JOIN "TRACTOAGRO".ODRF H ON H."DocEntry" = L."DocEntry"
+    LEFT JOIN "TRACTOAGRO".OITM I ON I."ItemCode" = L."ItemCode"
+    LEFT JOIN "TRACTOAGRO".OITB G ON G."ItmsGrpCod" = I."ItmsGrpCod"
+    WHERE L."DocEntry" = ?
+    ORDER BY L."LineNum" ASC`;
+
+  try {
+    const rows = await hanaExec(sql, [draftEntry]);
+    const data = (rows || []).map((r) => ({
+      LineNum: r.LineNum !== undefined && r.LineNum !== null ? Number(r.LineNum) : null,
+      ItemCode: r.ItemCode !== undefined && r.ItemCode !== null ? String(r.ItemCode) : '',
+      Dscription: r.Dscription !== undefined && r.Dscription !== null ? String(r.Dscription) : '',
+      GrupoArticulo:
+        r.GrupoArticulo !== undefined && r.GrupoArticulo !== null
+          ? String(r.GrupoArticulo)
+          : 'Sin grupo',
+      Quantity: r.Quantity !== undefined && r.Quantity !== null ? Number(r.Quantity) : 0,
+      PriceAfVAT: r.PriceAfVAT !== undefined && r.PriceAfVAT !== null ? Number(r.PriceAfVAT) : 0,
+      DiscPrcnt: r.DiscPrcnt !== undefined && r.DiscPrcnt !== null ? Number(r.DiscPrcnt) : 0,
+      Currency: r.Currency !== undefined && r.Currency !== null ? String(r.Currency) : 'GS',
+      TotalLineaConIva:
+        r.TotalLineaConIva !== undefined && r.TotalLineaConIva !== null
+          ? Number(r.TotalLineaConIva)
+          : 0,
+    }));
+    return res.json({ draftEntry, data });
+  } catch (err) {
+    console.error('Error en /api/creditos/documento-detalle:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar el detalle del documento en HANA' } });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Solicitudes de Crédito (Vendedores)
 // ---------------------------------------------------------------------------
 app.post(
