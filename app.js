@@ -3272,7 +3272,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         I."DocDueDate" AS "DocDueDate",
         COALESCE(NULLIF(I."DocCur", ''), 'GS') AS "DocCur",
         COALESCE(PG."PymntGroup", '') AS "PymntGroup",
-        Q."InstId" AS "InstId",
+        Q."InstlmntID" AS "InstId",
         Q."InstNum" AS "InstNum",
         Q."ExtraMonth" AS "ExtraMonth",
         Q."ExtraDays" AS "ExtraDays",
@@ -3306,7 +3306,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         WHERE R2."InvType" = 13
           AND R0."Canceled" = 'N'
         GROUP BY R2."DocEntry", R2."InstId"
-      ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstId"
+      ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstlmntID"
       WHERE I."CardCode" = ?
         AND I."CANCELED" = 'N'
       ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstNum" ASC`;
