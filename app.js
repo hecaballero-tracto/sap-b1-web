@@ -3196,12 +3196,18 @@ app.post(
     }
 
     const cookie = buildPersonalCookieHeader(sapPersonal);
-    const endpoint = accion === 'APROBAR' ? 'Approve' : 'Reject';
-    const url = `/b1s/v1/ApprovalRequests(${wddCode})/${endpoint}`;
-    const payload = comentario ? { Remarks: comentario } : {};
+    const url = `/b1s/v1/ApprovalRequests(${wddCode})`;
+    const payload = {
+      ApprovalRequestDecisions: [
+        {
+          Status: accion === 'APROBAR' ? 'ardApproved' : 'ardNotApproved',
+          Remarks: comentario || '',
+        },
+      ],
+    };
 
     try {
-      await sapClient.post(url, payload, { headers: { Cookie: cookie } });
+      await sapClient.patch(url, payload, { headers: { Cookie: cookie } });
       return res.json({ ok: true, wddCode, accion });
     } catch (error) {
       const status = error.response ? error.response.status : 500;
