@@ -190,6 +190,182 @@
       color: #6b7280;
       font-weight: 600;
     }
+
+    /* ===== Contrato: estética notarial ===== */
+    .contrato-doc {
+      font-family: 'Segoe UI', 'Calibri', 'Times New Roman', serif;
+      font-size: 10.5pt;
+      line-height: 1.45;
+      color: #0f172a;
+      background: #fff;
+      padding: 15mm;
+      max-width: 210mm;
+      margin: 0 auto;
+    }
+    .contrato-doc .doc-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #334155;
+      margin-bottom: 14px;
+    }
+    .contrato-doc .doc-header .doc-title {
+      flex: 1 1 auto;
+      text-align: center;
+    }
+    .contrato-doc .doc-header .doc-title h1 {
+      font-size: 14pt;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin: 0 0 4px 0;
+      color: #0f172a;
+    }
+    .contrato-doc .doc-header .doc-title .doc-subtitle {
+      font-size: 9pt;
+      color: #475569;
+      letter-spacing: 0.4px;
+    }
+    .contrato-doc .doc-header .doc-logo {
+      flex: 0 0 auto;
+      height: 62px;
+      width: auto;
+    }
+    .contrato-doc .doc-meta {
+      font-size: 9pt;
+      color: #334155;
+      margin-bottom: 12px;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+    .contrato-doc .doc-meta strong { color: #0f172a; }
+    .contrato-doc .clausula {
+      text-align: justify;
+      margin: 0 0 10px 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .contrato-doc .clausula .clausula-titulo {
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #0f172a;
+    }
+    .contrato-doc .dato {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .contrato-doc .casilla {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 1.2px solid #334155;
+      border-radius: 2px;
+      vertical-align: -2px;
+      margin: 0 4px 0 2px;
+      text-align: center;
+      line-height: 10px;
+      font-size: 10px;
+      font-weight: 900;
+      color: #0f172a;
+    }
+    .contrato-doc .casilla.marcada::before { content: '\2713'; }
+    .contrato-doc table.doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px 0;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .contrato-doc table.doc-table th,
+    .contrato-doc table.doc-table td {
+      border: 1px solid #334155;
+      padding: 5px 7px;
+      vertical-align: top;
+    }
+    .contrato-doc table.doc-table thead th {
+      background: #e2e8f0;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 8.5pt;
+      letter-spacing: 0.3px;
+      text-align: left;
+    }
+    .contrato-doc table.doc-table tfoot td {
+      background: #f1f5f9;
+      font-weight: 700;
+    }
+    .contrato-doc table.doc-table td.num,
+    .contrato-doc table.doc-table th.num { text-align: right; }
+    .contrato-doc .firmas {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 40px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .contrato-doc .firma-bloque {
+      border-top: 1.5px solid #334155;
+      padding-top: 8px;
+      font-size: 9.5pt;
+      line-height: 1.35;
+    }
+    .contrato-doc .firma-bloque .firma-rol {
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 4px;
+    }
+    .contrato-doc .firma-bloque .firma-linea {
+      height: 60px;
+    }
+    .contrato-doc .firma-bloque .firma-datos {
+      font-size: 9pt;
+      color: #334155;
+    }
+    .contrato-doc .firma-bloque .firma-datos strong { color: #0f172a; }
+    .contrato-doc .pie-impresion {
+      margin-top: 18px;
+      padding-top: 8px;
+      border-top: 1px dashed #94a3b8;
+      font-size: 8.5pt;
+      color: #475569;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+    .contrato-preview-wrap {
+      background: #e2e8f0;
+      padding: 12px;
+      border-radius: 6px;
+      max-height: 65vh;
+      overflow-y: auto;
+    }
+    .contrato-preview-wrap .contrato-doc {
+      box-shadow: 0 4px 18px rgba(15, 23, 42, 0.15);
+    }
+
+    @media print {
+      body * { visibility: hidden !important; }
+      #contratoPrintArea, #contratoPrintArea * { visibility: visible !important; }
+      #contratoPrintArea {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 0;
+        margin: 0;
+      }
+      .contrato-doc {
+        padding: 15mm;
+        box-shadow: none !important;
+        max-width: none;
+      }
+      @page { size: A4; margin: 15mm; }
+    }
   </style>
 </head>
 <body>
@@ -709,56 +885,96 @@
 
   <!-- Modal: Generar Contrato para Firma -->
   <div class="modal fade" id="modalContrato" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-centered modal-dialog-scrollable" style="max-width: 95vw;">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-centered modal-dialog-scrollable" style="max-width: 96vw;">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Generar Contrato para Firma</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
+          <!-- ===== Datos de la Vendedora (Tracto) ===== -->
+          <h6 class="mt-1 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-building me-1"></i>Datos de la Vendedora (Tracto)
+          </h6>
           <div class="row g-2 mb-3">
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-4">
               <label class="form-label small text-muted mb-1">Plantilla</label>
               <select class="form-select form-select-sm" id="contratoPlantilla"></select>
             </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Ciudad de firma</label>
-              <input type="text" class="form-control form-control-sm" id="contratoCiudad" value="Asunción" />
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Fecha de firma</label>
-              <input type="date" class="form-control form-control-sm" id="contratoFecha" />
+            <div class="col-12 col-md-4">
+              <label class="form-label small text-muted mb-1">Razón Social Tracto</label>
+              <select class="form-select form-select-sm" id="contratoRazonSocialTracto">
+                <option value="TRACTO AGRO VIAL S.A.">TRACTO AGRO VIAL S.A.</option>
+                <option value="TRACTO AGRO VIAL S.A.E.">TRACTO AGRO VIAL S.A.E.</option>
+              </select>
             </div>
             <div class="col-12 col-md-4">
-              <label class="form-label small text-muted mb-1">Cliente (Razón Social)</label>
-              <input type="text" class="form-control form-control-sm" id="contratoClienteNombre" />
+              <label class="form-label small text-muted mb-1">RUC Tracto</label>
+              <input type="text" class="form-control form-control-sm" id="contratoRucTracto" value="80027587-0" />
             </div>
             <div class="col-12 col-md-4">
-              <label class="form-label small text-muted mb-1">RUC Cliente</label>
-              <input type="text" class="form-control form-control-sm" id="contratoClienteRuc" />
+              <label class="form-label small text-muted mb-1">Cargo del Representante</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCargoRep1" value="Gerente General" />
             </div>
             <div class="col-12 col-md-4">
-              <label class="form-label small text-muted mb-1">Dirección Cliente</label>
-              <input type="text" class="form-control form-control-sm" id="contratoClienteDireccion" />
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Representante Cliente</label>
-              <input type="text" class="form-control form-control-sm" id="contratoRep2" />
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">C.I. Representante Cliente</label>
-              <input type="text" class="form-control form-control-sm" id="contratoCi2" />
-            </div>
-            <div class="col-12 col-md-3">
               <label class="form-label small text-muted mb-1">Representante Tracto</label>
               <input type="text" class="form-control form-control-sm" id="contratoRep1" />
             </div>
-            <div class="col-12 col-md-3">
+            <div class="col-12 col-md-4">
               <label class="form-label small text-muted mb-1">C.I. Representante Tracto</label>
               <input type="text" class="form-control form-control-sm" id="contratoCi1" />
             </div>
+          </div>
+
+          <!-- ===== Datos del Comprador ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-person-badge me-1"></i>Datos del Comprador
+          </h6>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label small text-muted mb-1">Razón Social Comprador</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteNombre" />
+            </div>
             <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Moneda</label>
+              <label class="form-label small text-muted mb-1">RUC / C.I.</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteRuc" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Domicilio completo</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteDireccion" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante 1 — Nombre</label>
+              <input type="text" class="form-control form-control-sm" id="contratoRep2" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante 1 — C.I.</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCi2" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante 2 (opcional) — Nombre</label>
+              <input type="text" class="form-control form-control-sm" id="contratoRep3" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante 2 (opcional) — C.I.</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCi3" />
+            </div>
+          </div>
+
+          <!-- ===== Condiciones comerciales ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-cash-coin me-1"></i>Condiciones Comerciales
+          </h6>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Modalidad</label>
+              <select class="form-select form-select-sm" id="contratoModalidad">
+                <option value="CONTADO">CONTADO</option>
+                <option value="FINANCIADO">FINANCIADO</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Moneda del Contrato</label>
               <select class="form-select form-select-sm" id="contratoMoneda">
                 <option value="GS">Guaraníes (GS)</option>
                 <option value="USD">Dólares (USD)</option>
@@ -769,20 +985,78 @@
               <input type="number" class="form-control form-control-sm" id="contratoMonto" step="0.01" />
             </div>
             <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Tipo de cambio</label>
-              <input type="text" class="form-control form-control-sm" id="contratoTipoCambio" placeholder="Ej: 7.300 Gs/USD" />
+              <label class="form-label small text-muted mb-1">Tipo de cambio (1 USD = X Gs)</label>
+              <input type="text" class="form-control form-control-sm" id="contratoTipoCambio" placeholder="Ej: 7.300" />
             </div>
             <div class="col-12 col-md-3">
-              <label class="form-label small text-muted mb-1">Pago inicial (texto)</label>
-              <input type="text" class="form-control form-control-sm" id="contratoPagoInicial" placeholder="Ej: Gs. 10.000.000 en efectivo" />
+              <label class="form-label small text-muted mb-1">Moneda de Pagarés</label>
+              <select class="form-select form-select-sm" id="contratoMonedaPagares">
+                <option value="USD">Dólares</option>
+                <option value="GS">Guaraníes</option>
+              </select>
             </div>
-            <div class="col-12">
-              <label class="form-label small text-muted mb-1">Datos bancarios (para cheques)</label>
-              <textarea class="form-control form-control-sm" id="contratoDatosBanco" rows="2" placeholder="Banco / Cuenta / Titular"></textarea>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Ciudad de firma</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCiudad" value="Asunción" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Fecha de firma</label>
+              <input type="date" class="form-control form-control-sm" id="contratoFecha" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Datos bancarios (cheques)</label>
+              <input type="text" class="form-control form-control-sm" id="contratoDatosBanco" placeholder="Banco / Cuenta / Titular" />
             </div>
           </div>
 
-          <h6 class="mt-3 mb-2"><i class="bi bi-truck me-1"></i>Equipos</h6>
+          <!-- ===== Pago inicial ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-wallet2 me-1"></i>Pago Inicial
+          </h6>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Monto Efectivo</label>
+              <input type="number" class="form-control form-control-sm" id="contratoInicialEfectivo" step="0.01" />
+            </div>
+            <div class="col-12 col-md-3 d-flex align-items-end">
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="contratoInicialTransferencia" />
+                <label class="form-check-label small" for="contratoInicialTransferencia">Transferencia</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="contratoInicialCheque" />
+                <label class="form-check-label small" for="contratoInicialCheque">Cheque</label>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label small text-muted mb-1">Pago inicial (texto libre, opcional)</label>
+              <input type="text" class="form-control form-control-sm" id="contratoPagoInicial" placeholder="Ej: Gs. 10.000.000 en efectivo" />
+            </div>
+          </div>
+
+          <!-- ===== Equipo usado en parte de pago ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-arrow-repeat me-1"></i>Equipo Usado en Parte de Pago
+          </h6>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Monto USD</label>
+              <input type="number" class="form-control form-control-sm" id="contratoUsadoMontoUsd" step="0.01" />
+            </div>
+            <div class="col-12 col-md-5">
+              <label class="form-label small text-muted mb-1">Monto en letras</label>
+              <input type="text" class="form-control form-control-sm" id="contratoUsadoMontoLetras" placeholder="Ej: DIEZ MIL DÓLARES AMERICANOS" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small text-muted mb-1">N° Factura del usado</label>
+              <input type="text" class="form-control form-control-sm" id="contratoUsadoFactura" />
+            </div>
+          </div>
+
+          <!-- ===== Equipos ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-truck me-1"></i>Equipos
+          </h6>
           <div class="table-responsive mb-2">
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
@@ -800,13 +1074,40 @@
             <i class="bi bi-plus-circle me-1"></i>Agregar equipo
           </button>
 
-          <h6 class="mt-3 mb-2"><i class="bi bi-bank me-1"></i>Cheques</h6>
+          <!-- ===== Transferencias ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-arrow-left-right me-1"></i>Transferencias Bancarias
+          </h6>
+          <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 16%;">Banco Emisor</th>
+                  <th style="width: 16%;">Banco Receptor</th>
+                  <th style="width: 12%;">Importe</th>
+                  <th style="width: 8%;">Moneda</th>
+                  <th style="width: 14%;">N° Transacción</th>
+                  <th style="width: 12%;">Fecha</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="contratoTransferenciasBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddTransferencia">
+            <i class="bi bi-plus-circle me-1"></i>Agregar transferencia
+          </button>
+
+          <!-- ===== Cheques ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-bank me-1"></i>Cheques
+          </h6>
           <div class="table-responsive mb-2">
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
                 <tr>
                   <th style="width: 12%;">N° Cheque</th>
-                  <th style="width: 14%;">Cta. Cte.</th>
+                  <th style="width: 14%;">N° Cta. Cte.</th>
                   <th style="width: 16%;">Banco</th>
                   <th style="width: 12%;">Importe</th>
                   <th style="width: 8%;">Moneda</th>
@@ -822,37 +1123,44 @@
             <i class="bi bi-plus-circle me-1"></i>Agregar cheque
           </button>
 
-          <h6 class="mt-3 mb-2"><i class="bi bi-arrow-left-right me-1"></i>Transferencias</h6>
-          <div class="table-responsive mb-2">
-            <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th style="width: 20%;">Banco</th>
-                  <th style="width: 20%;">Cuenta</th>
-                  <th style="width: 15%;">Importe</th>
-                  <th style="width: 10%;">Moneda</th>
-                  <th style="width: 15%;">Fecha</th>
-                  <th>Referencia</th>
-                  <th style="width: 40px;"></th>
-                </tr>
-              </thead>
-              <tbody id="contratoTransferenciasBody"></tbody>
-            </table>
+          <!-- ===== Pagarés ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-journal-text me-1"></i>Pagarés
+          </h6>
+          <div class="row g-2 mb-2 align-items-end">
+            <div class="col-6 col-md-2">
+              <label class="form-label small text-muted mb-1">N° Cuotas</label>
+              <input type="number" class="form-control form-control-sm" id="contratoPagaresNCuotas" min="1" value="12" />
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small text-muted mb-1">Importe c/u</label>
+              <input type="number" class="form-control form-control-sm" id="contratoPagaresImporte" step="0.01" />
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small text-muted mb-1">1er Vencimiento</label>
+              <input type="date" class="form-control form-control-sm" id="contratoPagaresPrimerVenc" />
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small text-muted mb-1">Moneda</label>
+              <select class="form-select form-select-sm" id="contratoPagaresMonedaGen">
+                <option value="USD">USD</option>
+                <option value="GS">GS</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <button type="button" class="btn btn-outline-success btn-sm w-100" id="btnGenerarPagares">
+                <i class="bi bi-magic me-1"></i>Generar N cuotas mensuales
+              </button>
+            </div>
           </div>
-          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddTransferencia">
-            <i class="bi bi-plus-circle me-1"></i>Agregar transferencia
-          </button>
-
-          <h6 class="mt-3 mb-2"><i class="bi bi-journal-text me-1"></i>Pagarés</h6>
           <div class="table-responsive mb-2">
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th style="width: 15%;">N° Pagaré</th>
-                  <th style="width: 15%;">Importe</th>
+                  <th style="width: 12%;">N° Pagaré</th>
+                  <th style="width: 18%;">Importe</th>
                   <th style="width: 10%;">Moneda</th>
-                  <th style="width: 15%;">Emisión</th>
-                  <th style="width: 15%;">Vencimiento</th>
+                  <th style="width: 18%;">Vencimiento</th>
                   <th>Observación</th>
                   <th style="width: 40px;"></th>
                 </tr>
@@ -864,13 +1172,19 @@
             <i class="bi bi-plus-circle me-1"></i>Agregar pagaré
           </button>
 
-          <h6 class="mt-3 mb-2"><i class="bi bi-eye me-1"></i>Vista previa</h6>
-          <div class="border rounded p-3" style="background: #fff; max-height: 60vh; overflow-y: auto;">
+          <!-- ===== Vista previa ===== -->
+          <h6 class="mt-3 mb-2 text-uppercase text-muted small fw-bold">
+            <i class="bi bi-eye me-1"></i>Vista Previa
+          </h6>
+          <div class="contrato-preview-wrap">
             <div id="contratoPreview"></div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+          <button type="button" class="btn btn-outline-dark btn-sm" id="btnImprimirContrato">
+            <i class="bi bi-printer me-1"></i>Imprimir directo
+          </button>
           <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnDescargarContrato">
             <i class="bi bi-file-earmark-pdf me-1"></i>Descargar PDF para Firma
           </button>
@@ -878,6 +1192,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Área oculta usada solo para impresión directa -->
+  <div id="contratoPrintArea" style="display:none;"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
@@ -1803,6 +2120,9 @@
     const modalContratoEl = document.getElementById('modalContrato');
     const modalContrato = modalContratoEl ? new bootstrap.Modal(modalContratoEl) : null;
     const contratoPlantilla = document.getElementById('contratoPlantilla');
+    const contratoRazonSocialTracto = document.getElementById('contratoRazonSocialTracto');
+    const contratoRucTracto = document.getElementById('contratoRucTracto');
+    const contratoCargoRep1 = document.getElementById('contratoCargoRep1');
     const contratoCiudad = document.getElementById('contratoCiudad');
     const contratoFecha = document.getElementById('contratoFecha');
     const contratoClienteNombre = document.getElementById('contratoClienteNombre');
@@ -1810,23 +2130,40 @@
     const contratoClienteDireccion = document.getElementById('contratoClienteDireccion');
     const contratoRep2 = document.getElementById('contratoRep2');
     const contratoCi2 = document.getElementById('contratoCi2');
+    const contratoRep3 = document.getElementById('contratoRep3');
+    const contratoCi3 = document.getElementById('contratoCi3');
     const contratoRep1 = document.getElementById('contratoRep1');
     const contratoCi1 = document.getElementById('contratoCi1');
+    const contratoModalidad = document.getElementById('contratoModalidad');
     const contratoMoneda = document.getElementById('contratoMoneda');
     const contratoMonto = document.getElementById('contratoMonto');
     const contratoTipoCambio = document.getElementById('contratoTipoCambio');
+    const contratoMonedaPagares = document.getElementById('contratoMonedaPagares');
+    const contratoInicialEfectivo = document.getElementById('contratoInicialEfectivo');
+    const contratoInicialTransferencia = document.getElementById('contratoInicialTransferencia');
+    const contratoInicialCheque = document.getElementById('contratoInicialCheque');
     const contratoPagoInicial = document.getElementById('contratoPagoInicial');
+    const contratoUsadoMontoUsd = document.getElementById('contratoUsadoMontoUsd');
+    const contratoUsadoMontoLetras = document.getElementById('contratoUsadoMontoLetras');
+    const contratoUsadoFactura = document.getElementById('contratoUsadoFactura');
     const contratoDatosBanco = document.getElementById('contratoDatosBanco');
     const contratoEquiposBody = document.getElementById('contratoEquiposBody');
     const contratoChequesBody = document.getElementById('contratoChequesBody');
     const contratoTransferenciasBody = document.getElementById('contratoTransferenciasBody');
     const contratoPagarésBody = document.getElementById('contratoPagarésBody');
     const contratoPreview = document.getElementById('contratoPreview');
+    const contratoPrintArea = document.getElementById('contratoPrintArea');
     const btnAddEquipo = document.getElementById('btnAddEquipo');
     const btnAddCheque = document.getElementById('btnAddCheque');
     const btnAddTransferencia = document.getElementById('btnAddTransferencia');
     const btnAddPagare = document.getElementById('btnAddPagare');
+    const btnGenerarPagares = document.getElementById('btnGenerarPagares');
+    const contratoPagaresNCuotas = document.getElementById('contratoPagaresNCuotas');
+    const contratoPagaresImporte = document.getElementById('contratoPagaresImporte');
+    const contratoPagaresPrimerVenc = document.getElementById('contratoPagaresPrimerVenc');
+    const contratoPagaresMonedaGen = document.getElementById('contratoPagaresMonedaGen');
     const btnDescargarContrato = document.getElementById('btnDescargarContrato');
+    const btnImprimirContrato = document.getElementById('btnImprimirContrato');
 
     const plantillaSelect = document.getElementById('plantillaSelect');
     const plantillaNombre = document.getElementById('plantillaNombre');
@@ -1950,8 +2287,8 @@
     function renderFilaTransferencia(t) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><input type="text" class="form-control form-control-sm" data-tr-banco value="${escapeHtml(t.banco || '')}" /></td>
-        <td><input type="text" class="form-control form-control-sm" data-tr-cuenta value="${escapeHtml(t.cuenta || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-tr-banco value="${escapeHtml(t.banco || '')}" placeholder="Banco emisor" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-tr-banco-receptor value="${escapeHtml(t.bancoReceptor || '')}" placeholder="Banco receptor" /></td>
         <td><input type="number" class="form-control form-control-sm" data-tr-importe step="0.01" value="${t.importe || ''}" /></td>
         <td>
           <select class="form-select form-select-sm" data-tr-moneda>
@@ -1959,8 +2296,8 @@
             <option value="USD"${t.moneda === 'USD' ? ' selected' : ''}>USD</option>
           </select>
         </td>
+        <td><input type="text" class="form-control form-control-sm" data-tr-ref value="${escapeHtml(t.ref || '')}" placeholder="N° transacción" /></td>
         <td><input type="date" class="form-control form-control-sm" data-tr-fecha value="${escapeHtml(t.fecha || '')}" /></td>
-        <td><input type="text" class="form-control form-control-sm" data-tr-ref value="${escapeHtml(t.ref || '')}" /></td>
         <td><button type="button" class="btn btn-outline-danger btn-sm" data-del-tr><i class="bi bi-trash"></i></button></td>`;
       tr.querySelector('[data-del-tr]').addEventListener('click', () => {
         tr.remove();
@@ -2016,12 +2353,12 @@
     function leerFilasTransferencias() {
       return Array.from(contratoTransferenciasBody.querySelectorAll('tr')).map((tr) => ({
         banco: tr.querySelector('[data-tr-banco]').value.trim(),
-        cuenta: tr.querySelector('[data-tr-cuenta]').value.trim(),
+        bancoReceptor: tr.querySelector('[data-tr-banco-receptor]').value.trim(),
         importe: Number(tr.querySelector('[data-tr-importe]').value) || 0,
         moneda: tr.querySelector('[data-tr-moneda]').value,
         fecha: tr.querySelector('[data-tr-fecha]').value,
         ref: tr.querySelector('[data-tr-ref]').value.trim(),
-      })).filter((t) => t.banco || t.importe > 0);
+      })).filter((t) => t.banco || t.bancoReceptor || t.importe > 0);
     }
 
     function leerFilasPagarés() {
@@ -2035,11 +2372,43 @@
       })).filter((p) => p.num || p.importe > 0);
     }
 
-    function tablaHtml(headers, rows) {
-      if (!rows.length) return '<p><em>Sin registros.</em></p>';
-      const th = headers.map((h) => `<th style="border:1px solid #999;padding:4px;background:#f0f0f0;font-size:11px;">${escapeHtml(h)}</th>`).join('');
-      const trs = rows.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #999;padding:4px;font-size:11px;">${escapeHtml(String(c || ''))}</td>`).join('')}</tr>`).join('');
-      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`;
+    function tablaHtml(headers, rows, opts) {
+      const options = opts || {};
+      if (!rows.length) {
+        return '<p class="clausula"><em>Sin registros.</em></p>';
+      }
+      const th = headers
+        .map((h) => {
+          const isNum = options.numeric && options.numeric.includes(h);
+          return `<th class="${isNum ? 'num' : ''}">${escapeHtml(h)}</th>`;
+        })
+        .join('');
+      const trs = rows
+        .map((r) => {
+          const tds = r
+            .map((c, idx) => {
+              const h = headers[idx];
+              const isNum = options.numeric && options.numeric.includes(h);
+              return `<td class="${isNum ? 'num' : ''}">${escapeHtml(String(c === undefined || c === null ? '' : c))}</td>`;
+            })
+            .join('');
+          return `<tr>${tds}</tr>`;
+        })
+        .join('');
+      const tfoot = options.totales
+        ? `<tfoot><tr>${options.totales
+            .map((c, idx) => {
+              const h = headers[idx];
+              const isNum = options.numeric && options.numeric.includes(h);
+              return `<td class="${isNum ? 'num' : ''}">${escapeHtml(String(c === undefined || c === null ? '' : c))}</td>`;
+            })
+            .join('')}</tr></tfoot>`
+        : '';
+      return `<table class="doc-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody>${tfoot}</table>`;
+    }
+
+    function casilla(marcada) {
+      return `<span class="casilla${marcada ? ' marcada' : ''}"></span>`;
     }
 
     function construirContratoHtml(template, datos) {
@@ -2048,21 +2417,37 @@
       const transferencias = datos.transferencias || [];
       const pagarés = datos.pagarés || [];
 
+      const totalCheques = cheques.reduce((a, c) => a + (Number(c.importe) || 0), 0);
+      const totalTransferencias = transferencias.reduce((a, t) => a + (Number(t.importe) || 0), 0);
+      const totalPagares = pagarés.reduce((a, p) => a + (Number(p.importe) || 0), 0);
+
       const tablaEquipos = tablaHtml(
         ['Marca', 'Descripción', 'Serie'],
         equipos.map((e) => [e.marca, e.desc, e.serie])
       );
       const tablaCheques = tablaHtml(
-        ['N° Cheque', 'Cta. Cte.', 'Banco', 'Importe', 'Moneda', 'Emisión', 'Vencimiento'],
-        cheques.map((c) => [c.num, c.cta, c.banco, formatearMonto(c.importe, c.moneda), c.moneda, c.emision, c.venc])
+        ['N° Cheque', 'N° Cta. Cte.', 'Banco', 'Importe', 'Moneda', 'Emisión', 'Vencimiento'],
+        cheques.map((c) => [c.num, c.cta, c.banco, formatearMonto(c.importe, c.moneda), c.moneda, c.emision, c.venc]),
+        {
+          numeric: ['Importe'],
+          totales: ['', '', 'TOTAL', formatearMonto(totalCheques, datos.moneda), datos.moneda, '', ''],
+        }
       );
       const tablaTransferencias = tablaHtml(
-        ['Banco', 'Cuenta', 'Importe', 'Moneda', 'Fecha', 'Referencia'],
-        transferencias.map((t) => [t.banco, t.cuenta, formatearMonto(t.importe, t.moneda), t.moneda, t.fecha, t.ref])
+        ['Banco Emisor', 'Banco Receptor', 'Importe', 'Moneda', 'N° Transacción', 'Fecha'],
+        transferencias.map((t) => [t.banco, t.bancoReceptor, formatearMonto(t.importe, t.moneda), t.moneda, t.ref, t.fecha]),
+        {
+          numeric: ['Importe'],
+          totales: ['', 'TOTAL', formatearMonto(totalTransferencias, datos.moneda), datos.moneda, '', ''],
+        }
       );
       const tablaPagarés = tablaHtml(
-        ['N° Pagaré', 'Importe', 'Moneda', 'Emisión', 'Vencimiento', 'Observación'],
-        pagarés.map((p) => [p.num, formatearMonto(p.importe, p.moneda), p.moneda, p.emision, p.venc, p.obs])
+        ['N° Pagaré', 'Importe', 'Moneda', 'Vencimiento', 'Observación'],
+        pagarés.map((p) => [p.num, formatearMonto(p.importe, p.moneda), p.moneda, p.venc, p.obs]),
+        {
+          numeric: ['Importe'],
+          totales: ['', formatearMonto(totalPagares, datos.monedaPagares || datos.moneda), datos.monedaPagares || datos.moneda, 'TOTAL', ''],
+        }
       );
 
       const montoNumero = formatearMonto(datos.monto, datos.moneda);
@@ -2070,24 +2455,55 @@
       const monedaTexto = datos.moneda === 'USD' ? 'DÓLARES AMERICANOS' : 'GUARANÍES';
       const fechaLarga = formatearFechaLetras(datos.fecha);
 
+      const modalidadContado = String(datos.modalidad || '').toUpperCase() === 'CONTADO';
+      const modalidadFinanciado = String(datos.modalidad || '').toUpperCase() === 'FINANCIADO';
+
+      const inicialEfectivo = Number(datos.inicialEfectivo) || 0;
+      const inicialTexto = datos.pagoInicial
+        ? escapeHtml(datos.pagoInicial)
+        : (inicialEfectivo > 0
+            ? `${formatearMonto(inicialEfectivo, datos.moneda)} ${datos.moneda}`
+            : '—');
+
+      const usadoMontoUsd = Number(datos.usadoMontoUsd) || 0;
+      const usadoLetras = datos.usadoMontoLetras || (usadoMontoUsd > 0 ? numeroALetras(usadoMontoUsd) + ' DÓLARES AMERICANOS' : '');
+      const usadoFactura = datos.usadoFactura || '';
+
       const reemplazos = {
-        '{{CLIENTE_NOMBRE}}': datos.clienteNombre || '',
-        '{{CLIENTE_RUC}}': datos.clienteRuc || '',
-        '{{REPRESENTANTE_1}}': datos.rep1 || '',
-        '{{CI_1}}': datos.ci1 || '',
-        '{{REPRESENTANTE_2}}': datos.rep2 || '',
-        '{{CI_2}}': datos.ci2 || '',
-        '{{CLIENTE_DIRECCION}}': datos.clienteDireccion || '',
+        '{{RAZON_SOCIAL_TRACTO}}': escapeHtml(datos.razonSocialTracto || 'TRACTO AGRO VIAL S.A.'),
+        '{{RUC_TRACTO}}': escapeHtml(datos.rucTracto || '80027587-0'),
+        '{{CARGO_REPRESENTANTE_1}}': escapeHtml(datos.cargoRep1 || ''),
+        '{{CLIENTE_NOMBRE}}': escapeHtml(datos.clienteNombre || ''),
+        '{{CLIENTE_RUC}}': escapeHtml(datos.clienteRuc || ''),
+        '{{REPRESENTANTE_1}}': escapeHtml(datos.rep1 || ''),
+        '{{CI_1}}': escapeHtml(datos.ci1 || ''),
+        '{{REPRESENTANTE_2}}': escapeHtml(datos.rep2 || ''),
+        '{{CI_2}}': escapeHtml(datos.ci2 || ''),
+        '{{REPRESENTANTE_3}}': escapeHtml(datos.rep3 || ''),
+        '{{CI_3}}': escapeHtml(datos.ci3 || ''),
+        '{{CLIENTE_DIRECCION}}': escapeHtml(datos.clienteDireccion || ''),
         '{{TABLA_EQUIPOS}}': tablaEquipos,
         '{{MONTO_NUMERO}}': montoNumero,
         '{{MONTO_LETRAS}}': montoLetras,
         '{{MONEDA_TEXTO}}': monedaTexto,
+        '{{MONEDA}}': escapeHtml(datos.moneda || 'GS'),
+        '{{MODALIDAD}}': escapeHtml(datos.modalidad || ''),
+        '{{CASILLA_CONTADO}}': casilla(modalidadContado),
+        '{{CASILLA_FINANCIADO}}': casilla(modalidadFinanciado),
+        '{{CASILLA_INICIAL_EFECTIVO}}': casilla(inicialEfectivo > 0),
+        '{{CASILLA_INICIAL_TRANSFERENCIA}}': casilla(datos.inicialTransferencia === true),
+        '{{CASILLA_INICIAL_CHEQUE}}': casilla(datos.inicialCheque === true),
+        '{{INICIAL_EFECTIVO}}': formatearMonto(inicialEfectivo, datos.moneda),
+        '{{PAGO_INICIAL_TEXTO}}': inicialTexto,
+        '{{USADO_MONTO_USD}}': usadoMontoUsd > 0 ? formatearMonto(usadoMontoUsd, 'USD') : '—',
+        '{{USADO_MONTO_LETRAS}}': escapeHtml(usadoLetras || '—'),
+        '{{USADO_FACTURA}}': escapeHtml(usadoFactura || '—'),
         '{{DATOS_BANCO_CHEQUES}}': escapeHtml(datos.datosBanco || '').replace(/\n/g, '<br>'),
         '{{TABLA_CHEQUES}}': tablaCheques,
         '{{TABLA_TRANSFERENCIAS}}': tablaTransferencias,
         '{{TABLA_PAGARES}}': tablaPagarés,
-        '{{PAGO_INICIAL_TEXTO}}': escapeHtml(datos.pagoInicial || ''),
-        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || ''),
+        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || '—'),
+        '{{MONEDA_PAGARES}}': escapeHtml(datos.monedaPagares === 'USD' ? 'DÓLARES AMERICANOS' : 'GUARANÍES'),
         '{{CIUDAD_FIRMA}}': escapeHtml(datos.ciudad || ''),
         '{{FECHA_FIRMA_LARGA}}': escapeHtml(fechaLarga),
       };
@@ -2103,19 +2519,73 @@
       const encabezadoHtml = aplicar(template.encabezado || '').replace(/\n/g, '<br>');
       const cuerpoHtml = aplicar(template.cuerpo || '').replace(/\n/g, '<br>');
 
+      const razonSocialTracto = escapeHtml(datos.razonSocialTracto || 'TRACTO AGRO VIAL S.A.');
+      const rucTracto = escapeHtml(datos.rucTracto || '80027587-0');
+      const rep1 = escapeHtml(datos.rep1 || '');
+      const ci1 = escapeHtml(datos.ci1 || '');
+      const cargoRep1 = escapeHtml(datos.cargoRep1 || '');
+      const clienteNombre = escapeHtml(datos.clienteNombre || '');
+      const clienteRuc = escapeHtml(datos.clienteRuc || '');
+      const clienteDireccion = escapeHtml(datos.clienteDireccion || '');
+      const rep2 = escapeHtml(datos.rep2 || '');
+      const ci2 = escapeHtml(datos.ci2 || '');
+      const rep3 = escapeHtml(datos.rep3 || '');
+      const ci3 = escapeHtml(datos.ci3 || '');
+
+      const firmaCompradorReps = rep2
+        ? `<div><strong>${rep2}</strong>${ci2 ? ` — C.I. N° ${ci2}` : ''}</div>${rep3 ? `<div><strong>${rep3}</strong>${ci3 ? ` — C.I. N° ${ci3}` : ''}</div>` : ''}`
+        : '<div class="text-muted">(Nombre y C.I. del representante)</div>';
+
       return `
-        <div style="font-family: 'Times New Roman', serif; font-size: 12px; line-height: 1.5; color: #000;">
-          <div style="text-align: center; margin-bottom: 16px;">
-            <img src="/img/logo-tracto.png" alt="Tracto Agro Vial" style="height: 60px; margin-bottom: 8px;" />
-            <div style="font-size: 11px;">${encabezadoHtml}</div>
+        <div class="contrato-doc">
+          <div class="doc-header">
+            <div class="doc-title">
+              <h1>Contrato Privado de Compra-Venta</h1>
+              <div class="doc-subtitle">${razonSocialTracto} — RUC ${rucTracto}</div>
+            </div>
+            <img class="doc-logo" src="/img/logo-tracto.png" alt="Tracto Agro Vial" />
           </div>
-          <hr style="border: 1px solid #000; margin: 12px 0;" />
-          <div style="text-align: justify;">${cuerpoHtml}</div>
+          <div class="doc-meta">
+            <strong>${escapeHtml(datos.ciudad || '')}</strong>, ${escapeHtml(fechaLarga)}
+          </div>
+          <div class="doc-encabezado">${encabezadoHtml}</div>
+          <div class="doc-cuerpo">${cuerpoHtml}</div>
+
+          <div class="firmas">
+            <div class="firma-bloque">
+              <div class="firma-rol">EL COMPRADOR</div>
+              <div class="firma-linea"></div>
+              <div class="firma-datos">
+                <div><strong>${clienteNombre || '—'}</strong></div>
+                <div>RUC / C.I.: <strong>${clienteRuc || '—'}</strong></div>
+                <div>Domicilio: <strong>${clienteDireccion || '—'}</strong></div>
+                <div class="mt-2">Representante(s):</div>
+                ${firmaCompradorReps}
+              </div>
+            </div>
+            <div class="firma-bloque">
+              <div class="firma-rol">EL VENDEDOR</div>
+              <div class="firma-linea"></div>
+              <div class="firma-datos">
+                <div><strong>${razonSocialTracto}</strong></div>
+                <div>RUC: <strong>${rucTracto}</strong></div>
+                <div class="mt-2">${cargoRep1 ? `${cargoRep1}:` : 'Representante:'}</div>
+                <div><strong>${rep1 || '—'}</strong>${ci1 ? ` — C.I. N° ${ci1}` : ''}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pie-impresion">
+            Original: Cliente &nbsp;|&nbsp; Duplicado: Archivo central
+          </div>
         </div>`;
     }
 
     function leerDatosContrato() {
       return {
+        razonSocialTracto: contratoRazonSocialTracto ? contratoRazonSocialTracto.value : 'TRACTO AGRO VIAL S.A.',
+        rucTracto: contratoRucTracto ? contratoRucTracto.value.trim() : '80027587-0',
+        cargoRep1: contratoCargoRep1 ? contratoCargoRep1.value.trim() : '',
         ciudad: contratoCiudad.value.trim(),
         fecha: contratoFecha.value,
         clienteNombre: contratoClienteNombre.value.trim(),
@@ -2125,10 +2595,20 @@
         ci1: contratoCi1.value.trim(),
         rep2: contratoRep2.value.trim(),
         ci2: contratoCi2.value.trim(),
+        rep3: contratoRep3 ? contratoRep3.value.trim() : '',
+        ci3: contratoCi3 ? contratoCi3.value.trim() : '',
+        modalidad: contratoModalidad ? contratoModalidad.value : 'CONTADO',
         moneda: contratoMoneda.value,
         monto: Number(contratoMonto.value) || 0,
         tipoCambio: contratoTipoCambio.value.trim(),
+        monedaPagares: contratoMonedaPagares ? contratoMonedaPagares.value : 'USD',
+        inicialEfectivo: contratoInicialEfectivo ? Number(contratoInicialEfectivo.value) || 0 : 0,
+        inicialTransferencia: contratoInicialTransferencia ? contratoInicialTransferencia.checked : false,
+        inicialCheque: contratoInicialCheque ? contratoInicialCheque.checked : false,
         pagoInicial: contratoPagoInicial.value.trim(),
+        usadoMontoUsd: contratoUsadoMontoUsd ? Number(contratoUsadoMontoUsd.value) || 0 : 0,
+        usadoMontoLetras: contratoUsadoMontoLetras ? contratoUsadoMontoLetras.value.trim() : '',
+        usadoFactura: contratoUsadoFactura ? contratoUsadoFactura.value.trim() : '',
         datosBanco: contratoDatosBanco.value.trim(),
         equipos: leerFilasEquipos(),
         cheques: leerFilasCheques(),
@@ -2202,11 +2682,25 @@
       contratoClienteDireccion.value = '';
       contratoRep2.value = '';
       contratoCi2.value = '';
+      if (contratoRep3) contratoRep3.value = '';
+      if (contratoCi3) contratoCi3.value = '';
       contratoMoneda.value = 'GS';
       contratoMonto.value = aprob.DocTotal || '';
       contratoTipoCambio.value = '';
       contratoPagoInicial.value = '';
       contratoDatosBanco.value = '';
+      if (contratoModalidad) contratoModalidad.value = 'CONTADO';
+      if (contratoMonedaPagares) contratoMonedaPagares.value = 'USD';
+      if (contratoInicialEfectivo) contratoInicialEfectivo.value = '';
+      if (contratoInicialTransferencia) contratoInicialTransferencia.checked = false;
+      if (contratoInicialCheque) contratoInicialCheque.checked = false;
+      if (contratoUsadoMontoUsd) contratoUsadoMontoUsd.value = '';
+      if (contratoUsadoMontoLetras) contratoUsadoMontoLetras.value = '';
+      if (contratoUsadoFactura) contratoUsadoFactura.value = '';
+      if (contratoPagaresNCuotas) contratoPagaresNCuotas.value = '12';
+      if (contratoPagaresImporte) contratoPagaresImporte.value = '';
+      if (contratoPagaresPrimerVenc) contratoPagaresPrimerVenc.value = '';
+      if (contratoPagaresMonedaGen) contratoPagaresMonedaGen.value = 'USD';
       contratoEquiposBody.innerHTML = '';
       contratoChequesBody.innerHTML = '';
       contratoTransferenciasBody.innerHTML = '';
@@ -2267,9 +2761,9 @@
       const datos = leerDatosContrato();
       const html = construirContratoHtml(tpl, datos);
 
-      // Contenedor temporal con márgenes legales
+      // Contenedor temporal con márgenes legales A4
       const wrapper = document.createElement('div');
-      wrapper.style.padding = '20mm 15mm';
+      wrapper.style.padding = '0';
       wrapper.style.background = '#fff';
       wrapper.style.width = '210mm';
       wrapper.innerHTML = html;
@@ -2285,9 +2779,9 @@
           margin: [15, 15, 15, 15],
           filename: nombreArchivo,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+          html2canvas: { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['.clausula', '.doc-table', '.firmas', '.firma-bloque'] },
         }).from(wrapper).save();
       } catch (err) {
         console.error('Error generando PDF:', err);
@@ -2297,6 +2791,72 @@
         btnDescargarContrato.disabled = false;
         btnDescargarContrato.innerHTML = originalHtml;
       }
+    }
+
+    function imprimirContratoDirecto() {
+      if (!contratoPreview) return;
+      const tplId = contratoPlantilla.value;
+      const tpl = contratosTemplates.find((t) => t.id === tplId);
+      if (!tpl) {
+        alert('Seleccione una plantilla.');
+        return;
+      }
+      const datos = leerDatosContrato();
+      const html = construirContratoHtml(tpl, datos);
+      if (!contratoPrintArea) {
+        window.print();
+        return;
+      }
+      contratoPrintArea.innerHTML = html;
+      contratoPrintArea.style.display = 'block';
+      const cleanup = () => {
+        contratoPrintArea.style.display = 'none';
+        contratoPrintArea.innerHTML = '';
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
+      setTimeout(() => {
+        window.print();
+      }, 50);
+    }
+
+    function generarPagaresMensuales() {
+      const n = parseInt(contratoPagaresNCuotas ? contratoPagaresNCuotas.value : '0', 10);
+      const importe = contratoPagaresImporte ? Number(contratoPagaresImporte.value) || 0 : 0;
+      const primerVenc = contratoPagaresPrimerVenc ? contratoPagaresPrimerVenc.value : '';
+      const moneda = contratoPagaresMonedaGen ? contratoPagaresMonedaGen.value : 'USD';
+      if (!Number.isFinite(n) || n <= 0) {
+        alert('Indique la cantidad de cuotas (mayor a 0).');
+        return;
+      }
+      if (importe <= 0) {
+        alert('Indique el importe de cada cuota.');
+        return;
+      }
+      if (!primerVenc) {
+        alert('Indique la fecha del primer vencimiento.');
+        return;
+      }
+      const base = new Date(primerVenc + 'T00:00:00');
+      if (isNaN(base.getTime())) {
+        alert('Fecha de primer vencimiento inválida.');
+        return;
+      }
+      // Limpiar pagarés existentes
+      contratoPagarésBody.innerHTML = '';
+      for (let i = 0; i < n; i += 1) {
+        const d = new Date(base.getFullYear(), base.getMonth() + i, base.getDate());
+        const iso = d.toISOString().slice(0, 10);
+        renderFilaPagare({
+          num: String(i + 1).padStart(2, '0'),
+          importe,
+          moneda,
+          emision: '',
+          venc: iso,
+          obs: '',
+        });
+      }
+      actualizarPreviewContrato();
     }
 
     async function guardarPlantilla() {
@@ -2417,8 +2977,12 @@
     }
     [
       contratoCiudad, contratoFecha, contratoClienteNombre, contratoClienteRuc,
-      contratoClienteDireccion, contratoRep2, contratoCi2, contratoRep1, contratoCi1,
-      contratoMoneda, contratoMonto, contratoTipoCambio, contratoPagoInicial, contratoDatosBanco,
+      contratoClienteDireccion, contratoRep2, contratoCi2, contratoRep3, contratoCi3,
+      contratoRep1, contratoCi1, contratoRazonSocialTracto, contratoRucTracto, contratoCargoRep1,
+      contratoModalidad, contratoMoneda, contratoMonto, contratoTipoCambio, contratoMonedaPagares,
+      contratoInicialEfectivo, contratoInicialTransferencia, contratoInicialCheque,
+      contratoPagoInicial, contratoUsadoMontoUsd, contratoUsadoMontoLetras, contratoUsadoFactura,
+      contratoDatosBanco,
     ].forEach((el) => {
       if (el) el.addEventListener('input', actualizarPreviewContrato);
       if (el) el.addEventListener('change', actualizarPreviewContrato);
@@ -2427,7 +2991,9 @@
     if (btnAddCheque) btnAddCheque.addEventListener('click', () => { renderFilaCheque({ moneda: 'GS' }); actualizarPreviewContrato(); });
     if (btnAddTransferencia) btnAddTransferencia.addEventListener('click', () => { renderFilaTransferencia({ moneda: 'GS' }); actualizarPreviewContrato(); });
     if (btnAddPagare) btnAddPagare.addEventListener('click', () => { renderFilaPagare({ moneda: 'GS' }); actualizarPreviewContrato(); });
+    if (btnGenerarPagares) btnGenerarPagares.addEventListener('click', generarPagaresMensuales);
     if (btnDescargarContrato) btnDescargarContrato.addEventListener('click', descargarContratoPdf);
+    if (btnImprimirContrato) btnImprimirContrato.addEventListener('click', imprimirContratoDirecto);
 
     if (plantillaSelect) {
       plantillaSelect.addEventListener('change', () => cargarPlantillaEnEditor(plantillaSelect.value));

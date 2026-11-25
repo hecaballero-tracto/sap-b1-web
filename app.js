@@ -569,13 +569,11 @@ function buildContratoTemplateChequesDiferidos() {
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
     ciRepresentanteTracto: '1.136.942',
-    encabezado: `TRACTO AGRO VIAL S.A.
-RUC: 80027587-0
+    encabezado: `{{RAZON_SOCIAL_TRACTO}}
+RUC: {{RUC_TRACTO}}
 Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
 Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
-    cuerpo: `CONTRATO PRIVADO DE COMPRA-VENTA
-
-En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre TRACTO AGRO VIAL S.A., RUC 80027587-0, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
 
 PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
 
@@ -605,13 +603,7 @@ DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribu
 
 UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
 
-En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.
-
-_____________________________          _____________________________
-LA VENDEDORA                              EL COMPRADOR
-TRACTO AGRO VIAL S.A.                     {{CLIENTE_NOMBRE}}
-{{REPRESENTANTE_1}}                       {{REPRESENTANTE_2}}
-C.I. N° {{CI_1}}                          C.I. N° {{CI_2}}`,
+En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -625,13 +617,11 @@ function buildContratoTemplateModelo2025() {
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
     ciRepresentanteTracto: '1.136.942',
-    encabezado: `TRACTO AGRO VIAL S.A.E.
-RUC: 80027587-0
+    encabezado: `{{RAZON_SOCIAL_TRACTO}}
+RUC: {{RUC_TRACTO}}
 Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
 Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
-    cuerpo: `CONTRATO PRIVADO DE COMPRA-VENTA — MODELO 2025
-
-En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre TRACTO AGRO VIAL S.A.E., RUC 80027587-0, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
 
 PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
 
@@ -639,23 +629,25 @@ PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a c
 
 SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}), que EL COMPRADOR se obliga a abonar conforme a la cláusula TERCERA.
 
-TERCERA — FORMA DE PAGO: EL COMPRADOR abonará el precio de la siguiente manera:
+TERCERA — MODALIDAD Y FORMA DE PAGO: La modalidad pactada es {{MODALIDAD}}. {{CASILLA_CONTADO}} CONTADO {{CASILLA_FINANCIADO}} FINANCIADO.
 
-a) Pago inicial: {{PAGO_INICIAL_TEXTO}}
+a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo {{INICIAL_EFECTIVO}} {{MONEDA}} {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia {{CASILLA_INICIAL_CHEQUE}} Cheque. Detalle: {{PAGO_INICIAL_TEXTO}}
 
-b) Transferencias bancarias:
+b) Equipo usado entregado en parte de pago: {{USADO_MONTO_USD}} ({{USADO_MONTO_LETRAS}}), según Factura N° {{USADO_FACTURA}}.
+
+c) Transferencias bancarias:
 
 {{TABLA_TRANSFERENCIAS}}
 
-c) Cheques diferidos:
+d) Cheques diferidos:
 
 {{TABLA_CHEQUES}}
 
-d) Pagarés:
+e) Pagarés en {{MONEDA_PAGARES}}:
 
 {{TABLA_PAGARES}}
 
-Tipo de cambio aplicable: {{TIPO_CAMBIO}}
+Tipo de cambio aplicable: 1 USD = {{TIPO_CAMBIO}} Gs.
 
 CUARTA — ENTREGA: LA VENDEDORA entregará los equipos dentro de los 15 (quince) días hábiles siguientes a la firma del presente contrato y a la acreditación del pago inicial.
 
@@ -673,13 +665,7 @@ DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribu
 
 UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
 
-En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.
-
-_____________________________          _____________________________
-LA VENDEDORA                              EL COMPRADOR
-TRACTO AGRO VIAL S.A.E.                   {{CLIENTE_NOMBRE}}
-{{REPRESENTANTE_1}}                       {{REPRESENTANTE_2}}
-C.I. N° {{CI_1}}                          C.I. N° {{CI_2}}`,
+En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
