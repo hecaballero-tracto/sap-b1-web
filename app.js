@@ -3286,6 +3286,11 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
     };
 
     // b) Detalle de facturas no canceladas con sus cuotas
+    //    - SaldoCuota = 0 cuando la cuota está cerrada (Status = 'C')
+    //    - SaldoCuota = saldo real cuando está abierta (Status = 'O')
+    //    - Se incorpora la última fecha de reconciliación y el detalle de
+    //      aplicaciones (PR / NC / Rec) desde las tablas de reconciliación
+    //      internas de SAP B1 (JDT1 + ITR1 + OITR + ORCT + ORIN).
     const sqlFacturas = `SELECT
         I."DocEntry" AS "DocEntry",
         I."DocNum" AS "DocNum",
@@ -3305,14 +3310,15 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
           ELSE Q."InsTotal"
         END AS "MontoCuota",
         CASE
+          WHEN Q."Status" = 'C' THEN 0
           WHEN COALESCE(I."DocCur", 'GS') NOT IN ('GS', 'PYG')
             AND COALESCE(Q."InsTotalFC", 0) > 0
-          THEN COALESCE(Q."InsTotalFC", 0) - COALESCE(Q."PaidFC", 0)
-          ELSE COALESCE(Q."InsTotal", 0) - COALESCE(Q."Paid", 0)
+          THEN GREATEST(0, COALESCE(Q."InsTotalFC", 0) - COALESCE(Q."PaidFC", 0))
+          ELSE GREATEST(0, COALESCE(Q."InsTotal", 0) - COALESCE(Q."PaidToDate", 0))
         END AS "SaldoCuota",
         Q."Status" AS "EstadoCuota",
-        P."UltimoPagoFecha" AS "UltimoPagoFecha",
-        P."Recibos" AS "Recibos"
+        COALESCE(REC."UltimaFechaReconciliacion", P."UltimoPagoFecha") AS "UltimoPagoFecha",
+        COALESCE(REC."Aplicaciones", P."Recibos") AS "Recibos"
       FROM "TRACTOAGRO".OINV I
       INNER JOIN "TRACTOAGRO".INV6 Q ON Q."DocEntry" = I."DocEntry"
       LEFT JOIN "TRACTOAGRO".OCTG PG ON PG."GroupNum" = I."GroupNum"
@@ -3328,6 +3334,45 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
           AND R0."Canceled" = 'N'
         GROUP BY R2."DocEntry", R2."InstId"
       ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstlmntID"
+      LEFT JOIN (
+        SELECT
+          JInv."CreatedBy" AS "DocEntry",
+          COALESCE(NULLIF(JInv."SourceLine", 0), 1) AS "InstId",
+          MAX(RHead."ReconDate") AS "UltimaFechaReconciliacion",
+          STRING_AGG(
+            CASE
+              WHEN RDetOther."SrcObjTyp" = '24' AND PR."DocNum" IS NOT NULL
+                THEN 'PR #' || CAST(PR."DocNum" AS NVARCHAR(20))
+              WHEN RDetOther."SrcObjTyp" = '14' AND NC."DocNum" IS NOT NULL
+                THEN 'NC #' || CAST(NC."DocNum" AS NVARCHAR(20))
+              ELSE 'Rec #' || CAST(RHead."ReconNum" AS NVARCHAR(20))
+            END,
+            ', '
+          ) AS "Aplicaciones"
+        FROM "TRACTOAGRO".JDT1 JInv
+        INNER JOIN "TRACTOAGRO".ITR1 RDetInv
+          ON RDetInv."TransId" = JInv."TransId"
+          AND RDetInv."TransRowId" = JInv."Line_ID"
+        INNER JOIN "TRACTOAGRO".OITR RHead
+          ON RHead."ReconNum" = RDetInv."ReconNum"
+          AND RHead."Canceled" = 'N'
+        INNER JOIN "TRACTOAGRO".ITR1 RDetOther
+          ON RDetOther."ReconNum" = RHead."ReconNum"
+          AND NOT (
+            RDetOther."TransId" = JInv."TransId"
+            AND RDetOther."TransRowId" = JInv."Line_ID"
+          )
+        LEFT JOIN "TRACTOAGRO".ORCT PR
+          ON RDetOther."SrcObjTyp" = '24'
+          AND PR."DocEntry" = RDetOther."SrcObjAbs"
+        LEFT JOIN "TRACTOAGRO".ORIN NC
+          ON RDetOther."SrcObjTyp" = '14'
+          AND NC."DocEntry" = RDetOther."SrcObjAbs"
+        WHERE JInv."TransType" = '13'
+        GROUP BY JInv."CreatedBy", COALESCE(NULLIF(JInv."SourceLine", 0), 1)
+      ) REC
+        ON REC."DocEntry" = I."DocEntry"
+        AND REC."InstId" = Q."InstlmntID"
       WHERE I."CardCode" = ?
         AND I."CANCELED" = 'N'
       ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstlmntID" ASC`;
@@ -3413,6 +3458,35 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       return Math.round((sum / arr.length) * 10) / 10;
     };
 
+    // Suma de saldos de cuotas abiertas (debe coincidir con el saldo deudor
+    // de SAP B1 una vez descontados los créditos/pagos a cuenta sin reconciliar)
+    const sumaSaldosFacturas = cuotas.reduce(
+      (acc, c) => acc + (Number(c.SaldoCuota) || 0),
+      0
+    );
+
+    // Créditos / pagos a cuenta sin reconciliar (JDT1)
+    let creditosSinReconciliar = 0;
+    try {
+      const sqlCreditos = `SELECT COALESCE(SUM(J."BalDueCred" - J."BalDueDeb"), 0) AS "CreditosSinReconciliar"
+        FROM "TRACTOAGRO".JDT1 J
+        WHERE J."ShortName" = ?
+          AND (J."BalDueCred" - J."BalDueDeb") > 0`;
+      const credRows = await hanaExec(sqlCreditos, [cardCode]);
+      if (credRows && credRows.length) {
+        creditosSinReconciliar =
+          credRows[0].CreditosSinReconciliar !== undefined &&
+          credRows[0].CreditosSinReconciliar !== null
+            ? Number(credRows[0].CreditosSinReconciliar)
+            : 0;
+      }
+    } catch (errCred) {
+      console.warn(
+        'No se pudieron obtener créditos sin reconciliar:',
+        errCred.message
+      );
+    }
+
     const resumen = {
       limiteCredito: ficha.CreditLine,
       saldoActual: ficha.Balance,
@@ -3421,6 +3495,8 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       facturasCredito: facturasCreditoSet.size,
       promedioDiasAtraso: promedio(diasAtrasoCreditoVencidas),
       promedioDiasAtrasoGlobal: promedio(diasAtrasoCredito),
+      creditosSinReconciliar,
+      sumaSaldosFacturas,
     };
 
     return res.json({ ficha, cuotas, resumen });

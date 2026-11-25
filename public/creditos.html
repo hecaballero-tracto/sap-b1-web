@@ -451,6 +451,12 @@
           </div>
           <div id="histContent" class="d-none">
             <div class="row g-2 mb-3" id="histKpis"></div>
+            <div id="histCreditosSinReconciliar" class="alert alert-info d-none py-2 mb-2">
+              <i class="bi bi-info-circle me-1"></i>
+              <strong>Créditos / Pagos a cuenta sin reconciliar:</strong>
+              <span id="histCreditosSinReconciliarMonto"></span>
+              <span class="small text-muted ms-2">(aplicados al saldo deudor del cliente en SAP B1)</span>
+            </div>
             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
               <label class="form-label small mb-0 text-muted">Filtrar:</label>
               <select id="histFiltro" class="form-select form-select-sm" style="max-width: 220px;">
@@ -472,7 +478,7 @@
                     <th class="text-end">Importe</th>
                     <th class="text-end">Saldo</th>
                     <th>Fecha Pago</th>
-                    <th>N° Recibo</th>
+                    <th>Recibo / Aplicación</th>
                     <th class="text-center">Días Atraso</th>
                   </tr>
                 </thead>
@@ -879,6 +885,18 @@
             <div class="kpi-label">Facturas Crédito</div>
             <div class="kpi-value">${r.facturasCredito}</div>
           </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card ${Number(r.creditosSinReconciliar) > 0 ? 'info' : 'ok'}">
+            <div class="kpi-label">Créditos / Pagos a cuenta sin reconciliar</div>
+            <div class="kpi-value">${formatMoney(r.creditosSinReconciliar, 'GS')}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card info">
+            <div class="kpi-label">Suma Saldos Facturas</div>
+            <div class="kpi-value">${formatMoney(r.sumaSaldosFacturas, 'GS')}</div>
+          </div>
         </div>`;
     }
 
@@ -915,6 +933,9 @@
           if (c.DiasAtraso > 30) diasCls = 'danger';
           else if (c.DiasAtraso > 0) diasCls = 'warn';
           const rowCls = c.TipoVenta === 'Contado' ? 'cuota-row contado' : 'cuota-row';
+          const saldo = Number(c.SaldoCuota) || 0;
+          const saldoCls = saldo > 0 ? 'text-danger fw-semibold' : 'text-success';
+          const aplicacion = c.Recibos ? escapeHtml(c.Recibos) : '<span class="text-muted">—</span>';
           return `
             <tr class="${rowCls}">
               <td>
@@ -924,9 +945,9 @@
               <td>${escapeHtml(cuotaLabel)}</td>
               <td>${formatDate(c.DueDate)}</td>
               <td class="text-end">${formatMoney(c.MontoCuota, c.DocCur)}</td>
-              <td class="text-end">${formatMoney(c.SaldoCuota, c.DocCur)}</td>
+              <td class="text-end ${saldoCls}">${formatMoney(saldo, c.DocCur)}</td>
               <td>${c.UltimoPagoFecha ? formatDate(c.UltimoPagoFecha) : '<span class="text-muted">—</span>'}</td>
-              <td>${escapeHtml(c.Recibos || '—')}</td>
+              <td>${aplicacion}</td>
               <td class="text-center"><span class="dias-badge ${diasCls}">${c.DiasAtraso}</span></td>
             </tr>`;
         })
@@ -962,6 +983,18 @@
           histClienteNombre.textContent = `— ${data.ficha.CardName}`;
         }
         renderHistKpis();
+        const credSinRecEl = document.getElementById('histCreditosSinReconciliar');
+        const credSinRecMontoEl = document.getElementById('histCreditosSinReconciliarMonto');
+        if (credSinRecEl && credSinRecMontoEl) {
+          const monto = histResumen ? Number(histResumen.creditosSinReconciliar) || 0 : 0;
+          if (monto > 0) {
+            credSinRecMontoEl.textContent = formatMoney(monto, 'GS');
+            credSinRecEl.classList.remove('d-none');
+          } else {
+            credSinRecMontoEl.textContent = '';
+            credSinRecEl.classList.add('d-none');
+          }
+        }
         if (histFiltro) histFiltro.value = '';
         renderHistCuotas();
         if (histLoading) histLoading.classList.add('d-none');
