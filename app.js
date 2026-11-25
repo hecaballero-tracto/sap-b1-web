@@ -3346,7 +3346,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
           COALESCE(NULLIF(JInv."SourceLine", 0), 1) AS "InstId",
           MAX(RHead."ReconDate") AS "UltimaFechaReconciliacion",
           STRING_AGG(
-            DISTINCT CASE
+            CASE
               WHEN RDetOther."SrcObjTyp" = '24' AND PR."DocNum" IS NOT NULL
                 THEN 'PR #' || CAST(PR."DocNum" AS NVARCHAR(20))
               WHEN RDetOther."SrcObjTyp" = '14' AND NC."DocNum" IS NOT NULL
@@ -3424,6 +3424,17 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         }
       }
 
+      // Deduplicar recibos/aplicaciones (SAP HANA no soporta DISTINCT en STRING_AGG)
+      const recibosRaw = r.Recibos !== undefined && r.Recibos !== null ? String(r.Recibos) : '';
+      const recibosDedup = Array.from(
+        new Set(
+          recibosRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        )
+      ).join(', ');
+
       return {
         DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
         DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
@@ -3438,7 +3449,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         SaldoCuota: r.SaldoCuota !== undefined && r.SaldoCuota !== null ? Number(r.SaldoCuota) : 0,
         EstadoCuota: estadoCuota,
         UltimoPagoFecha: ultimoPagoFecha,
-        Recibos: r.Recibos !== undefined && r.Recibos !== null ? String(r.Recibos) : '',
+        Recibos: recibosDedup,
         TipoVenta: tipoVenta,
         DiasAtraso: diasAtraso,
       };
