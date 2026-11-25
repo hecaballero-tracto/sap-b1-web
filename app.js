@@ -3346,7 +3346,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
           COALESCE(NULLIF(JInv."SourceLine", 0), 1) AS "InstId",
           MAX(RHead."ReconDate") AS "UltimaFechaReconciliacion",
           STRING_AGG(
-            CASE
+            DISTINCT CASE
               WHEN RDetOther."SrcObjTyp" = '24' AND PR."DocNum" IS NOT NULL
                 THEN 'PR #' || CAST(PR."DocNum" AS NVARCHAR(20))
               WHEN RDetOther."SrcObjTyp" = '14' AND NC."DocNum" IS NOT NULL

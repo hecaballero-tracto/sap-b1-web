@@ -127,23 +127,25 @@
     }
     .kpi-card {
       border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 12px 14px;
+      border-radius: 8px;
+      padding: 6px 8px;
       background: #fff;
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .kpi-card .kpi-label {
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.3px;
       color: #6b7280;
       font-weight: 600;
+      line-height: 1.15;
     }
     .kpi-card .kpi-value {
-      font-size: 1.4rem;
+      font-size: 1rem;
       font-weight: 800;
-      line-height: 1.1;
-      margin-top: 4px;
+      line-height: 1.15;
+      margin-top: 2px;
+      word-break: break-word;
     }
     .kpi-card.ok .kpi-value { color: #16a34a; }
     .kpi-card.warn .kpi-value { color: #d97706; }
@@ -435,7 +437,7 @@
 
   <!-- Modal: Historial Crediticio -->
   <div class="modal fade" id="modalHistorial" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-centered modal-dialog-scrollable" style="max-width: 95vw;">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">
@@ -450,7 +452,7 @@
             <div class="mt-2 text-muted">Cargando historial...</div>
           </div>
           <div id="histContent" class="d-none">
-            <div class="row g-2 mb-3" id="histKpis"></div>
+            <div class="row row-cols-2 row-cols-sm-4 row-cols-xl-8 g-2 mb-3" id="histKpis"></div>
             <div id="histCreditosSinReconciliar" class="alert alert-info d-none py-2 mb-2">
               <i class="bi bi-info-circle me-1"></i>
               <strong>Créditos / Pagos a cuenta sin reconciliar:</strong>
@@ -468,9 +470,9 @@
               </select>
               <span id="histCount" class="text-muted small ms-auto"></span>
             </div>
-            <div class="table-responsive" style="max-height: 55vh;">
-              <table class="table table-sm table-hover mb-0">
-                <thead class="table-light">
+            <div class="table-responsive" style="max-height: 48vh; overflow-y: auto;">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
                   <tr>
                     <th>Factura</th>
                     <th>Cuota</th>
@@ -850,50 +852,50 @@
       const dispClass = r.disponible < 0 ? 'danger' : 'ok';
       const promClass = r.promedioDiasAtraso > 30 ? 'danger' : (r.promedioDiasAtraso > 0 ? 'warn' : 'ok');
       histKpis.innerHTML = `
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card info">
+        <div class="col">
+          <div class="kpi-card info p-2">
             <div class="kpi-label">Límite de Crédito</div>
             <div class="kpi-value">${formatMoney(r.limiteCredito, 'GS')}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card warn">
+        <div class="col">
+          <div class="kpi-card warn p-2">
             <div class="kpi-label">Saldo Deudor</div>
             <div class="kpi-value">${formatMoney(r.saldoActual, 'GS')}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card ${dispClass}">
+        <div class="col">
+          <div class="kpi-card ${dispClass} p-2">
             <div class="kpi-label">Disponible</div>
             <div class="kpi-value">${formatMoney(r.disponible, 'GS')}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card ${promClass}">
+        <div class="col">
+          <div class="kpi-card ${promClass} p-2">
             <div class="kpi-label">Prom. Días Atraso</div>
             <div class="kpi-value">${r.promedioDiasAtraso}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card ok">
+        <div class="col">
+          <div class="kpi-card ok p-2">
             <div class="kpi-label">Facturas Contado</div>
             <div class="kpi-value">${r.facturasContado}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card info">
+        <div class="col">
+          <div class="kpi-card info p-2">
             <div class="kpi-label">Facturas Crédito</div>
             <div class="kpi-value">${r.facturasCredito}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card ${Number(r.creditosSinReconciliar) > 0 ? 'info' : 'ok'}">
+        <div class="col">
+          <div class="kpi-card ${Number(r.creditosSinReconciliar) > 0 ? 'info' : 'ok'} p-2">
             <div class="kpi-label">Créditos / Pagos a cuenta sin reconciliar</div>
             <div class="kpi-value">${formatMoney(r.creditosSinReconciliar, 'GS')}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="kpi-card info">
+        <div class="col">
+          <div class="kpi-card info p-2">
             <div class="kpi-label">Suma Saldos Facturas</div>
             <div class="kpi-value">${formatMoney(r.sumaSaldosFacturas, 'GS')}</div>
           </div>
@@ -947,7 +949,7 @@
               <td class="text-end">${formatMoney(c.MontoCuota, c.DocCur)}</td>
               <td class="text-end ${saldoCls}">${formatMoney(saldo, c.DocCur)}</td>
               <td>${c.UltimoPagoFecha ? formatDate(c.UltimoPagoFecha) : '<span class="text-muted">—</span>'}</td>
-              <td>${aplicacion}</td>
+              <td class="text-break small">${aplicacion}</td>
               <td class="text-center"><span class="dias-badge ${diasCls}">${c.DiasAtraso}</span></td>
             </tr>`;
         })
