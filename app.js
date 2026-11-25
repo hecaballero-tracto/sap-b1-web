@@ -561,7 +561,7 @@ function writeSolicitudesCredito(list) {
 // ---------------------------------------------------------------------------
 // Plantillas de Contratos (persistencia + plantillas base)
 // ---------------------------------------------------------------------------
-const CONTRATOS_TEMPLATES_VERSION = 2;
+const CONTRATOS_TEMPLATES_VERSION = 4;
 
 function buildContratoTemplateChequesDiferidos() {
   return {
@@ -572,11 +572,8 @@ function buildContratoTemplateChequesDiferidos() {
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
     ciRepresentanteTracto: '1.136.942',
-    encabezado: `{{RAZON_SOCIAL_TRACTO}}
-RUC: {{RUC_TRACTO}}
-Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
-Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
-    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+    encabezado: '',
+    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
 
 PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
 
@@ -584,29 +581,27 @@ PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a c
 
 SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}), que EL COMPRADOR se obliga a abonar en la forma establecida en la cláusula TERCERA.
 
-TERCERA — FORMA DE PAGO: EL COMPRADOR abonará el precio mediante cheques diferidos, conforme al siguiente detalle:
+TERCERA — FORMA DE PAGO Y DEPÓSITO: EL COMPRADOR abonará el precio mediante cheques diferidos, conforme al siguiente detalle:
 
 {{TABLA_CHEQUES}}
 
-CUARTA — ENTREGA: LA VENDEDORA entregará los equipos en el domicilio de EL COMPRADOR o en el lugar que éste indique, dentro de los 15 (quince) días hábiles siguientes a la firma del presente contrato y a la verificación de los cheques entregados.
+Los equipos objeto del presente contrato quedarán en calidad de depositario en poder de EL COMPRADOR hasta la cancelación total del precio, constituyéndose prenda sobre los mismos a favor de LA VENDEDORA en garantía del saldo adeudado.
 
-QUINTA — GARANTÍA: LA VENDEDORA otorga garantía por defectos de fabricación conforme a las condiciones del fabricante, por el plazo de 12 (doce) meses contados desde la entrega, excluyendo el desgaste normal por uso, accidentes o mantenimiento inadecuado.
+CUARTA — CADUCIDAD DE PLAZOS Y MORA: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR producirá la caducidad de todos los plazos otorgados, quedando exigible la totalidad del saldo. La mora se producirá de pleno derecho por el simple vencimiento del plazo, sin necesidad de interpelación, generando un interés moratorio del 1,5% (uno coma cinco por ciento) mensual más un interés punitorio del 1,5% (uno coma cinco por ciento) mensual sobre el saldo adeudado, además de una retribución por uso del bien y el derecho de LA VENDEDORA a retirar el equipo sin intervención judicial.
 
-SEXTA — TRANSFERENCIA DE DOMINIO: La transferencia de dominio de los equipos se perfeccionará una vez abonada la totalidad del precio convenido.
+QUINTA — PLAZO DE TASACIÓN / REFINANCIACIÓN: Las partes acuerdan un plazo de 30 (treinta) días para la devolución del bien, la tasación del mismo y/o la refinanciación de la deuda en caso de mora.
 
-SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 1,5% (uno coma cinco por ciento) mensual más un punitorio del 1,5% (uno coma cinco por ciento) mensual sobre el saldo adeudado.
+SEXTA — CAUSA PENAL Y SECUESTRO: En caso de incumplimiento, EL COMPRADOR se obliga a abonar una causa penal equivalente al 20% (veinte por ciento) del saldo adeudado, y autoriza el secuestro judicial del bien por parte de LA VENDEDORA.
 
-OCTAVA — RESCISIÓN: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR facultará a LA VENDEDORA a rescindir el presente contrato, con derecho a retener las sumas percibidas en concepto de indemnización.
+SÉPTIMA — ESCRITURA PÚBLICA Y PRENDA: Las partes se obligan a otorgar la escritura pública traslativa de dominio y a constituir prenda sobre el bien en la escribanía que LA VENDEDORA designe.
 
-NOVENA — DATOS BANCARIOS: Los pagos deberán realizarse conforme a los siguientes datos:
+OCTAVA — TENENCIA Y RESPONSABILIDAD: EL COMPRADOR asume la tenencia del bien y es responsable por su guarda, conservación y por los daños que el mismo pudiera ocasionar a terceros, tanto en el ámbito civil como penal.
 
-{{DATOS_BANCO_CHEQUES}}
+NOVENA — AUTORIZACIONES: EL COMPRADOR autoriza expresamente a LA VENDEDORA a consultar sus antecedentes en los registros de la Ley N° 1682/2001, conforme al artículo 917 inciso A del Código Civil, en INFORMCONF a los 90 (noventa) días, en los registros de la Ley N° 1969/2002, y a tratar sus datos personales conforme al artículo 6 de la Ley N° 6534/2020 (consentimiento informado).
 
-DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero.
+DÉCIMA — ENDOSO: EL COMPRADOR autoriza el endoso de los títulos valores (cheques y pagarés) a bancos y/o financieras.
 
-UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
-
-En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
+UNDÉCIMA — JURISDICCIÓN Y FIRMA: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero. Se firma en dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -621,11 +616,8 @@ function buildContratoTemplateModelo2025() {
     esBase: true,
     representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
     ciRepresentanteTracto: '1.136.942',
-    encabezado: `{{RAZON_SOCIAL_TRACTO}}
-RUC: {{RUC_TRACTO}}
-Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
-Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
-    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+    encabezado: '',
+    cuerpo: `En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre {{RAZON_SOCIAL_TRACTO}}, RUC {{RUC_TRACTO}}, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en su carácter de {{CARGO_REPRESENTANTE_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
 
 PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
 
@@ -633,41 +625,43 @@ PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a c
 
 SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}), que EL COMPRADOR se obliga a abonar conforme a la cláusula TERCERA.
 
-TERCERA — MODALIDAD Y FORMA DE PAGO: La modalidad pactada es {{MODALIDAD}}. {{CASILLA_CONTADO}} CONTADO {{CASILLA_FINANCIADO}} FINANCIADO.
+TERCERA — MODALIDAD, FORMA DE PAGO, DEPÓSITO Y PRENDA: La modalidad pactada es {{MODALIDAD}}. {{CASILLA_CONTADO}} CONTADO {{CASILLA_FINANCIADO}} FINANCIADO.
 
-a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo (USD/Gs {{INICIAL_EFECTIVO}}) {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia (detalle abajo) {{CASILLA_INICIAL_CHEQUE}} Cheque (detalle abajo). Detalle: {{PAGO_INICIAL_TEXTO}}
+a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo ({{INICIAL_EFECTIVO}}) {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia {{CASILLA_INICIAL_CHEQUE}} Cheque. Detalle: {{PAGO_INICIAL_TEXTO}}
 
-b) Equipo usado entregado en parte de pago: {{USADO_MONTO_USD}} ({{USADO_MONTO_LETRAS}}), según Factura N° {{USADO_FACTURA}}.
+{{BLOQUE_USADO}}
 
-c) DATOS DE TRANSFERENCIA BANCARIA:
+b) DATOS DE TRANSFERENCIA BANCARIA:
 
 {{TABLA_TRANSFERENCIAS}}
 
-d) DATOS DE CHEQUES:
+c) DATOS DE CHEQUES:
 
 {{TABLA_CHEQUES}}
 
-e) DATOS DE PAGARES — Moneda: Dólares {{CASILLA_MONEDA_PAGARES_USD}} Guaraníes {{CASILLA_MONEDA_PAGARES_GS}}:
+d) DATOS DE PAGARES — Moneda: Dólares {{CASILLA_MONEDA_PAGARES_USD}} Guaraníes {{CASILLA_MONEDA_PAGARES_GS}}:
 
 {{TABLA_PAGARES}}
 
 (Tipo de cambio aplicado a la operación: 1 USD = {{TIPO_CAMBIO}} Gs)
 
+Los equipos objeto del presente contrato quedarán en calidad de depositario en poder de EL COMPRADOR hasta la cancelación total del precio, constituyéndose prenda sobre los mismos a favor de LA VENDEDORA en garantía del saldo adeudado.
+
 CUARTA — CADUCIDAD DE PLAZOS Y MORA: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR producirá la caducidad de todos los plazos otorgados, quedando exigible la totalidad del saldo. La mora se producirá de pleno derecho por el simple vencimiento del plazo, sin necesidad de interpelación, generando un interés moratorio del 1,5% (uno coma cinco por ciento) mensual más un interés punitorio del 1,5% (uno coma cinco por ciento) mensual sobre el saldo adeudado, además de una retribución por uso del bien y el derecho de LA VENDEDORA a retirar el equipo sin intervención judicial.
 
-QUINTA — PLAZO DE TASACIÓN / REFINANCIACIÓN: Las partes acuerdan un plazo de 30 (treinta) días para la tasación del bien y/o la refinanciación de la deuda en caso de mora.
+QUINTA — PLAZO DE TASACIÓN / REFINANCIACIÓN: Las partes acuerdan un plazo de 30 (treinta) días para la devolución del bien, la tasación del mismo y/o la refinanciación de la deuda en caso de mora.
 
-SEXTA — CAUSA PENAL Y SECUESTRO: En caso de incumplimiento, EL COMPRADOR se obliga a abonar una causa penal equivalente al 20% (veinte por ciento) del saldo adeudado, y autoriza el secuestro del bien por parte de LA VENDEDORA.
+SEXTA — CAUSA PENAL Y SECUESTRO: En caso de incumplimiento, EL COMPRADOR se obliga a abonar una causa penal equivalente al 20% (veinte por ciento) del saldo adeudado, y autoriza el secuestro judicial del bien por parte de LA VENDEDORA.
 
 SÉPTIMA — ESCRITURA PÚBLICA Y PRENDA: Las partes se obligan a otorgar la escritura pública traslativa de dominio y a constituir prenda sobre el bien en la escribanía que LA VENDEDORA designe.
 
-OCTAVA — TENENCIA Y RESPONSABILIDAD: EL COMPRADOR asume la tenencia del bien y es responsable por su guarda, conservación y por los daños que el mismo pudiera ocasionar a terceros.
+OCTAVA — TENENCIA Y RESPONSABILIDAD: EL COMPRADOR asume la tenencia del bien y es responsable por su guarda, conservación y por los daños que el mismo pudiera ocasionar a terceros, tanto en el ámbito civil como penal.
 
-NOVENA — AUTORIZACIONES: EL COMPRADOR autoriza expresamente a LA VENDEDORA a consultar sus antecedentes en los registros de la Ley N° 1682/2001, Ley N° 1969/2002, INFORMCONF y a tratar sus datos personales conforme al artículo 6 de la Ley N° 6534/2020 (consentimiento informado).
+NOVENA — AUTORIZACIONES: EL COMPRADOR autoriza expresamente a LA VENDEDORA a consultar sus antecedentes en los registros de la Ley N° 1682/2001, conforme al artículo 917 inciso A del Código Civil, en INFORMCONF a los 90 (noventa) días, en los registros de la Ley N° 1969/2002, y a tratar sus datos personales conforme al artículo 6 de la Ley N° 6534/2020 (consentimiento informado).
 
 DÉCIMA — ENDOSO: EL COMPRADOR autoriza el endoso de los títulos valores (cheques y pagarés) a bancos y/o financieras.
 
-UNDÉCIMA — JURISDICCIÓN Y FECHA: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero. Se firma en la ciudad y fecha indicadas ut supra.`,
+UNDÉCIMA — JURISDICCIÓN Y FIRMA: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero. Se firma en dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

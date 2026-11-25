@@ -241,7 +241,8 @@
       letter-spacing: 0.3px;
     }
     .contrato-doc .doc-meta strong { color: #0f172a; }
-    .contrato-doc .clausula {
+    .contrato-doc .clausula,
+    .contrato-doc .clausula-item {
       text-align: justify;
       margin: 0 0 10px 0;
       page-break-inside: avoid;
@@ -273,7 +274,19 @@
       color: #000;
       background: #fff;
     }
-    .contrato-doc .casilla.marcada::before { content: 'X'; }
+    .contrato-doc .casilla.marcada::before { content: 'X'; font-weight: bold; }
+    .contrato-doc .clausula-item {
+      text-align: justify;
+      margin: 0 0 10px 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .contrato-doc .clausula-item .clausula-titulo {
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #0f172a;
+    }
     .contrato-doc table.doc-table {
       width: 100%;
       border-collapse: collapse;
@@ -307,6 +320,11 @@
       grid-template-columns: 1fr 1fr;
       gap: 24px;
       margin-top: 40px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-before: auto;
+    }
+    .contrato-doc .firma-bloque {
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -2284,6 +2302,20 @@
       return `${d.getDate()} días del mes de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
     }
 
+    // Formatea una fecha ISO (YYYY-MM-DD) a DD/MM/YYYY para el PDF
+    function formatearFechaCorta(fechaIso) {
+      if (!fechaIso) return '';
+      const s = String(fechaIso).trim();
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return s;
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+
     function formatearMonto(num, moneda) {
       const n = Number(num) || 0;
       const fmt = new Intl.NumberFormat('es-PY', {
@@ -2423,7 +2455,7 @@
     function tablaHtml(headers, rows, opts) {
       const options = opts || {};
       if (!rows.length) {
-        return '<p class="clausula"><em>Sin registros.</em></p>';
+        return '';
       }
       const th = headers
         .map((h) => {
@@ -2461,7 +2493,7 @@
 
     function construirCuoteroGrid(pagarés, monedaPagares) {
       if (!pagarés.length) {
-        return '<p class="clausula"><em>Sin cuotas cargadas.</em></p>';
+        return '';
       }
       // Distribuir en 3 columnas paralelas
       const cols = [[], [], []];
@@ -2470,7 +2502,7 @@
       });
       const renderCol = (items) => {
         const rows = items
-          .map((p) => `<tr><td>${escapeHtml(p.num || '')}</td><td class="num">${formatearMonto(p.importe, p.moneda || monedaPagares)}</td><td>${escapeHtml(p.venc || '')}</td></tr>`)
+          .map((p) => `<tr><td>${escapeHtml(p.num || '')}</td><td class="num">${formatearMonto(p.importe, p.moneda || monedaPagares)}</td><td>${escapeHtml(formatearFechaCorta(p.venc))}</td></tr>`)
           .join('');
         return `<table class="doc-table"><thead><tr><th>N°</th><th class="num">Importe</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table>`;
       };
@@ -2493,7 +2525,7 @@
       );
       const tablaCheques = tablaHtml(
         ['N° Cheque', 'N° Cta. Cte.', 'Banco', 'Importe', 'Moneda', 'Emisión', 'Vencimiento'],
-        cheques.map((c) => [c.num, c.cta, c.banco, formatearMonto(c.importe, c.moneda), c.moneda, c.emision, c.venc]),
+        cheques.map((c) => [c.num, c.cta, c.banco, formatearMonto(c.importe, c.moneda), c.moneda, formatearFechaCorta(c.emision), formatearFechaCorta(c.venc)]),
         {
           numeric: ['Importe'],
           totales: ['', '', 'TOTAL', formatearMonto(totalCheques, datos.moneda), datos.moneda, '', ''],
@@ -2501,7 +2533,7 @@
       );
       const tablaTransferencias = tablaHtml(
         ['Banco Emisor', 'Banco Receptor', 'Importe', 'Moneda', 'N° Transacción', 'Fecha'],
-        transferencias.map((t) => [t.banco, t.bancoReceptor, formatearMonto(t.importe, t.moneda), t.moneda, t.ref, t.fecha]),
+        transferencias.map((t) => [t.banco, t.bancoReceptor, formatearMonto(t.importe, t.moneda), t.moneda, t.ref, formatearFechaCorta(t.fecha)]),
         {
           numeric: ['Importe'],
           totales: ['', 'TOTAL', formatearMonto(totalTransferencias, datos.moneda), datos.moneda, '', ''],
@@ -2523,10 +2555,16 @@
         : (inicialEfectivo > 0
             ? `${formatearMonto(inicialEfectivo, datos.moneda)} ${datos.moneda}`
             : '—');
+      const inicialEfectivoTexto = inicialEfectivo > 0
+        ? `${formatearMonto(inicialEfectivo, datos.moneda)} ${datos.moneda}`
+        : '—';
 
       const usadoMontoUsd = Number(datos.usadoMontoUsd) || 0;
       const usadoLetras = datos.usadoMontoLetras || (usadoMontoUsd > 0 ? numeroALetras(usadoMontoUsd) + ' DÓLARES AMERICANOS' : '');
       const usadoFactura = datos.usadoFactura || '';
+      const bloqueUsado = usadoMontoUsd > 0
+        ? `Equipo usado entregado en parte de pago: ${formatearMonto(usadoMontoUsd, 'USD')} USD (${escapeHtml(usadoLetras)}), según Factura N° ${escapeHtml(usadoFactura || '—')}.`
+        : '';
 
       const reemplazos = {
         '{{RAZON_SOCIAL_TRACTO}}': escapeHtml(datos.razonSocialTracto || 'TRACTO AGRO VIAL S.A.'),
@@ -2554,12 +2592,13 @@
         '{{CASILLA_INICIAL_CHEQUE}}': casilla(datos.inicialCheque === true),
         '{{CASILLA_MONEDA_PAGARES_USD}}': casilla((datos.monedaPagares || 'USD') === 'USD'),
         '{{CASILLA_MONEDA_PAGARES_GS}}': casilla((datos.monedaPagares || 'USD') === 'GS'),
-        '{{INICIAL_EFECTIVO}}': formatearMonto(inicialEfectivo, datos.moneda),
+        '{{INICIAL_EFECTIVO}}': inicialEfectivoTexto,
         '{{PAGO_INICIAL_TEXTO}': inicialTexto,
         '{{PAGO_INICIAL_TEXTO}}': inicialTexto,
-        '{{USADO_MONTO_USD}}': usadoMontoUsd > 0 ? formatearMonto(usadoMontoUsd, 'USD') : '—',
-        '{{USADO_MONTO_LETRAS}}': escapeHtml(usadoLetras || '—'),
-        '{{USADO_FACTURA}}': escapeHtml(usadoFactura || '—'),
+        '{{USADO_MONTO_USD}}': usadoMontoUsd > 0 ? formatearMonto(usadoMontoUsd, 'USD') : '',
+        '{{USADO_MONTO_LETRAS}}': escapeHtml(usadoLetras || ''),
+        '{{USADO_FACTURA}}': escapeHtml(usadoFactura || ''),
+        '{{BLOQUE_USADO}}': bloqueUsado,
         '{{DATOS_BANCO_CHEQUES}}': escapeHtml(datos.datosBanco || '').replace(/\n/g, '<br>'),
         '{{TABLA_CHEQUES}}': tablaCheques,
         '{{TABLA_TRANSFERENCIAS}}': tablaTransferencias,
@@ -2579,7 +2618,13 @@
       };
 
       const encabezadoHtml = aplicar(template.encabezado || '').replace(/\n/g, '<br>');
-      const cuerpoHtml = aplicar(template.cuerpo || '').replace(/\n/g, '<br>');
+      // Envolver cada párrafo del cuerpo en .clausula-item para evitar cortes
+      const cuerpoHtml = aplicar(template.cuerpo || '')
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter((p) => p !== '')
+        .map((p) => `<div class="clausula-item">${p.replace(/\n/g, '<br>')}</div>`)
+        .join('');
 
       const razonSocialTracto = escapeHtml(datos.razonSocialTracto || 'TRACTO AGRO VIAL S.A.');
       const rucTracto = escapeHtml(datos.rucTracto || '80027587-0');
@@ -2595,8 +2640,8 @@
       const ci3 = escapeHtml(datos.ci3 || '');
 
       const firmaCompradorReps = rep2
-        ? `<div><strong>${rep2}</strong>${ci2 ? ` — C.I. N° ${ci2}` : ''}</div>${rep3 ? `<div><strong>${rep3}</strong>${ci3 ? ` — C.I. N° ${ci3}` : ''}</div>` : ''}`
-        : '<div class="text-muted">(Nombre y C.I. del representante)</div>';
+        ? `<div class="mt-2">Representante(s):</div><div><strong>${rep2}</strong>${ci2 ? ` — C.I. N° ${ci2}` : ''}</div>${rep3 ? `<div><strong>${rep3}</strong>${ci3 ? ` — C.I. N° ${ci3}` : ''}</div>` : ''}`
+        : '';
 
       return `
         <div class="contrato-doc">
@@ -2610,7 +2655,7 @@
           <div class="doc-meta">
             <strong>${escapeHtml(datos.ciudad || '')}</strong>, ${escapeHtml(fechaLarga)}
           </div>
-          <div class="doc-encabezado">${encabezadoHtml}</div>
+          ${encabezadoHtml ? `<div class="doc-encabezado">${encabezadoHtml}</div>` : ''}
           <div class="doc-cuerpo">${cuerpoHtml}</div>
 
           <div class="firmas">
@@ -2621,7 +2666,6 @@
                 <div>Razón Social: <strong>${clienteNombre || '—'}</strong></div>
                 <div>RUC / C.I.: <strong>${clienteRuc || '—'}</strong></div>
                 <div>Dirección: <strong>${clienteDireccion || '—'}</strong></div>
-                <div class="mt-2">Representante(s):</div>
                 ${firmaCompradorReps}
               </div>
             </div>
