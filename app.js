@@ -3291,7 +3291,12 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
     //    - Se incorpora la última fecha de reconciliación y el detalle de
     //      aplicaciones (PR / NC / Rec) desde las tablas de reconciliación
     //      internas de SAP B1 (JDT1 + ITR1 + OITR + ORCT + ORIN).
-    const sqlFacturas = `SELECT
+    //    - Se limita el detalle a las últimas 200 cuotas (por fecha de
+    //      factura descendente) para evitar respuestas gigantes.
+    //    - Las subconsultas P y REC se filtran por cliente para aprovechar
+    //      los índices de ORCT (CardCode) y JDT1 (ShortName + TransType).
+    const sqlFacturas = `SELECT TOP 200 * FROM (
+      SELECT
         I."DocEntry" AS "DocEntry",
         I."DocNum" AS "DocNum",
         I."DocDate" AS "DocDate",
@@ -3332,6 +3337,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         INNER JOIN "TRACTOAGRO".ORCT R0 ON R0."DocEntry" = R2."DocNum"
         WHERE R2."InvType" = 13
           AND R0."Canceled" = 'N'
+          AND R0."CardCode" = ?
         GROUP BY R2."DocEntry", R2."InstId"
       ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstlmntID"
       LEFT JOIN (
@@ -3368,16 +3374,18 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         LEFT JOIN "TRACTOAGRO".ORIN NC
           ON RDetOther."SrcObjTyp" = '14'
           AND NC."DocEntry" = RDetOther."SrcObjAbs"
-        WHERE JInv."TransType" = '13'
+        WHERE JInv."ShortName" = ?
+          AND JInv."TransType" = '13'
         GROUP BY JInv."CreatedBy", COALESCE(NULLIF(JInv."SourceLine", 0), 1)
       ) REC
         ON REC."DocEntry" = I."DocEntry"
         AND REC."InstId" = Q."InstlmntID"
       WHERE I."CardCode" = ?
         AND I."CANCELED" = 'N'
-      ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstlmntID" ASC`;
+      ORDER BY I."DocDate" DESC, I."DocNum" DESC, Q."InstlmntID" ASC
+    ) DETALLE`;
 
-    const facturasRows = await hanaExec(sqlFacturas, [cardCode]);
+    const facturasRows = await hanaExec(sqlFacturas, [cardCode, cardCode, cardCode]);
 
     const cuotas = (facturasRows || []).map((r) => {
       const extraMonth = Number(r.ExtraMonth) || 0;
@@ -3436,17 +3444,72 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       };
     });
 
-    // Resumen
-    const facturasContadoSet = new Set();
-    const facturasCreditoSet = new Set();
+    // Resumen — se calcula sobre TODAS las cuotas del cliente (no solo las
+    // 200 devueltas en el detalle) para que los KPIs sean exactos.
+    const sqlResumen = `SELECT
+        COUNT(DISTINCT CASE
+          WHEN COALESCE(PG."ExtraMonth", 0) = 0
+            AND COALESCE(PG."ExtraDays", 0) = 0
+            AND COALESCE(PG."InstNum", 0) <= 1
+          THEN I."DocEntry"
+        END) AS "FacturasContado",
+        COUNT(DISTINCT CASE
+          WHEN NOT (
+            COALESCE(PG."ExtraMonth", 0) = 0
+            AND COALESCE(PG."ExtraDays", 0) = 0
+            AND COALESCE(PG."InstNum", 0) <= 1
+          )
+          THEN I."DocEntry"
+        END) AS "FacturasCredito",
+        COALESCE(SUM(CASE
+          WHEN Q."Status" = 'C' THEN 0
+          WHEN COALESCE(I."DocCur", 'GS') NOT IN ('GS', 'PYG')
+            AND COALESCE(Q."InsTotalFC", 0) > 0
+          THEN GREATEST(0, COALESCE(Q."InsTotalFC", 0) - COALESCE(Q."PaidFC", 0))
+          ELSE GREATEST(0, COALESCE(Q."InsTotal", 0) - COALESCE(Q."PaidToDate", 0))
+        END), 0) AS "SumaSaldosFacturas"
+      FROM "TRACTOAGRO".OINV I
+      INNER JOIN "TRACTOAGRO".INV6 Q ON Q."DocEntry" = I."DocEntry"
+      LEFT JOIN "TRACTOAGRO".OCTG PG ON PG."GroupNum" = I."GroupNum"
+      WHERE I."CardCode" = ?
+        AND I."CANCELED" = 'N'`;
+
+    let resumenAgg = {
+      FacturasContado: 0,
+      FacturasCredito: 0,
+      SumaSaldosFacturas: 0,
+    };
+    try {
+      const resumenRows = await hanaExec(sqlResumen, [cardCode]);
+      if (resumenRows && resumenRows.length) {
+        const rr = resumenRows[0];
+        resumenAgg = {
+          FacturasContado:
+            rr.FacturasContado !== undefined && rr.FacturasContado !== null
+              ? Number(rr.FacturasContado)
+              : 0,
+          FacturasCredito:
+            rr.FacturasCredito !== undefined && rr.FacturasCredito !== null
+              ? Number(rr.FacturasCredito)
+              : 0,
+          SumaSaldosFacturas:
+            rr.SumaSaldosFacturas !== undefined && rr.SumaSaldosFacturas !== null
+              ? Number(rr.SumaSaldosFacturas)
+              : 0,
+        };
+      }
+    } catch (errResumen) {
+      console.warn(
+        'No se pudo calcular el resumen agregado de cuotas:',
+        errResumen.message
+      );
+    }
+
+    // Promedios de días de atraso (sobre las cuotas devueltas en el detalle)
     const diasAtrasoCredito = [];
     const diasAtrasoCreditoVencidas = [];
-
     for (const c of cuotas) {
-      if (c.TipoVenta === 'Contado') {
-        if (c.DocEntry !== null) facturasContadoSet.add(c.DocEntry);
-      } else {
-        if (c.DocEntry !== null) facturasCreditoSet.add(c.DocEntry);
+      if (c.TipoVenta !== 'Contado') {
         diasAtrasoCredito.push(c.DiasAtraso);
         if (c.DiasAtraso > 0) diasAtrasoCreditoVencidas.push(c.DiasAtraso);
       }
@@ -3458,12 +3521,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       return Math.round((sum / arr.length) * 10) / 10;
     };
 
-    // Suma de saldos de cuotas abiertas (debe coincidir con el saldo deudor
-    // de SAP B1 una vez descontados los créditos/pagos a cuenta sin reconciliar)
-    const sumaSaldosFacturas = cuotas.reduce(
-      (acc, c) => acc + (Number(c.SaldoCuota) || 0),
-      0
-    );
+    const sumaSaldosFacturas = resumenAgg.SumaSaldosFacturas;
 
     // Créditos / pagos a cuenta sin reconciliar (JDT1)
     let creditosSinReconciliar = 0;
@@ -3491,8 +3549,8 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       limiteCredito: ficha.CreditLine,
       saldoActual: ficha.Balance,
       disponible: ficha.CreditLine - ficha.Balance,
-      facturasContado: facturasContadoSet.size,
-      facturasCredito: facturasCreditoSet.size,
+      facturasContado: resumenAgg.FacturasContado,
+      facturasCredito: resumenAgg.FacturasCredito,
       promedioDiasAtraso: promedio(diasAtrasoCreditoVencidas),
       promedioDiasAtrasoGlobal: promedio(diasAtrasoCredito),
       creditosSinReconciliar,
