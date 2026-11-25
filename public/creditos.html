@@ -263,6 +263,11 @@
           <i class="bi bi-file-earmark-plus me-1"></i>Solicitudes de Crédito (Vendedores)
         </button>
       </li>
+      <li class="nav-item d-none" id="tabPlantillasItem" role="presentation">
+        <button class="nav-link" id="tabPlantillasBtn" data-bs-toggle="tab" data-bs-target="#tabPlantillas" type="button" role="tab">
+          <i class="bi bi-file-earmark-text me-1"></i>Plantillas de Contratos
+        </button>
+      </li>
     </ul>
 
     <div class="tab-content">
@@ -448,12 +453,71 @@
                     <th>N° Doc</th>
                     <th>Estado</th>
                     <th class="text-center">Requisitos</th>
+                    <th class="text-center">Contrato</th>
                   </tr>
                 </thead>
                 <tbody id="misSolicitudesBody">
-                  <tr><td colspan="7" class="text-center py-3 text-muted">Sin solicitudes registradas.</td></tr>
+                  <tr><td colspan="8" class="text-center py-3 text-muted">Sin solicitudes registradas.</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pestaña: Plantillas de Contratos -->
+      <div class="tab-pane fade" id="tabPlantillas" role="tabpanel">
+        <div class="card shadow-sm mb-3">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong><i class="bi bi-file-earmark-text me-1"></i>Plantillas de Contratos</strong>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnRestaurarBase">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar base
+              </button>
+              <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnNuevaPlantilla">
+                <i class="bi bi-plus-circle me-1"></i>Nueva plantilla
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-12 col-md-4">
+                <label class="form-label small text-muted mb-1">Plantilla</label>
+                <select class="form-select form-select-sm" id="plantillaSelect"></select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small text-muted mb-1">Nombre</label>
+                <input type="text" class="form-control form-control-sm" id="plantillaNombre" />
+              </div>
+              <div class="col-12 col-md-2">
+                <label class="form-label small text-muted mb-1">Representante Tracto</label>
+                <input type="text" class="form-control form-control-sm" id="plantillaRepTracto" />
+              </div>
+              <div class="col-12 col-md-2">
+                <label class="form-label small text-muted mb-1">C.I. Representante</label>
+                <input type="text" class="form-control form-control-sm" id="plantillaCiTracto" />
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-muted mb-1">Encabezado</label>
+                <textarea class="form-control form-control-sm" id="plantillaEncabezado" rows="3"></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-muted mb-1">Cuerpo / Cláusulas</label>
+                <textarea class="form-control form-control-sm" id="plantillaCuerpo" rows="18" style="font-family: monospace; font-size: 0.8rem;"></textarea>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <div class="small text-muted">
+                Placeholders disponibles: {{CLIENTE_NOMBRE}}, {{CLIENTE_RUC}}, {{REPRESENTANTE_1}}, {{CI_1}}, {{REPRESENTANTE_2}}, {{CI_2}}, {{CLIENTE_DIRECCION}}, {{TABLA_EQUIPOS}}, {{MONTO_NUMERO}}, {{MONTO_LETRAS}}, {{MONEDA_TEXTO}}, {{DATOS_BANCO_CHEQUES}}, {{TABLA_CHEQUES}}, {{TABLA_TRANSFERENCIAS}}, {{TABLA_PAGARES}}, {{PAGO_INICIAL_TEXTO}}, {{TIPO_CAMBIO}}, {{CIUDAD_FIRMA}}, {{FECHA_FIRMA_LARGA}}
+              </div>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-danger btn-sm" id="btnEliminarPlantilla">
+                  <i class="bi bi-trash me-1"></i>Eliminar
+                </button>
+                <button type="button" class="btn btn-success btn-sm fw-bold" id="btnGuardarPlantilla">
+                  <i class="bi bi-save me-1"></i>Guardar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -643,7 +707,180 @@
     </div>
   </div>
 
+  <!-- Modal: Generar Contrato para Firma -->
+  <div class="modal fade" id="modalContrato" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-centered modal-dialog-scrollable" style="max-width: 95vw;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Generar Contrato para Firma</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label small text-muted mb-1">Plantilla</label>
+              <select class="form-select form-select-sm" id="contratoPlantilla"></select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Ciudad de firma</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCiudad" value="Asunción" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Fecha de firma</label>
+              <input type="date" class="form-control form-control-sm" id="contratoFecha" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small text-muted mb-1">Cliente (Razón Social)</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteNombre" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small text-muted mb-1">RUC Cliente</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteRuc" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label small text-muted mb-1">Dirección Cliente</label>
+              <input type="text" class="form-control form-control-sm" id="contratoClienteDireccion" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante Cliente</label>
+              <input type="text" class="form-control form-control-sm" id="contratoRep2" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">C.I. Representante Cliente</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCi2" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Representante Tracto</label>
+              <input type="text" class="form-control form-control-sm" id="contratoRep1" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">C.I. Representante Tracto</label>
+              <input type="text" class="form-control form-control-sm" id="contratoCi1" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Moneda</label>
+              <select class="form-select form-select-sm" id="contratoMoneda">
+                <option value="GS">Guaraníes (GS)</option>
+                <option value="USD">Dólares (USD)</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Monto total</label>
+              <input type="number" class="form-control form-control-sm" id="contratoMonto" step="0.01" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Tipo de cambio</label>
+              <input type="text" class="form-control form-control-sm" id="contratoTipoCambio" placeholder="Ej: 7.300 Gs/USD" />
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted mb-1">Pago inicial (texto)</label>
+              <input type="text" class="form-control form-control-sm" id="contratoPagoInicial" placeholder="Ej: Gs. 10.000.000 en efectivo" />
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1">Datos bancarios (para cheques)</label>
+              <textarea class="form-control form-control-sm" id="contratoDatosBanco" rows="2" placeholder="Banco / Cuenta / Titular"></textarea>
+            </div>
+          </div>
+
+          <h6 class="mt-3 mb-2"><i class="bi bi-truck me-1"></i>Equipos</h6>
+          <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 20%;">Marca</th>
+                  <th>Descripción</th>
+                  <th style="width: 20%;">Serie</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="contratoEquiposBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddEquipo">
+            <i class="bi bi-plus-circle me-1"></i>Agregar equipo
+          </button>
+
+          <h6 class="mt-3 mb-2"><i class="bi bi-bank me-1"></i>Cheques</h6>
+          <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 12%;">N° Cheque</th>
+                  <th style="width: 14%;">Cta. Cte.</th>
+                  <th style="width: 16%;">Banco</th>
+                  <th style="width: 12%;">Importe</th>
+                  <th style="width: 8%;">Moneda</th>
+                  <th style="width: 12%;">Emisión</th>
+                  <th style="width: 12%;">Vencimiento</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="contratoChequesBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddCheque">
+            <i class="bi bi-plus-circle me-1"></i>Agregar cheque
+          </button>
+
+          <h6 class="mt-3 mb-2"><i class="bi bi-arrow-left-right me-1"></i>Transferencias</h6>
+          <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 20%;">Banco</th>
+                  <th style="width: 20%;">Cuenta</th>
+                  <th style="width: 15%;">Importe</th>
+                  <th style="width: 10%;">Moneda</th>
+                  <th style="width: 15%;">Fecha</th>
+                  <th>Referencia</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="contratoTransferenciasBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddTransferencia">
+            <i class="bi bi-plus-circle me-1"></i>Agregar transferencia
+          </button>
+
+          <h6 class="mt-3 mb-2"><i class="bi bi-journal-text me-1"></i>Pagarés</h6>
+          <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 15%;">N° Pagaré</th>
+                  <th style="width: 15%;">Importe</th>
+                  <th style="width: 10%;">Moneda</th>
+                  <th style="width: 15%;">Emisión</th>
+                  <th style="width: 15%;">Vencimiento</th>
+                  <th>Observación</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="contratoPagarésBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="btnAddPagare">
+            <i class="bi bi-plus-circle me-1"></i>Agregar pagaré
+          </button>
+
+          <h6 class="mt-3 mb-2"><i class="bi bi-eye me-1"></i>Vista previa</h6>
+          <div class="border rounded p-3" style="background: #fff; max-height: 60vh; overflow-y: auto;">
+            <div id="contratoPreview"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+          <button type="button" class="btn btn-warning btn-sm fw-bold" id="btnDescargarContrato">
+            <i class="bi bi-file-earmark-pdf me-1"></i>Descargar PDF para Firma
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
   <script>
     const REQUISITOS_AGRICULTURA = [
       'Fotocopia de cedula',
@@ -1086,12 +1323,17 @@
                 </button>
               </td>
               <td class="text-center">
-                <div class="btn-group btn-group-sm">
+                <div class="btn-group btn-group-sm mb-1">
                   <button type="button" class="btn btn-success" data-aprobar="${a.WddCode}">
                     <i class="bi bi-check2"></i> Aprobar
                   </button>
                   <button type="button" class="btn btn-danger" data-rechazar="${a.WddCode}">
                     <i class="bi bi-x"></i> Rechazar
+                  </button>
+                </div>
+                <div>
+                  <button type="button" class="btn btn-outline-dark btn-row-action" data-contrato="${a.WddCode}">
+                    <i class="bi bi-file-earmark-text me-1"></i>Contrato PDF
                   </button>
                 </div>
               </td>
@@ -1130,6 +1372,13 @@
           const draftEntry = parseInt(btn.getAttribute('data-ver-items'), 10);
           const a = aprobaciones.find((x) => x.DraftEntry === draftEntry);
           abrirDetalleDocumento(draftEntry, a);
+        });
+      });
+      aprobBody.querySelectorAll('button[data-contrato]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const wdd = parseInt(btn.getAttribute('data-contrato'), 10);
+          const a = aprobaciones.find((x) => x.WddCode === wdd);
+          if (a) abrirContrato(a);
         });
       });
     }
@@ -1548,6 +1797,646 @@
       }
     }
 
+    // =====================================================================
+    // Sistema de Plantillas de Contratos y Generación de PDF
+    // =====================================================================
+    const modalContratoEl = document.getElementById('modalContrato');
+    const modalContrato = modalContratoEl ? new bootstrap.Modal(modalContratoEl) : null;
+    const contratoPlantilla = document.getElementById('contratoPlantilla');
+    const contratoCiudad = document.getElementById('contratoCiudad');
+    const contratoFecha = document.getElementById('contratoFecha');
+    const contratoClienteNombre = document.getElementById('contratoClienteNombre');
+    const contratoClienteRuc = document.getElementById('contratoClienteRuc');
+    const contratoClienteDireccion = document.getElementById('contratoClienteDireccion');
+    const contratoRep2 = document.getElementById('contratoRep2');
+    const contratoCi2 = document.getElementById('contratoCi2');
+    const contratoRep1 = document.getElementById('contratoRep1');
+    const contratoCi1 = document.getElementById('contratoCi1');
+    const contratoMoneda = document.getElementById('contratoMoneda');
+    const contratoMonto = document.getElementById('contratoMonto');
+    const contratoTipoCambio = document.getElementById('contratoTipoCambio');
+    const contratoPagoInicial = document.getElementById('contratoPagoInicial');
+    const contratoDatosBanco = document.getElementById('contratoDatosBanco');
+    const contratoEquiposBody = document.getElementById('contratoEquiposBody');
+    const contratoChequesBody = document.getElementById('contratoChequesBody');
+    const contratoTransferenciasBody = document.getElementById('contratoTransferenciasBody');
+    const contratoPagarésBody = document.getElementById('contratoPagarésBody');
+    const contratoPreview = document.getElementById('contratoPreview');
+    const btnAddEquipo = document.getElementById('btnAddEquipo');
+    const btnAddCheque = document.getElementById('btnAddCheque');
+    const btnAddTransferencia = document.getElementById('btnAddTransferencia');
+    const btnAddPagare = document.getElementById('btnAddPagare');
+    const btnDescargarContrato = document.getElementById('btnDescargarContrato');
+
+    const plantillaSelect = document.getElementById('plantillaSelect');
+    const plantillaNombre = document.getElementById('plantillaNombre');
+    const plantillaRepTracto = document.getElementById('plantillaRepTracto');
+    const plantillaCiTracto = document.getElementById('plantillaCiTracto');
+    const plantillaEncabezado = document.getElementById('plantillaEncabezado');
+    const plantillaCuerpo = document.getElementById('plantillaCuerpo');
+    const btnNuevaPlantilla = document.getElementById('btnNuevaPlantilla');
+    const btnGuardarPlantilla = document.getElementById('btnGuardarPlantilla');
+    const btnEliminarPlantilla = document.getElementById('btnEliminarPlantilla');
+    const btnRestaurarBase = document.getElementById('btnRestaurarBase');
+    const tabPlantillasItem = document.getElementById('tabPlantillasItem');
+
+    let contratosTemplates = [];
+    let contratoActual = null;
+
+    // Conversión de números a letras en español
+    function numeroALetras(num) {
+      const n = Math.floor(Math.abs(Number(num) || 0));
+      if (n === 0) return 'CERO';
+      const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+      const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+      const especiales = {
+        10: 'DIEZ', 11: 'ONCE', 12: 'DOCE', 13: 'TRECE', 14: 'CATORCE', 15: 'QUINCE',
+        16: 'DIECISÉIS', 17: 'DIECISIETE', 18: 'DIECIOCHO', 19: 'DIECINUEVE',
+        20: 'VEINTE', 21: 'VEINTIUNO', 22: 'VEINTIDÓS', 23: 'VEINTITRÉS',
+        24: 'VEINTICUATRO', 25: 'VEINTICINCO', 26: 'VEINTISÉIS', 27: 'VEINTISIETE',
+        28: 'VEINTIOCHO', 29: 'VEINTINUEVE',
+      };
+      const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+      function seccion(n) {
+        if (n === 0) return '';
+        if (n === 100) return 'CIEN';
+        if (n < 10) return unidades[n];
+        if (n < 30) return especiales[n] || '';
+        if (n < 100) {
+          const d = Math.floor(n / 10);
+          const u = n % 10;
+          return decenas[d] + (u ? ' Y ' + unidades[u] : '');
+        }
+        const c = Math.floor(n / 100);
+        const resto = n % 100;
+        return centenas[c] + (resto ? ' ' + seccion(resto) : '');
+      }
+
+      function tramo(n) {
+        if (n === 0) return '';
+        if (n < 1000) return seccion(n);
+        if (n < 1000000) {
+          const miles = Math.floor(n / 1000);
+          const resto = n % 1000;
+          const milesTxt = miles === 1 ? 'MIL' : seccion(miles) + ' MIL';
+          return milesTxt + (resto ? ' ' + seccion(resto) : '');
+        }
+        const millones = Math.floor(n / 1000000);
+        const resto = n % 1000000;
+        const millTxt = millones === 1 ? 'UN MILLÓN' : tramo(millones) + ' MILLONES';
+        return millTxt + (resto ? ' ' + tramo(resto) : '');
+      }
+
+      return tramo(n);
+    }
+
+    function formatearFechaLetras(fechaIso) {
+      if (!fechaIso) return '';
+      const d = new Date(fechaIso + 'T00:00:00');
+      if (isNaN(d.getTime())) return '';
+      const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+      return `${d.getDate()} días del mes de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+    }
+
+    function formatearMonto(num, moneda) {
+      const n = Number(num) || 0;
+      const fmt = new Intl.NumberFormat('es-PY', {
+        minimumFractionDigits: moneda === 'USD' ? 2 : 0,
+        maximumFractionDigits: moneda === 'USD' ? 2 : 0,
+      });
+      return fmt.format(n);
+    }
+
+    function renderFilaEquipo(eq) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" data-eq-marca value="${escapeHtml(eq.marca || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-eq-desc value="${escapeHtml(eq.desc || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-eq-serie value="${escapeHtml(eq.serie || '')}" /></td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm" data-del-eq><i class="bi bi-trash"></i></button></td>`;
+      tr.querySelector('[data-del-eq]').addEventListener('click', () => {
+        tr.remove();
+        actualizarPreviewContrato();
+      });
+      tr.querySelectorAll('input').forEach((inp) => inp.addEventListener('input', actualizarPreviewContrato));
+      contratoEquiposBody.appendChild(tr);
+    }
+
+    function renderFilaCheque(ch) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" data-ch-num value="${escapeHtml(ch.num || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-ch-cta value="${escapeHtml(ch.cta || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-ch-banco value="${escapeHtml(ch.banco || '')}" /></td>
+        <td><input type="number" class="form-control form-control-sm" data-ch-importe step="0.01" value="${ch.importe || ''}" /></td>
+        <td>
+          <select class="form-select form-select-sm" data-ch-moneda>
+            <option value="GS"${ch.moneda === 'GS' ? ' selected' : ''}>GS</option>
+            <option value="USD"${ch.moneda === 'USD' ? ' selected' : ''}>USD</option>
+          </select>
+        </td>
+        <td><input type="date" class="form-control form-control-sm" data-ch-emision value="${escapeHtml(ch.emision || '')}" /></td>
+        <td><input type="date" class="form-control form-control-sm" data-ch-venc value="${escapeHtml(ch.venc || '')}" /></td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm" data-del-ch><i class="bi bi-trash"></i></button></td>`;
+      tr.querySelector('[data-del-ch]').addEventListener('click', () => {
+        tr.remove();
+        actualizarPreviewContrato();
+      });
+      tr.querySelectorAll('input, select').forEach((inp) => inp.addEventListener('input', actualizarPreviewContrato));
+      contratoChequesBody.appendChild(tr);
+    }
+
+    function renderFilaTransferencia(t) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" data-tr-banco value="${escapeHtml(t.banco || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-tr-cuenta value="${escapeHtml(t.cuenta || '')}" /></td>
+        <td><input type="number" class="form-control form-control-sm" data-tr-importe step="0.01" value="${t.importe || ''}" /></td>
+        <td>
+          <select class="form-select form-select-sm" data-tr-moneda>
+            <option value="GS"${t.moneda === 'GS' ? ' selected' : ''}>GS</option>
+            <option value="USD"${t.moneda === 'USD' ? ' selected' : ''}>USD</option>
+          </select>
+        </td>
+        <td><input type="date" class="form-control form-control-sm" data-tr-fecha value="${escapeHtml(t.fecha || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-tr-ref value="${escapeHtml(t.ref || '')}" /></td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm" data-del-tr><i class="bi bi-trash"></i></button></td>`;
+      tr.querySelector('[data-del-tr]').addEventListener('click', () => {
+        tr.remove();
+        actualizarPreviewContrato();
+      });
+      tr.querySelectorAll('input, select').forEach((inp) => inp.addEventListener('input', actualizarPreviewContrato));
+      contratoTransferenciasBody.appendChild(tr);
+    }
+
+    function renderFilaPagare(p) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" data-pg-num value="${escapeHtml(p.num || '')}" /></td>
+        <td><input type="number" class="form-control form-control-sm" data-pg-importe step="0.01" value="${p.importe || ''}" /></td>
+        <td>
+          <select class="form-select form-select-sm" data-pg-moneda>
+            <option value="GS"${p.moneda === 'GS' ? ' selected' : ''}>GS</option>
+            <option value="USD"${p.moneda === 'USD' ? ' selected' : ''}>USD</option>
+          </select>
+        </td>
+        <td><input type="date" class="form-control form-control-sm" data-pg-emision value="${escapeHtml(p.emision || '')}" /></td>
+        <td><input type="date" class="form-control form-control-sm" data-pg-venc value="${escapeHtml(p.venc || '')}" /></td>
+        <td><input type="text" class="form-control form-control-sm" data-pg-obs value="${escapeHtml(p.obs || '')}" /></td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm" data-del-pg><i class="bi bi-trash"></i></button></td>`;
+      tr.querySelector('[data-del-pg]').addEventListener('click', () => {
+        tr.remove();
+        actualizarPreviewContrato();
+      });
+      tr.querySelectorAll('input, select').forEach((inp) => inp.addEventListener('input', actualizarPreviewContrato));
+      contratoPagarésBody.appendChild(tr);
+    }
+
+    function leerFilasEquipos() {
+      return Array.from(contratoEquiposBody.querySelectorAll('tr')).map((tr) => ({
+        marca: tr.querySelector('[data-eq-marca]').value.trim(),
+        desc: tr.querySelector('[data-eq-desc]').value.trim(),
+        serie: tr.querySelector('[data-eq-serie]').value.trim(),
+      })).filter((e) => e.marca || e.desc || e.serie);
+    }
+
+    function leerFilasCheques() {
+      return Array.from(contratoChequesBody.querySelectorAll('tr')).map((tr) => ({
+        num: tr.querySelector('[data-ch-num]').value.trim(),
+        cta: tr.querySelector('[data-ch-cta]').value.trim(),
+        banco: tr.querySelector('[data-ch-banco]').value.trim(),
+        importe: Number(tr.querySelector('[data-ch-importe]').value) || 0,
+        moneda: tr.querySelector('[data-ch-moneda]').value,
+        emision: tr.querySelector('[data-ch-emision]').value,
+        venc: tr.querySelector('[data-ch-venc]').value,
+      })).filter((c) => c.num || c.importe > 0);
+    }
+
+    function leerFilasTransferencias() {
+      return Array.from(contratoTransferenciasBody.querySelectorAll('tr')).map((tr) => ({
+        banco: tr.querySelector('[data-tr-banco]').value.trim(),
+        cuenta: tr.querySelector('[data-tr-cuenta]').value.trim(),
+        importe: Number(tr.querySelector('[data-tr-importe]').value) || 0,
+        moneda: tr.querySelector('[data-tr-moneda]').value,
+        fecha: tr.querySelector('[data-tr-fecha]').value,
+        ref: tr.querySelector('[data-tr-ref]').value.trim(),
+      })).filter((t) => t.banco || t.importe > 0);
+    }
+
+    function leerFilasPagarés() {
+      return Array.from(contratoPagarésBody.querySelectorAll('tr')).map((tr) => ({
+        num: tr.querySelector('[data-pg-num]').value.trim(),
+        importe: Number(tr.querySelector('[data-pg-importe]').value) || 0,
+        moneda: tr.querySelector('[data-pg-moneda]').value,
+        emision: tr.querySelector('[data-pg-emision]').value,
+        venc: tr.querySelector('[data-pg-venc]').value,
+        obs: tr.querySelector('[data-pg-obs]').value.trim(),
+      })).filter((p) => p.num || p.importe > 0);
+    }
+
+    function tablaHtml(headers, rows) {
+      if (!rows.length) return '<p><em>Sin registros.</em></p>';
+      const th = headers.map((h) => `<th style="border:1px solid #999;padding:4px;background:#f0f0f0;font-size:11px;">${escapeHtml(h)}</th>`).join('');
+      const trs = rows.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #999;padding:4px;font-size:11px;">${escapeHtml(String(c || ''))}</td>`).join('')}</tr>`).join('');
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`;
+    }
+
+    function construirContratoHtml(template, datos) {
+      const equipos = datos.equipos || [];
+      const cheques = datos.cheques || [];
+      const transferencias = datos.transferencias || [];
+      const pagarés = datos.pagarés || [];
+
+      const tablaEquipos = tablaHtml(
+        ['Marca', 'Descripción', 'Serie'],
+        equipos.map((e) => [e.marca, e.desc, e.serie])
+      );
+      const tablaCheques = tablaHtml(
+        ['N° Cheque', 'Cta. Cte.', 'Banco', 'Importe', 'Moneda', 'Emisión', 'Vencimiento'],
+        cheques.map((c) => [c.num, c.cta, c.banco, formatearMonto(c.importe, c.moneda), c.moneda, c.emision, c.venc])
+      );
+      const tablaTransferencias = tablaHtml(
+        ['Banco', 'Cuenta', 'Importe', 'Moneda', 'Fecha', 'Referencia'],
+        transferencias.map((t) => [t.banco, t.cuenta, formatearMonto(t.importe, t.moneda), t.moneda, t.fecha, t.ref])
+      );
+      const tablaPagarés = tablaHtml(
+        ['N° Pagaré', 'Importe', 'Moneda', 'Emisión', 'Vencimiento', 'Observación'],
+        pagarés.map((p) => [p.num, formatearMonto(p.importe, p.moneda), p.moneda, p.emision, p.venc, p.obs])
+      );
+
+      const montoNumero = formatearMonto(datos.monto, datos.moneda);
+      const montoLetras = numeroALetras(datos.monto);
+      const monedaTexto = datos.moneda === 'USD' ? 'DÓLARES AMERICANOS' : 'GUARANÍES';
+      const fechaLarga = formatearFechaLetras(datos.fecha);
+
+      const reemplazos = {
+        '{{CLIENTE_NOMBRE}}': datos.clienteNombre || '',
+        '{{CLIENTE_RUC}}': datos.clienteRuc || '',
+        '{{REPRESENTANTE_1}}': datos.rep1 || '',
+        '{{CI_1}}': datos.ci1 || '',
+        '{{REPRESENTANTE_2}}': datos.rep2 || '',
+        '{{CI_2}}': datos.ci2 || '',
+        '{{CLIENTE_DIRECCION}}': datos.clienteDireccion || '',
+        '{{TABLA_EQUIPOS}}': tablaEquipos,
+        '{{MONTO_NUMERO}}': montoNumero,
+        '{{MONTO_LETRAS}}': montoLetras,
+        '{{MONEDA_TEXTO}}': monedaTexto,
+        '{{DATOS_BANCO_CHEQUES}}': escapeHtml(datos.datosBanco || '').replace(/\n/g, '<br>'),
+        '{{TABLA_CHEQUES}}': tablaCheques,
+        '{{TABLA_TRANSFERENCIAS}}': tablaTransferencias,
+        '{{TABLA_PAGARES}}': tablaPagarés,
+        '{{PAGO_INICIAL_TEXTO}}': escapeHtml(datos.pagoInicial || ''),
+        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || ''),
+        '{{CIUDAD_FIRMA}}': escapeHtml(datos.ciudad || ''),
+        '{{FECHA_FIRMA_LARGA}}': escapeHtml(fechaLarga),
+      };
+
+      const aplicar = (txt) => {
+        let out = String(txt || '');
+        for (const [k, v] of Object.entries(reemplazos)) {
+          out = out.split(k).join(v);
+        }
+        return out;
+      };
+
+      const encabezadoHtml = aplicar(template.encabezado || '').replace(/\n/g, '<br>');
+      const cuerpoHtml = aplicar(template.cuerpo || '').replace(/\n/g, '<br>');
+
+      return `
+        <div style="font-family: 'Times New Roman', serif; font-size: 12px; line-height: 1.5; color: #000;">
+          <div style="text-align: center; margin-bottom: 16px;">
+            <img src="/img/logo-tracto.png" alt="Tracto Agro Vial" style="height: 60px; margin-bottom: 8px;" />
+            <div style="font-size: 11px;">${encabezadoHtml}</div>
+          </div>
+          <hr style="border: 1px solid #000; margin: 12px 0;" />
+          <div style="text-align: justify;">${cuerpoHtml}</div>
+        </div>`;
+    }
+
+    function leerDatosContrato() {
+      return {
+        ciudad: contratoCiudad.value.trim(),
+        fecha: contratoFecha.value,
+        clienteNombre: contratoClienteNombre.value.trim(),
+        clienteRuc: contratoClienteRuc.value.trim(),
+        clienteDireccion: contratoClienteDireccion.value.trim(),
+        rep1: contratoRep1.value.trim(),
+        ci1: contratoCi1.value.trim(),
+        rep2: contratoRep2.value.trim(),
+        ci2: contratoCi2.value.trim(),
+        moneda: contratoMoneda.value,
+        monto: Number(contratoMonto.value) || 0,
+        tipoCambio: contratoTipoCambio.value.trim(),
+        pagoInicial: contratoPagoInicial.value.trim(),
+        datosBanco: contratoDatosBanco.value.trim(),
+        equipos: leerFilasEquipos(),
+        cheques: leerFilasCheques(),
+        transferencias: leerFilasTransferencias(),
+        pagarés: leerFilasPagarés(),
+      };
+    }
+
+    function actualizarPreviewContrato() {
+      if (!contratoPreview) return;
+      const tplId = contratoPlantilla.value;
+      const tpl = contratosTemplates.find((t) => t.id === tplId);
+      if (!tpl) {
+        contratoPreview.innerHTML = '<p class="text-muted">Seleccione una plantilla.</p>';
+        return;
+      }
+      const datos = leerDatosContrato();
+      contratoPreview.innerHTML = construirContratoHtml(tpl, datos);
+    }
+
+    async function cargarTemplatesContratos() {
+      try {
+        const res = await apiFetch('/api/contratos/templates');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        contratosTemplates = Array.isArray(data.data) ? data.data : [];
+        // Poblar select del modal
+        if (contratoPlantilla) {
+          contratoPlantilla.innerHTML = contratosTemplates
+            .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.nombre)}</option>`)
+            .join('');
+        }
+        // Poblar select de la pestaña de plantillas
+        if (plantillaSelect) {
+          plantillaSelect.innerHTML = contratosTemplates
+            .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.nombre)}</option>`)
+            .join('');
+          if (contratosTemplates.length) {
+            cargarPlantillaEnEditor(contratosTemplates[0].id);
+          }
+        }
+      } catch (_) { /* silencioso */ }
+    }
+
+    function cargarPlantillaEnEditor(id) {
+      const tpl = contratosTemplates.find((t) => t.id === id);
+      if (!tpl) return;
+      plantillaNombre.value = tpl.nombre || '';
+      plantillaRepTracto.value = tpl.representanteTracto || '';
+      plantillaCiTracto.value = tpl.ciRepresentanteTracto || '';
+      plantillaEncabezado.value = tpl.encabezado || '';
+      plantillaCuerpo.value = tpl.cuerpo || '';
+      btnEliminarPlantilla.disabled = tpl.esBase === true;
+    }
+
+    async function abrirContrato(aprob) {
+      if (!contratosTemplates.length) {
+        await cargarTemplatesContratos();
+      }
+      if (!contratosTemplates.length) {
+        alert('No hay plantillas de contratos disponibles.');
+        return;
+      }
+      contratoActual = aprob || {};
+      // Resetear campos
+      contratoCiudad.value = 'Asunción';
+      const hoy = new Date();
+      contratoFecha.value = hoy.toISOString().slice(0, 10);
+      contratoClienteNombre.value = aprob.CardName || '';
+      contratoClienteRuc.value = '';
+      contratoClienteDireccion.value = '';
+      contratoRep2.value = '';
+      contratoCi2.value = '';
+      contratoMoneda.value = 'GS';
+      contratoMonto.value = aprob.DocTotal || '';
+      contratoTipoCambio.value = '';
+      contratoPagoInicial.value = '';
+      contratoDatosBanco.value = '';
+      contratoEquiposBody.innerHTML = '';
+      contratoChequesBody.innerHTML = '';
+      contratoTransferenciasBody.innerHTML = '';
+      contratoPagarésBody.innerHTML = '';
+
+      // Aplicar representante de la plantilla seleccionada
+      const tpl = contratosTemplates.find((t) => t.id === contratoPlantilla.value) || contratosTemplates[0];
+      if (tpl) {
+        contratoRep1.value = tpl.representanteTracto || '';
+        contratoCi1.value = tpl.ciRepresentanteTracto || '';
+      }
+
+      if (modalContrato) modalContrato.show();
+
+      // Cargar datos desde SAP
+      if (aprob.CardCode) {
+        try {
+          const params = new URLSearchParams();
+          params.set('cardCode', aprob.CardCode);
+          if (aprob.DraftEntry) params.set('draftEntry', String(aprob.DraftEntry));
+          if (aprob.DocNum) params.set('docNum', String(aprob.DocNum));
+          if (aprob.TipoDocumento) params.set('tipoDoc', aprob.TipoDocumento);
+          const res = await apiFetch(`/api/contratos/datos-sap?${params.toString()}`);
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.cliente) {
+            contratoClienteNombre.value = data.cliente.CardName || contratoClienteNombre.value;
+            contratoClienteRuc.value = data.cliente.RUC || '';
+            contratoClienteDireccion.value = data.cliente.Direccion || '';
+            if (Array.isArray(data.lineas) && data.lineas.length) {
+              for (const l of data.lineas) {
+                renderFilaEquipo({
+                  marca: l.Marca || '',
+                  desc: l.Dscription || '',
+                  serie: '',
+                });
+              }
+            }
+          }
+        } catch (_) { /* silencioso */ }
+      }
+
+      // Si no hay equipos, agregar una fila vacía
+      if (!contratoEquiposBody.querySelector('tr')) {
+        renderFilaEquipo({});
+      }
+
+      actualizarPreviewContrato();
+    }
+
+    async function descargarContratoPdf() {
+      if (!contratoPreview) return;
+      const tplId = contratoPlantilla.value;
+      const tpl = contratosTemplates.find((t) => t.id === tplId);
+      if (!tpl) {
+        alert('Seleccione una plantilla.');
+        return;
+      }
+      const datos = leerDatosContrato();
+      const html = construirContratoHtml(tpl, datos);
+
+      // Contenedor temporal con márgenes legales
+      const wrapper = document.createElement('div');
+      wrapper.style.padding = '20mm 15mm';
+      wrapper.style.background = '#fff';
+      wrapper.style.width = '210mm';
+      wrapper.innerHTML = html;
+      document.body.appendChild(wrapper);
+
+      const originalHtml = btnDescargarContrato.innerHTML;
+      btnDescargarContrato.disabled = true;
+      btnDescargarContrato.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando...';
+
+      try {
+        const nombreArchivo = `Contrato_${(datos.clienteNombre || 'Cliente').replace(/[^\w]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        await html2pdf().set({
+          margin: [15, 15, 15, 15],
+          filename: nombreArchivo,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        }).from(wrapper).save();
+      } catch (err) {
+        console.error('Error generando PDF:', err);
+        alert('No se pudo generar el PDF. Intente nuevamente.');
+      } finally {
+        document.body.removeChild(wrapper);
+        btnDescargarContrato.disabled = false;
+        btnDescargarContrato.innerHTML = originalHtml;
+      }
+    }
+
+    async function guardarPlantilla() {
+      const id = plantillaSelect.value;
+      if (!id) return;
+      const payload = {
+        nombre: plantillaNombre.value.trim(),
+        representanteTracto: plantillaRepTracto.value.trim(),
+        ciRepresentanteTracto: plantillaCiTracto.value.trim(),
+        encabezado: plantillaEncabezado.value,
+        cuerpo: plantillaCuerpo.value,
+      };
+      if (!payload.nombre) {
+        alert('El nombre es obligatorio.');
+        return;
+      }
+      try {
+        const res = await apiFetch(`/api/contratos/templates/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert((data && data.error && data.error.message) || 'No se pudo guardar');
+          return;
+        }
+        alert('Plantilla guardada correctamente.');
+        await cargarTemplatesContratos();
+        cargarPlantillaEnEditor(id);
+      } catch (_) {
+        alert('Error de conexión al guardar la plantilla.');
+      }
+    }
+
+    async function nuevaPlantilla() {
+      const nombre = prompt('Nombre de la nueva plantilla:');
+      if (!nombre || !nombre.trim()) return;
+      try {
+        const res = await apiFetch('/api/contratos/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            nombre: nombre.trim(),
+            representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
+            ciRepresentanteTracto: '1.136.942',
+            encabezado: 'TRACTO AGRO VIAL S.A.\nRUC: 80027587-0\nDomicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay',
+            cuerpo: 'CONTRATO PRIVADO DE COMPRA-VENTA\n\nEn la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre TRACTO AGRO VIAL S.A., representada por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, y {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, convienen celebrar el presente contrato.\n\nPRIMERA — OBJETO:\n\n{{TABLA_EQUIPOS}}\n\nSEGUNDA — PRECIO: {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}).\n\nTERCERA — FORMA DE PAGO:\n\n{{TABLA_CHEQUES}}\n\n{{TABLA_TRANSFERENCIAS}}\n\n{{TABLA_PAGARES}}\n\nEn prueba de conformidad, se firman dos ejemplares.\n\n_____________________________          _____________________________\nLA VENDEDORA                              EL COMPRADOR\nTRACTO AGRO VIAL S.A.                     {{CLIENTE_NOMBRE}}\n{{REPRESENTANTE_1}}                       {{REPRESENTANTE_2}}\nC.I. N° {{CI_1}}                          C.I. N° {{CI_2}}',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert((data && data.error && data.error.message) || 'No se pudo crear la plantilla');
+          return;
+        }
+        await cargarTemplatesContratos();
+        if (data.template && data.template.id) {
+          plantillaSelect.value = data.template.id;
+          cargarPlantillaEnEditor(data.template.id);
+        }
+      } catch (_) {
+        alert('Error de conexión al crear la plantilla.');
+      }
+    }
+
+    async function eliminarPlantilla() {
+      const id = plantillaSelect.value;
+      if (!id) return;
+      if (!confirm('¿Eliminar esta plantilla? Esta acción no se puede deshacer.')) return;
+      try {
+        const res = await apiFetch(`/api/contratos/templates/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert((data && data.error && data.error.message) || 'No se pudo eliminar');
+          return;
+        }
+        alert('Plantilla eliminada.');
+        await cargarTemplatesContratos();
+      } catch (_) {
+        alert('Error de conexión al eliminar la plantilla.');
+      }
+    }
+
+    async function restaurarPlantillasBase() {
+      if (!confirm('¿Restaurar las plantillas base? Se agregarán las que falten sin borrar las personalizadas.')) return;
+      try {
+        const res = await apiFetch('/api/contratos/templates/restaurar-base', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert((data && data.error && data.error.message) || 'No se pudieron restaurar');
+          return;
+        }
+        alert('Plantillas base restauradas.');
+        await cargarTemplatesContratos();
+      } catch (_) {
+        alert('Error de conexión al restaurar plantillas.');
+      }
+    }
+
+    // Listeners del sistema de contratos
+    if (contratoPlantilla) {
+      contratoPlantilla.addEventListener('change', () => {
+        const tpl = contratosTemplates.find((t) => t.id === contratoPlantilla.value);
+        if (tpl) {
+          contratoRep1.value = tpl.representanteTracto || '';
+          contratoCi1.value = tpl.ciRepresentanteTracto || '';
+        }
+        actualizarPreviewContrato();
+      });
+    }
+    [
+      contratoCiudad, contratoFecha, contratoClienteNombre, contratoClienteRuc,
+      contratoClienteDireccion, contratoRep2, contratoCi2, contratoRep1, contratoCi1,
+      contratoMoneda, contratoMonto, contratoTipoCambio, contratoPagoInicial, contratoDatosBanco,
+    ].forEach((el) => {
+      if (el) el.addEventListener('input', actualizarPreviewContrato);
+      if (el) el.addEventListener('change', actualizarPreviewContrato);
+    });
+    if (btnAddEquipo) btnAddEquipo.addEventListener('click', () => { renderFilaEquipo({}); actualizarPreviewContrato(); });
+    if (btnAddCheque) btnAddCheque.addEventListener('click', () => { renderFilaCheque({ moneda: 'GS' }); actualizarPreviewContrato(); });
+    if (btnAddTransferencia) btnAddTransferencia.addEventListener('click', () => { renderFilaTransferencia({ moneda: 'GS' }); actualizarPreviewContrato(); });
+    if (btnAddPagare) btnAddPagare.addEventListener('click', () => { renderFilaPagare({ moneda: 'GS' }); actualizarPreviewContrato(); });
+    if (btnDescargarContrato) btnDescargarContrato.addEventListener('click', descargarContratoPdf);
+
+    if (plantillaSelect) {
+      plantillaSelect.addEventListener('change', () => cargarPlantillaEnEditor(plantillaSelect.value));
+    }
+    if (btnGuardarPlantilla) btnGuardarPlantilla.addEventListener('click', guardarPlantilla);
+    if (btnNuevaPlantilla) btnNuevaPlantilla.addEventListener('click', nuevaPlantilla);
+    if (btnEliminarPlantilla) btnEliminarPlantilla.addEventListener('click', eliminarPlantilla);
+    if (btnRestaurarBase) btnRestaurarBase.addEventListener('click', restaurarPlantillasBase);
+
     function renderRequisitosForm() {
       requisitosForm.innerHTML = REQUISITOS_AGRICULTURA.map(
         (nombre, i) => `
@@ -1671,9 +2560,35 @@
                     ${adjuntos}/${total}
                   </button>
                 </td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-dark btn-row-action" data-contrato-sol="${escapeHtml(s.id)}">
+                    <i class="bi bi-file-earmark-text me-1"></i>Contrato PDF
+                  </button>
+                </td>
               </tr>`;
           })
           .join('');
+
+        misSolicitudesBody.querySelectorAll('button[data-contrato-sol]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-contrato-sol');
+            const s = list.find((x) => x.id === id);
+            if (!s) return;
+            const tipoMap = {
+              OFERTA: 'Oferta de Ventas',
+              ORDEN: 'Orden de Ventas',
+              FACTURA_RESERVA: 'Factura de Reserva',
+              FACTURA_DEUDORES: 'Factura de Deudores',
+            };
+            abrirContrato({
+              CardCode: s.cardCode,
+              CardName: s.cardName,
+              DraftEntry: s.draftEntry,
+              DocNum: s.docNum,
+              TipoDocumento: tipoMap[s.tipoDoc] || s.tipoDoc,
+            });
+          });
+        });
 
         misSolicitudesBody.querySelectorAll('button[data-ver-sol]').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -1722,6 +2637,7 @@
           }
           if (user.esAnalistaCredito === true) {
             tabAprobacionesItem.classList.remove('d-none');
+            if (tabPlantillasItem) tabPlantillasItem.classList.remove('d-none');
             tabAprobacionesBtn.classList.add('active');
             document.getElementById('tabAprobaciones').classList.add('show', 'active');
             document.getElementById('tabSolicitud').classList.remove('show', 'active');
@@ -1846,6 +2762,7 @@
         cargarAprobaciones();
       }
       cargarMisSolicitudes();
+      cargarTemplatesContratos();
     });
   </script>
 </body>

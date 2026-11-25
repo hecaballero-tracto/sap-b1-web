@@ -516,6 +516,7 @@ const GRUPOS_ARTICULOS_CONFIG_FILE = path.join(
 // ---------------------------------------------------------------------------
 const DATA_DIR = path.join(__dirname, 'data');
 const SOLICITUDES_CREDITO_FILE = path.join(DATA_DIR, 'solicitudes-credito.json');
+const CONTRATOS_TEMPLATES_FILE = path.join(DATA_DIR, 'contratos-templates.json');
 const UPLOADS_CREDITO_DIR = path.join(__dirname, 'uploads', 'solicitudes-credito');
 
 function ensureCreditDirs() {
@@ -555,6 +556,177 @@ function writeSolicitudesCredito(list) {
     console.error('No se pudo guardar solicitudes-credito.json:', err.message);
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Plantillas de Contratos (persistencia + plantillas base)
+// ---------------------------------------------------------------------------
+function buildContratoTemplateChequesDiferidos() {
+  return {
+    id: 'TPL-CHEQUES-DIFERIDOS',
+    nombre: 'Contrato Privado Compra-Venta (Cheques Diferidos)',
+    activo: true,
+    esBase: true,
+    representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
+    ciRepresentanteTracto: '1.136.942',
+    encabezado: `TRACTO AGRO VIAL S.A.
+RUC: 80027587-0
+Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
+Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
+    cuerpo: `CONTRATO PRIVADO DE COMPRA-VENTA
+
+En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre TRACTO AGRO VIAL S.A., RUC 80027587-0, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+
+PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
+
+{{TABLA_EQUIPOS}}
+
+SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}), que EL COMPRADOR se obliga a abonar en la forma establecida en la cláusula TERCERA.
+
+TERCERA — FORMA DE PAGO: EL COMPRADOR abonará el precio mediante cheques diferidos, conforme al siguiente detalle:
+
+{{TABLA_CHEQUES}}
+
+CUARTA — ENTREGA: LA VENDEDORA entregará los equipos en el domicilio de EL COMPRADOR o en el lugar que éste indique, dentro de los 15 (quince) días hábiles siguientes a la firma del presente contrato y a la verificación de los cheques entregados.
+
+QUINTA — GARANTÍA: LA VENDEDORA otorga garantía por defectos de fabricación conforme a las condiciones del fabricante, por el plazo de 12 (doce) meses contados desde la entrega, excluyendo el desgaste normal por uso, accidentes o mantenimiento inadecuado.
+
+SEXTA — TRANSFERENCIA DE DOMINIO: La transferencia de dominio de los equipos se perfeccionará una vez abonada la totalidad del precio convenido.
+
+SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 2% (dos por ciento) mensual sobre el saldo adeudado.
+
+OCTAVA — RESCISIÓN: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR facultará a LA VENDEDORA a rescindir el presente contrato, con derecho a retener las sumas percibidas en concepto de indemnización.
+
+NOVENA — DATOS BANCARIOS: Los pagos deberán realizarse conforme a los siguientes datos:
+
+{{DATOS_BANCO_CHEQUES}}
+
+DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero.
+
+UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
+
+En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.
+
+_____________________________          _____________________________
+LA VENDEDORA                              EL COMPRADOR
+TRACTO AGRO VIAL S.A.                     {{CLIENTE_NOMBRE}}
+{{REPRESENTANTE_1}}                       {{REPRESENTANTE_2}}
+C.I. N° {{CI_1}}                          C.I. N° {{CI_2}}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildContratoTemplateModelo2025() {
+  return {
+    id: 'TPL-MODELO-2025',
+    nombre: 'Contrato Privado Compra-Venta 2025 (Contado / Financiado / Pagarés)',
+    activo: true,
+    esBase: true,
+    representanteTracto: 'VICTOR FERNANDO GONZALEZ GARCIA',
+    ciRepresentanteTracto: '1.136.942',
+    encabezado: `TRACTO AGRO VIAL S.A.E.
+RUC: 80027587-0
+Domicilio: Teniente Bernabé González esquina Dr. Teodosio González, Asunción - Paraguay
+Representante: {{REPRESENTANTE_1}} — C.I. N° {{CI_1}}`,
+    cuerpo: `CONTRATO PRIVADO DE COMPRA-VENTA — MODELO 2025
+
+En la ciudad de {{CIUDAD_FIRMA}}, a los {{FECHA_FIRMA_LARGA}}, entre TRACTO AGRO VIAL S.A.E., RUC 80027587-0, con domicilio en Teniente Bernabé González esquina Dr. Teodosio González, Asunción, representada en este acto por {{REPRESENTANTE_1}}, C.I. N° {{CI_1}}, en adelante "LA VENDEDORA", y por la otra parte {{CLIENTE_NOMBRE}}, RUC {{CLIENTE_RUC}}, con domicilio en {{CLIENTE_DIRECCION}}, representada por {{REPRESENTANTE_2}}, C.I. N° {{CI_2}}, en adelante "EL COMPRADOR", convienen celebrar el presente Contrato Privado de Compra-Venta sujeto a las siguientes cláusulas:
+
+PRIMERA — OBJETO: LA VENDEDORA vende a EL COMPRADOR los equipos detallados a continuación:
+
+{{TABLA_EQUIPOS}}
+
+SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MONTO_LETRAS}} ({{MONEDA_TEXTO}} {{MONTO_NUMERO}}), que EL COMPRADOR se obliga a abonar conforme a la cláusula TERCERA.
+
+TERCERA — FORMA DE PAGO: EL COMPRADOR abonará el precio de la siguiente manera:
+
+a) Pago inicial: {{PAGO_INICIAL_TEXTO}}
+
+b) Transferencias bancarias:
+
+{{TABLA_TRANSFERENCIAS}}
+
+c) Cheques diferidos:
+
+{{TABLA_CHEQUES}}
+
+d) Pagarés:
+
+{{TABLA_PAGARES}}
+
+Tipo de cambio aplicable: {{TIPO_CAMBIO}}
+
+CUARTA — ENTREGA: LA VENDEDORA entregará los equipos dentro de los 15 (quince) días hábiles siguientes a la firma del presente contrato y a la acreditación del pago inicial.
+
+QUINTA — GARANTÍA: LA VENDEDORA otorga garantía por defectos de fabricación conforme a las condiciones del fabricante, por el plazo de 12 (doce) meses contados desde la entrega, excluyendo el desgaste normal por uso, accidentes o mantenimiento inadecuado.
+
+SEXTA — TRANSFERENCIA DE DOMINIO: La transferencia de dominio de los equipos se perfeccionará una vez abonada la totalidad del precio convenido.
+
+SÉPTIMA — MORA: La mora de EL COMPRADOR se producirá de pleno derecho por el simple vencimiento del plazo sin necesidad de interpelación alguna, generando un interés moratorio del 2% (dos por ciento) mensual sobre el saldo adeudado.
+
+OCTAVA — RESCISIÓN: El incumplimiento de cualquiera de las obligaciones asumidas por EL COMPRADOR facultará a LA VENDEDORA a rescindir el presente contrato, con derecho a retener las sumas percibidas en concepto de indemnización.
+
+NOVENA — LEY 6534/2020: Las partes dejan constancia que el presente contrato se rige por la Ley N° 6534/2020 "De fomento a la formalización y desarrollo de la micro, pequeña y mediana empresa", en lo que resulte aplicable, y por las disposiciones del Código Civil Paraguayo.
+
+DÉCIMA — JURISDICCIÓN: Las partes se someten a la jurisdicción de los Tribunales Ordinarios de la ciudad de Asunción, renunciando a cualquier otro fuero.
+
+UNDÉCIMA — DOMICILIO: Las partes constituyen domicilio en los indicados en el encabezado del presente contrato, donde serán válidas todas las notificaciones.
+
+En prueba de conformidad, se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad y fecha indicadas ut supra.
+
+_____________________________          _____________________________
+LA VENDEDORA                              EL COMPRADOR
+TRACTO AGRO VIAL S.A.E.                   {{CLIENTE_NOMBRE}}
+{{REPRESENTANTE_1}}                       {{REPRESENTANTE_2}}
+C.I. N° {{CI_1}}                          C.I. N° {{CI_2}}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildContratosTemplatesBase() {
+  return [buildContratoTemplateChequesDiferidos(), buildContratoTemplateModelo2025()];
+}
+
+function readContratosTemplates() {
+  try {
+    if (!fs.existsSync(CONTRATOS_TEMPLATES_FILE)) {
+      const base = buildContratosTemplatesBase();
+      writeContratosTemplates(base);
+      return base;
+    }
+    const raw = fs.readFileSync(CONTRATOS_TEMPLATES_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn('No se pudo leer contratos-templates.json:', err.message);
+    return buildContratosTemplatesBase();
+  }
+}
+
+function writeContratosTemplates(list) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(
+      CONTRATOS_TEMPLATES_FILE,
+      JSON.stringify(list, null, 2),
+      'utf8'
+    );
+    return true;
+  } catch (err) {
+    console.error('No se pudo guardar contratos-templates.json:', err.message);
+    return false;
+  }
+}
+
+// Inicializa el archivo de plantillas si no existe
+try {
+  if (!fs.existsSync(CONTRATOS_TEMPLATES_FILE)) {
+    writeContratosTemplates(buildContratosTemplatesBase());
+  }
+} catch (err) {
+  console.warn('No se pudo inicializar contratos-templates.json:', err.message);
 }
 
 // Multer: almacenamiento en disco con nombre único por solicitud
@@ -3804,6 +3976,235 @@ app.get('/api/solicitudes-credito/descargar/:id/:archivo', requireAuth, (req, re
   }
 
   return res.download(filePath, reqItem.originalName || safeName);
+});
+
+// ---------------------------------------------------------------------------
+// Plantillas de Contratos — Endpoints
+// ---------------------------------------------------------------------------
+app.get('/api/contratos/templates', requireAuth, (req, res) => {
+  const list = readContratosTemplates();
+  const activos = list.filter((t) => t && t.activo !== false);
+  return res.json({ data: activos });
+});
+
+app.post('/api/contratos/templates', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para administrar plantillas de contratos' } });
+  }
+  const body = req.body || {};
+  const nombre = String(body.nombre || '').trim();
+  if (!nombre) {
+    return res.status(400).json({ error: { message: 'El nombre de la plantilla es obligatorio' } });
+  }
+  const list = readContratosTemplates();
+  const id = `TPL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const nueva = {
+    id,
+    nombre,
+    activo: body.activo !== false,
+    esBase: false,
+    representanteTracto: String(body.representanteTracto || 'VICTOR FERNANDO GONZALEZ GARCIA'),
+    ciRepresentanteTracto: String(body.ciRepresentanteTracto || '1.136.942'),
+    encabezado: String(body.encabezado || ''),
+    cuerpo: String(body.cuerpo || ''),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  list.push(nueva);
+  if (!writeContratosTemplates(list)) {
+    return res.status(500).json({ error: { message: 'No se pudo guardar la plantilla' } });
+  }
+  return res.json({ ok: true, template: nueva });
+});
+
+app.put('/api/contratos/templates/:id', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para administrar plantillas de contratos' } });
+  }
+  const id = String(req.params.id || '');
+  const list = readContratosTemplates();
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: { message: 'Plantilla no encontrada' } });
+  }
+  const body = req.body || {};
+  const actual = list[idx];
+  const updated = {
+    ...actual,
+    nombre: body.nombre !== undefined ? String(body.nombre).trim() : actual.nombre,
+    activo: body.activo !== undefined ? body.activo !== false : actual.activo,
+    representanteTracto:
+      body.representanteTracto !== undefined
+        ? String(body.representanteTracto)
+        : actual.representanteTracto,
+    ciRepresentanteTracto:
+      body.ciRepresentanteTracto !== undefined
+        ? String(body.ciRepresentanteTracto)
+        : actual.ciRepresentanteTracto,
+    encabezado: body.encabezado !== undefined ? String(body.encabezado) : actual.encabezado,
+    cuerpo: body.cuerpo !== undefined ? String(body.cuerpo) : actual.cuerpo,
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  if (!writeContratosTemplates(list)) {
+    return res.status(500).json({ error: { message: 'No se pudo guardar la plantilla' } });
+  }
+  return res.json({ ok: true, template: updated });
+});
+
+app.delete('/api/contratos/templates/:id', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para administrar plantillas de contratos' } });
+  }
+  const id = String(req.params.id || '');
+  const list = readContratosTemplates();
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: { message: 'Plantilla no encontrada' } });
+  }
+  if (list[idx].esBase) {
+    return res
+      .status(400)
+      .json({ error: { message: 'No se puede eliminar una plantilla base. Puede desactivarla.' } });
+  }
+  list.splice(idx, 1);
+  if (!writeContratosTemplates(list)) {
+    return res.status(500).json({ error: { message: 'No se pudo eliminar la plantilla' } });
+  }
+  return res.json({ ok: true });
+});
+
+// Restaurar plantillas base (agrega las que falten sin borrar las personalizadas)
+app.post('/api/contratos/templates/restaurar-base', requireAuth, (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para administrar plantillas de contratos' } });
+  }
+  const list = readContratosTemplates();
+  const base = buildContratosTemplatesBase();
+  const existentes = new Set(list.map((t) => t.id));
+  for (const b of base) {
+    if (!existentes.has(b.id)) list.push(b);
+  }
+  if (!writeContratosTemplates(list)) {
+    return res.status(500).json({ error: { message: 'No se pudieron restaurar las plantillas base' } });
+  }
+  return res.json({ ok: true, data: list });
+});
+
+// Datos del cliente y líneas del documento desde SAP HANA
+app.get('/api/contratos/datos-sap', requireAuth, async (req, res) => {
+  const cardCode = String(req.query.cardCode || '').trim();
+  const draftEntryRaw = parseInt(req.query.draftEntry, 10);
+  const docNumRaw = parseInt(req.query.docNum, 10);
+  const tipoDoc = String(req.query.tipoDoc || '').trim();
+
+  if (!cardCode) {
+    return res.status(400).json({ error: { message: 'El parámetro cardCode es obligatorio' } });
+  }
+
+  try {
+    // 1) Datos del cliente desde OCRD
+    const sqlCliente = `SELECT
+        C."CardCode" AS "CardCode",
+        C."CardName" AS "CardName",
+        COALESCE(C."LicTradNum", '') AS "RUC",
+        COALESCE(C."Address", '') AS "Direccion",
+        COALESCE(C."City", '') AS "Ciudad",
+        COALESCE(C."Phone1", '') AS "Telefono",
+        COALESCE(C."Cellular", '') AS "Celular",
+        COALESCE(C."E_Mail", '') AS "Email"
+      FROM "TRACTOAGRO".OCRD C
+      WHERE C."CardCode" = ?`;
+    const clienteRows = await hanaExec(sqlCliente, [cardCode]);
+    if (!clienteRows || !clienteRows.length) {
+      return res.status(404).json({ error: { message: 'Cliente no encontrado en SAP' } });
+    }
+    const c = clienteRows[0];
+    const cliente = {
+      CardCode: c.CardCode !== undefined && c.CardCode !== null ? String(c.CardCode) : cardCode,
+      CardName: c.CardName !== undefined && c.CardName !== null ? String(c.CardName) : '',
+      RUC: c.RUC !== undefined && c.RUC !== null ? String(c.RUC) : '',
+      Direccion: c.Direccion !== undefined && c.Direccion !== null ? String(c.Direccion) : '',
+      Ciudad: c.Ciudad !== undefined && c.Ciudad !== null ? String(c.Ciudad) : '',
+      Telefono: c.Telefono !== undefined && c.Telefono !== null ? String(c.Telefono) : '',
+      Celular: c.Celular !== undefined && c.Celular !== null ? String(c.Celular) : '',
+      Email: c.Email !== undefined && c.Email !== null ? String(c.Email) : '',
+    };
+
+    // 2) Líneas del documento según tipo
+    //    - Oferta de Ventas => QUT1 (DocEntry = DraftEntry)
+    //    - Orden de Ventas   => RDR1 (DocEntry = DraftEntry)
+    //    - Factura (Reserva/Deudores) => DRF1 (DocEntry = DraftEntry)
+    //    - Fallback: DRF1 con DraftEntry
+    let tablaLineas = 'DRF1';
+    if (tipoDoc === 'Oferta de Ventas') tablaLineas = 'QUT1';
+    else if (tipoDoc === 'Orden de Ventas') tablaLineas = 'RDR1';
+    else if (tipoDoc === 'Factura de Reserva' || tipoDoc === 'Factura de Deudores') tablaLineas = 'DRF1';
+
+    const docEntry = Number.isFinite(draftEntryRaw) && draftEntryRaw > 0 ? draftEntryRaw : null;
+
+    let lineas = [];
+    if (docEntry) {
+      const sqlLineas = `SELECT
+          L."LineNum" AS "LineNum",
+          L."ItemCode" AS "ItemCode",
+          COALESCE(L."Dscription", '') AS "Dscription",
+          COALESCE(L."Quantity", 0) AS "Quantity",
+          COALESCE(L."Price", 0) AS "Price",
+          COALESCE(L."LineTotal", 0) AS "LineTotal",
+          COALESCE(M."FirmName", '') AS "Marca",
+          COALESCE(I."U_Marca", '') AS "MarcaItem",
+          COALESCE(I."U_Modelo", '') AS "Modelo"
+        FROM "TRACTOAGRO"."${tablaLineas}" L
+        LEFT JOIN "TRACTOAGRO".OITM I ON I."ItemCode" = L."ItemCode"
+        LEFT JOIN "TRACTOAGRO".OMRC M ON M."FirmCode" = I."FirmCode"
+        WHERE L."DocEntry" = ?
+        ORDER BY L."LineNum" ASC`;
+      try {
+        const rows = await hanaExec(sqlLineas, [docEntry]);
+        lineas = (rows || []).map((r) => ({
+          LineNum: r.LineNum !== undefined && r.LineNum !== null ? Number(r.LineNum) : null,
+          ItemCode: r.ItemCode !== undefined && r.ItemCode !== null ? String(r.ItemCode) : '',
+          Dscription: r.Dscription !== undefined && r.Dscription !== null ? String(r.Dscription) : '',
+          Quantity: r.Quantity !== undefined && r.Quantity !== null ? Number(r.Quantity) : 0,
+          Price: r.Price !== undefined && r.Price !== null ? Number(r.Price) : 0,
+          LineTotal: r.LineTotal !== undefined && r.LineTotal !== null ? Number(r.LineTotal) : 0,
+          Marca:
+            (r.Marca && String(r.Marca)) ||
+            (r.MarcaItem && String(r.MarcaItem)) ||
+            '',
+          Modelo: r.Modelo !== undefined && r.Modelo !== null ? String(r.Modelo) : '',
+        }));
+      } catch (errLineas) {
+        console.warn('No se pudieron obtener líneas del documento:', errLineas.message);
+      }
+    }
+
+    return res.json({
+      cliente,
+      lineas,
+      docNum: Number.isFinite(docNumRaw) ? docNumRaw : null,
+      draftEntry: docEntry,
+      tipoDoc,
+    });
+  } catch (err) {
+    console.error('Error en /api/contratos/datos-sap:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar datos del cliente en HANA' } });
+  }
 });
 
 // ---------------------------------------------------------------------------
