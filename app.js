@@ -2965,8 +2965,10 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       END AS "DocTotal",
       COALESCE(NULLIF(D."DocCur", ''), 'GS') AS "DocCur",
       COALESCE(S."SlpName", '') AS "Vendedor",
-      COALESCE(W."Remarks", '') AS "Remarks"
+      COALESCE(W."Remarks", '') AS "Remarks",
+      COALESCE(M."Name", '') AS "ModeloActual"
     FROM "TRACTOAGRO".OWDD W
+    INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
     INNER JOIN "TRACTOAGRO".WDD1 W1
       ON W1."WddCode" = W."WddCode"
       AND W1."UserID" = ?
@@ -2980,6 +2982,87 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
   try {
     const rows = await hanaExec(sql, [sapPersonal.userId]);
     const solicitudes = readSolicitudesCredito();
+
+    // Segunda consulta: procesos paralelos por DraftEntry (todos los modelos)
+    const draftEntries = Array.from(
+      new Set(
+        (rows || [])
+          .map((r) =>
+            r.DraftEntry !== undefined && r.DraftEntry !== null
+              ? Number(r.DraftEntry)
+              : null
+          )
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    );
+
+    const paralelasPorDraft = new Map();
+    if (draftEntries.length) {
+      const placeholders = draftEntries.map(() => '?').join(', ');
+      const sqlParalelas = `SELECT
+          W."WddCode" AS "WddCode",
+          W."DraftEntry" AS "DraftEntry",
+          W."Status" AS "EstadoGeneral",
+          COALESCE(M."Name", '') AS "Modelo",
+          W1."StepCode" AS "StepCode",
+          W1."Status" AS "EstadoAutorizador",
+          COALESCE(U."U_NAME", U."USER_CODE", '') AS "Autorizador",
+          COALESCE(W1."Remarks", '') AS "Comentario"
+        FROM "TRACTOAGRO".OWDD W
+        INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
+        INNER JOIN "TRACTOAGRO".WDD1 W1 ON W1."WddCode" = W."WddCode"
+        INNER JOIN "TRACTOAGRO".OUSR U ON U."USERID" = W1."UserID"
+        WHERE W."DraftEntry" IN (${placeholders})
+        ORDER BY W."WddCode" ASC, W1."StepCode" ASC`;
+
+      try {
+        const rowsParalelas = await hanaExec(sqlParalelas, draftEntries);
+        for (const p of rowsParalelas || []) {
+          const draft = p.DraftEntry !== undefined && p.DraftEntry !== null
+            ? Number(p.DraftEntry)
+            : null;
+          if (!Number.isFinite(draft)) continue;
+          const wdd = p.WddCode !== undefined && p.WddCode !== null
+            ? Number(p.WddCode)
+            : null;
+          if (!Number.isFinite(wdd)) continue;
+
+          if (!paralelasPorDraft.has(draft)) paralelasPorDraft.set(draft, new Map());
+          const porWdd = paralelasPorDraft.get(draft);
+          if (!porWdd.has(wdd)) {
+            porWdd.set(wdd, {
+              wddCode: wdd,
+              modelo: p.Modelo !== undefined && p.Modelo !== null ? String(p.Modelo) : '',
+              estadoGeneral:
+                p.EstadoGeneral !== undefined && p.EstadoGeneral !== null
+                  ? String(p.EstadoGeneral)
+                  : '',
+              autorizadores: [],
+            });
+          }
+          const item = porWdd.get(wdd);
+          item.autorizadores.push({
+            nombre:
+              p.Autorizador !== undefined && p.Autorizador !== null
+                ? String(p.Autorizador)
+                : '',
+            estado:
+              p.EstadoAutorizador !== undefined && p.EstadoAutorizador !== null
+                ? String(p.EstadoAutorizador)
+                : '',
+            comentario:
+              p.Comentario !== undefined && p.Comentario !== null
+                ? String(p.Comentario)
+                : '',
+          });
+        }
+      } catch (errParalelas) {
+        console.warn(
+          'No se pudieron obtener procesos paralelos:',
+          errParalelas.message
+        );
+      }
+    }
 
     const data = (rows || []).map((r) => {
       const objType = r.ObjType !== undefined && r.ObjType !== null ? String(r.ObjType) : '';
@@ -3013,8 +3096,21 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         }));
       }
 
+      const wddCode = r.WddCode !== undefined && r.WddCode !== null
+        ? Number(r.WddCode)
+        : null;
+
+      // Autorizaciones paralelas del mismo DraftEntry (excluyendo la actual)
+      let autorizacionesParalelas = [];
+      if (Number.isFinite(draftEntry) && paralelasPorDraft.has(draftEntry)) {
+        const porWdd = paralelasPorDraft.get(draftEntry);
+        autorizacionesParalelas = Array.from(porWdd.values()).filter(
+          (a) => a.wddCode !== wddCode
+        );
+      }
+
       return {
-        WddCode: r.WddCode !== undefined && r.WddCode !== null ? Number(r.WddCode) : null,
+        WddCode: wddCode,
         DraftEntry: draftEntry,
         ObjType: objType,
         TipoDocumento: mapTipoDocumento(objType, isIns),
@@ -3026,8 +3122,13 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
         Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
         Remarks: r.Remarks !== undefined && r.Remarks !== null ? String(r.Remarks) : '',
+        ModeloActual:
+          r.ModeloActual !== undefined && r.ModeloActual !== null
+            ? String(r.ModeloActual)
+            : '',
         solicitudId: sol ? sol.id : null,
         requisitos,
+        autorizacionesParalelas,
       };
     });
 

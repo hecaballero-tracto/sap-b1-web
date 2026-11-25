@@ -88,6 +88,29 @@
     .sap-badge.disconnected { background: #fee2e2; color: #991b1b; }
     .nav-tabs .nav-link { color: #495057; }
     .nav-tabs .nav-link.active { color: #000; font-weight: 600; }
+    .paralelo-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin: 1px 2px 1px 0;
+      white-space: nowrap;
+    }
+    .paralelo-badge.ok { background: #dcfce7; color: #166534; }
+    .paralelo-badge.pending { background: #fef3c7; color: #92400e; }
+    .paralelo-badge.rejected { background: #fee2e2; color: #991b1b; }
+    .modelo-actual {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e0e7ff;
+      color: #3730a3;
+      margin-bottom: 3px;
+    }
+    .paralelos-cell { min-width: 220px; max-width: 320px; }
   </style>
 </head>
 <body>
@@ -179,13 +202,18 @@
                 <i class="bi bi-box-arrow-right me-1"></i>Desconectar SAP
               </button>
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
               <select id="filterTipoDoc" class="form-select form-select-sm" style="max-width: 240px;">
                 <option value="">Todos los tipos</option>
                 <option value="Oferta de Ventas">Oferta de Ventas</option>
                 <option value="Orden de Ventas">Orden de Ventas</option>
                 <option value="Factura de Reserva">Factura de Reserva</option>
                 <option value="Factura de Deudores">Factura de Deudores</option>
+              </select>
+              <select id="filterProcesos" class="form-select form-select-sm" style="max-width: 260px;">
+                <option value="">Todos los procesos</option>
+                <option value="listos">Listos (otras aprobaciones OK)</option>
+                <option value="esperando">Esperando otras aprobaciones</option>
               </select>
               <button id="btnRefreshAprob" class="btn btn-dark btn-sm">
                 <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
@@ -208,13 +236,14 @@
                     <th>Cliente</th>
                     <th>Vendedor</th>
                     <th class="text-end">Total</th>
+                    <th>Procesos Paralelos</th>
                     <th class="text-center">Requisitos</th>
                     <th class="text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="aprobBody">
                   <tr>
-                    <td colspan="8" class="text-center py-4 text-muted">
+                    <td colspan="9" class="text-center py-4 text-muted">
                       <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                       Cargando aprobaciones...
                     </td>
@@ -409,6 +438,7 @@
     const btnConectarSap = document.getElementById('btnConectarSap');
     const btnDesconectarSap = document.getElementById('btnDesconectarSap');
     const filterTipoDoc = document.getElementById('filterTipoDoc');
+    const filterProcesos = document.getElementById('filterProcesos');
     const btnRefreshAprob = document.getElementById('btnRefreshAprob');
     const alertAprob = document.getElementById('alertAprob');
     const aprobBody = document.getElementById('aprobBody');
@@ -516,12 +546,74 @@
       }
     }
 
+    function renderParalelosCell(a) {
+      const modeloActual = a.ModeloActual || '';
+      const paralelas = Array.isArray(a.autorizacionesParalelas)
+        ? a.autorizacionesParalelas
+        : [];
+      const parts = [];
+      if (modeloActual) {
+        parts.push(
+          `<div><span class="modelo-actual" title="Modelo de autorización actual"><i class="bi bi-person-badge me-1"></i>${escapeHtml(modeloActual)}</span></div>`
+        );
+      }
+      if (!paralelas.length) {
+        parts.push('<span class="text-muted small">Sin otros procesos</span>');
+      } else {
+        for (const p of paralelas) {
+          const nombres = (p.autorizadores || [])
+            .map((x) => x.nombre)
+            .filter((n) => n)
+            .join(', ');
+          const estado = String(p.estadoGeneral || '').toUpperCase();
+          let cls = 'pending';
+          let prefijo = 'Pendiente';
+          if (estado === 'Y') {
+            cls = 'ok';
+            prefijo = 'Aprobado';
+          } else if (estado === 'N') {
+            cls = 'rejected';
+            prefijo = 'Rechazado';
+          }
+          const modelo = p.modelo ? `${p.modelo}: ` : '';
+          const texto = `${prefijo}: ${modelo}${nombres || '—'}`;
+          parts.push(
+            `<span class="paralelo-badge ${cls}" title="${escapeHtml(texto)}">${escapeHtml(texto)}</span>`
+          );
+        }
+      }
+      return `<div class="paralelos-cell">${parts.join('')}</div>`;
+    }
+
+    function cumpleFiltroProcesos(a, filtro) {
+      if (!filtro) return true;
+      const paralelas = Array.isArray(a.autorizacionesParalelas)
+        ? a.autorizacionesParalelas
+        : [];
+      if (!paralelas.length) return false;
+      const estados = paralelas.map((p) => String(p.estadoGeneral || '').toUpperCase());
+      if (filtro === 'listos') {
+        // Todas las paralelas ya aprobadas (Y)
+        return estados.every((e) => e === 'Y');
+      }
+      if (filtro === 'esperando') {
+        // Al menos una paralela pendiente (W)
+        return estados.some((e) => e === 'W');
+      }
+      return true;
+    }
+
     function renderAprobaciones() {
       const tipo = filterTipoDoc.value;
-      const list = aprobaciones.filter((a) => !tipo || a.TipoDocumento === tipo);
+      const filtroProc = filterProcesos ? filterProcesos.value : '';
+      const list = aprobaciones.filter(
+        (a) =>
+          (!tipo || a.TipoDocumento === tipo) &&
+          cumpleFiltroProcesos(a, filtroProc)
+      );
       if (!list.length) {
         aprobBody.innerHTML = `
-          <tr><td colspan="8" class="text-center py-4 text-muted">
+          <tr><td colspan="9" class="text-center py-4 text-muted">
             <i class="bi bi-inbox me-1"></i>No hay aprobaciones pendientes.
           </td></tr>`;
         return;
@@ -544,6 +636,7 @@
               </td>
               <td>${escapeHtml(a.Vendedor || '')}</td>
               <td class="text-end">${formatMoney(a.DocTotal, a.DocCur)}</td>
+              <td>${renderParalelosCell(a)}</td>
               <td class="text-center">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-ver-req="${a.WddCode}">
                   ${reqBadge}
@@ -628,7 +721,7 @@
     async function cargarAprobaciones() {
       alertAprob.innerHTML = '';
       aprobBody.innerHTML = `
-        <tr><td colspan="8" class="text-center py-4 text-muted">
+        <tr><td colspan="9" class="text-center py-4 text-muted">
           <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
           Cargando aprobaciones...
         </td></tr>`;
@@ -646,7 +739,7 @@
           updateSapBadge();
           aprobaciones = [];
           aprobBody.innerHTML = `
-            <tr><td colspan="8" class="text-center py-4 text-muted">
+            <tr><td colspan="9" class="text-center py-4 text-muted">
               <i class="bi bi-key me-1"></i>Conecte su usuario SAP para ver las aprobaciones pendientes.
             </td></tr>`;
           return;
@@ -709,7 +802,7 @@
       updateSapBadge();
       aprobaciones = [];
       aprobBody.innerHTML = `
-        <tr><td colspan="8" class="text-center py-4 text-muted">
+        <tr><td colspan="9" class="text-center py-4 text-muted">
           <i class="bi bi-key me-1"></i>Conecte su usuario SAP para ver las aprobaciones pendientes.
         </td></tr>`;
     }
@@ -985,6 +1078,9 @@
     btnSapLoginSubmit.addEventListener('click', conectarSap);
     btnRefreshAprob.addEventListener('click', cargarAprobaciones);
     filterTipoDoc.addEventListener('change', renderAprobaciones);
+    if (filterProcesos) {
+      filterProcesos.addEventListener('change', renderAprobaciones);
+    }
     modalResolverConfirm.addEventListener('click', resolverAprobacion);
     btnEnviarSol.addEventListener('click', enviarSolicitud);
     btnLimpiarSol.addEventListener('click', limpiarFormulario);
