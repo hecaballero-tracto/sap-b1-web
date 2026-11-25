@@ -3273,9 +3273,9 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         COALESCE(NULLIF(I."DocCur", ''), 'GS') AS "DocCur",
         COALESCE(PG."PymntGroup", '') AS "PymntGroup",
         Q."InstlmntID" AS "InstId",
-        Q."InstlmntID" AS "InstNum",
-        Q."ExtraMonth" AS "ExtraMonth",
-        Q."ExtraDays" AS "ExtraDays",
+        PG."InstNum" AS "InstNum",
+        PG."ExtraMonth" AS "ExtraMonth",
+        PG."ExtraDays" AS "ExtraDays",
         Q."DueDate" AS "DueDate",
         CASE
           WHEN COALESCE(I."DocCur", 'GS') NOT IN ('GS', 'PYG')
