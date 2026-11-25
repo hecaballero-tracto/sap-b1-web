@@ -2966,7 +2966,11 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       COALESCE(NULLIF(D."DocCur", ''), 'GS') AS "DocCur",
       COALESCE(S."SlpName", '') AS "Vendedor",
       COALESCE(W."Remarks", '') AS "Remarks",
-      COALESCE(M."Name", '') AS "ModeloActual"
+      COALESCE(M."Name", '') AS "ModeloActual",
+      COALESCE(PDoc."PymntGroup", '') AS "CondPagoDoc",
+      COALESCE(PCli."PymntGroup", '') AS "CondPagoCliente",
+      COALESCE(C."CreditLine", 0) AS "LimiteCredito",
+      COALESCE(C."Balance", 0) AS "SaldoActual"
     FROM "TRACTOAGRO".OWDD W
     INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
     INNER JOIN "TRACTOAGRO".WDD1 W1
@@ -2975,6 +2979,9 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       AND W1."Status" = 'W'
     INNER JOIN "TRACTOAGRO".ODRF D ON D."DocEntry" = W."DraftEntry"
     LEFT JOIN "TRACTOAGRO".OSLP S ON S."SlpCode" = D."SlpCode"
+    LEFT JOIN "TRACTOAGRO".OCRD C ON C."CardCode" = D."CardCode"
+    LEFT JOIN "TRACTOAGRO".OCTG PDoc ON PDoc."GroupNum" = D."GroupNum"
+    LEFT JOIN "TRACTOAGRO".OCTG PCli ON PCli."GroupNum" = C."GroupNum"
     WHERE W."Status" = 'W'
       AND W."ObjType" IN ('23', '17', '13')
     ORDER BY D."DocDate" ASC, D."DocNum" ASC`;
@@ -3126,6 +3133,22 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
           r.ModeloActual !== undefined && r.ModeloActual !== null
             ? String(r.ModeloActual)
             : '',
+        CondPagoDoc:
+          r.CondPagoDoc !== undefined && r.CondPagoDoc !== null
+            ? String(r.CondPagoDoc)
+            : '',
+        CondPagoCliente:
+          r.CondPagoCliente !== undefined && r.CondPagoCliente !== null
+            ? String(r.CondPagoCliente)
+            : '',
+        LimiteCredito:
+          r.LimiteCredito !== undefined && r.LimiteCredito !== null
+            ? Number(r.LimiteCredito)
+            : 0,
+        SaldoActual:
+          r.SaldoActual !== undefined && r.SaldoActual !== null
+            ? Number(r.SaldoActual)
+            : 0,
         solicitudId: sol ? sol.id : null,
         requisitos,
         autorizacionesParalelas,
@@ -3195,6 +3218,198 @@ app.post(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// Historial crediticio detallado del cliente (Analistas de Crédito)
+// ---------------------------------------------------------------------------
+app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para consultar el historial crediticio' } });
+  }
+
+  const cardCode = String(req.params.cardCode || '').trim();
+  if (!cardCode) {
+    return res.status(400).json({ error: { message: 'El código de cliente es obligatorio' } });
+  }
+
+  try {
+    // a) Ficha del cliente
+    const sqlFicha = `SELECT
+        C."CardCode" AS "CardCode",
+        C."CardName" AS "CardName",
+        COALESCE(C."CreditLine", 0) AS "CreditLine",
+        COALESCE(C."Balance", 0) AS "Balance",
+        COALESCE(C."OrdersBal", 0) AS "OrdersBal",
+        COALESCE(C."DNotesBal", 0) AS "DNotesBal",
+        COALESCE(PG."PymntGroup", '') AS "PymntGroup"
+      FROM "TRACTOAGRO".OCRD C
+      LEFT JOIN "TRACTOAGRO".OCTG PG ON PG."GroupNum" = C."GroupNum"
+      WHERE C."CardCode" = ?`;
+
+    const fichaRows = await hanaExec(sqlFicha, [cardCode]);
+    if (!fichaRows || !fichaRows.length) {
+      return res.status(404).json({ error: { message: 'Cliente no encontrado' } });
+    }
+    const f = fichaRows[0];
+    const ficha = {
+      CardCode: f.CardCode !== undefined && f.CardCode !== null ? String(f.CardCode) : cardCode,
+      CardName: f.CardName !== undefined && f.CardName !== null ? String(f.CardName) : '',
+      CreditLine: f.CreditLine !== undefined && f.CreditLine !== null ? Number(f.CreditLine) : 0,
+      Balance: f.Balance !== undefined && f.Balance !== null ? Number(f.Balance) : 0,
+      OrdersBal: f.OrdersBal !== undefined && f.OrdersBal !== null ? Number(f.OrdersBal) : 0,
+      DNotesBal: f.DNotesBal !== undefined && f.DNotesBal !== null ? Number(f.DNotesBal) : 0,
+      PymntGroup: f.PymntGroup !== undefined && f.PymntGroup !== null ? String(f.PymntGroup) : '',
+    };
+
+    // b) Detalle de facturas no canceladas con sus cuotas
+    const sqlFacturas = `SELECT
+        I."DocEntry" AS "DocEntry",
+        I."DocNum" AS "DocNum",
+        I."DocDate" AS "DocDate",
+        I."DocDueDate" AS "DocDueDate",
+        COALESCE(NULLIF(I."DocCur", ''), 'GS') AS "DocCur",
+        COALESCE(PG."PymntGroup", '') AS "PymntGroup",
+        Q."InstId" AS "InstId",
+        Q."InstNum" AS "InstNum",
+        Q."ExtraMonth" AS "ExtraMonth",
+        Q."ExtraDays" AS "ExtraDays",
+        Q."DueDate" AS "DueDate",
+        CASE
+          WHEN COALESCE(I."DocCur", 'GS') NOT IN ('GS', 'PYG')
+            AND COALESCE(Q."InsTotalFC", 0) > 0
+          THEN Q."InsTotalFC"
+          ELSE Q."InsTotal"
+        END AS "MontoCuota",
+        CASE
+          WHEN COALESCE(I."DocCur", 'GS') NOT IN ('GS', 'PYG')
+            AND COALESCE(Q."InsTotalFC", 0) > 0
+          THEN COALESCE(Q."InsTotalFC", 0) - COALESCE(Q."PaidFC", 0)
+          ELSE COALESCE(Q."InsTotal", 0) - COALESCE(Q."Paid", 0)
+        END AS "SaldoCuota",
+        Q."Status" AS "EstadoCuota",
+        P."UltimoPagoFecha" AS "UltimoPagoFecha",
+        P."Recibos" AS "Recibos"
+      FROM "TRACTOAGRO".OINV I
+      INNER JOIN "TRACTOAGRO".INV6 Q ON Q."DocEntry" = I."DocEntry"
+      LEFT JOIN "TRACTOAGRO".OCTG PG ON PG."GroupNum" = I."GroupNum"
+      LEFT JOIN (
+        SELECT
+          R2."DocEntry" AS "DocEntry",
+          R2."InstId" AS "InstId",
+          MAX(R0."DocDate") AS "UltimoPagoFecha",
+          STRING_AGG(CAST(R0."DocNum" AS NVARCHAR(20)), ', ') AS "Recibos"
+        FROM "TRACTOAGRO".RCT2 R2
+        INNER JOIN "TRACTOAGRO".ORCT R0 ON R0."DocEntry" = R2."DocNum"
+        WHERE R2."InvType" = 13
+          AND R0."Canceled" = 'N'
+        GROUP BY R2."DocEntry", R2."InstId"
+      ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstId"
+      WHERE I."CardCode" = ?
+        AND I."CANCELED" = 'N'
+      ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstNum" ASC`;
+
+    const facturasRows = await hanaExec(sqlFacturas, [cardCode]);
+
+    const cuotas = (facturasRows || []).map((r) => {
+      const extraMonth = Number(r.ExtraMonth) || 0;
+      const extraDays = Number(r.ExtraDays) || 0;
+      const instNum = Number(r.InstNum) || 0;
+      const tipoVenta =
+        extraMonth === 0 && extraDays === 0 && instNum <= 1 ? 'Contado' : 'Crédito';
+
+      const estadoCuota = r.EstadoCuota !== undefined && r.EstadoCuota !== null
+        ? String(r.EstadoCuota)
+        : '';
+      const ultimoPagoFecha = r.UltimoPagoFecha !== undefined && r.UltimoPagoFecha !== null
+        ? String(r.UltimoPagoFecha)
+        : null;
+
+      // Días de atraso
+      let diasAtraso = 0;
+      if (estadoCuota === 'C') {
+        if (ultimoPagoFecha) {
+          // Días entre vencimiento y último pago (solo si pagó con mora)
+          const sqlDias = `SELECT GREATEST(0, DAYS_BETWEEN(TO_DATE(?, 'YYYY-MM-DD'), TO_DATE(?, 'YYYY-MM-DD'))) AS "D" FROM DUMMY`;
+          // Se calcula en JS para evitar consultas por fila
+          const due = new Date(String(r.DueDate));
+          const pag = new Date(ultimoPagoFecha);
+          if (!isNaN(due.getTime()) && !isNaN(pag.getTime())) {
+            const diff = Math.floor((pag.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+            diasAtraso = diff > 0 ? diff : 0;
+          }
+        }
+      } else if (estadoCuota === 'O') {
+        const due = new Date(String(r.DueDate));
+        if (!isNaN(due.getTime())) {
+          const hoy = new Date();
+          const diff = Math.floor((hoy.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+          diasAtraso = diff > 0 ? diff : 0;
+        }
+      }
+
+      return {
+        DocEntry: r.DocEntry !== undefined && r.DocEntry !== null ? Number(r.DocEntry) : null,
+        DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+        DocDate: r.DocDate !== undefined && r.DocDate !== null ? String(r.DocDate) : null,
+        DocDueDate: r.DocDueDate !== undefined && r.DocDueDate !== null ? String(r.DocDueDate) : null,
+        DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
+        PymntGroup: r.PymntGroup !== undefined && r.PymntGroup !== null ? String(r.PymntGroup) : '',
+        InstId: r.InstId !== undefined && r.InstId !== null ? Number(r.InstId) : null,
+        InstNum: instNum,
+        DueDate: r.DueDate !== undefined && r.DueDate !== null ? String(r.DueDate) : null,
+        MontoCuota: r.MontoCuota !== undefined && r.MontoCuota !== null ? Number(r.MontoCuota) : 0,
+        SaldoCuota: r.SaldoCuota !== undefined && r.SaldoCuota !== null ? Number(r.SaldoCuota) : 0,
+        EstadoCuota: estadoCuota,
+        UltimoPagoFecha: ultimoPagoFecha,
+        Recibos: r.Recibos !== undefined && r.Recibos !== null ? String(r.Recibos) : '',
+        TipoVenta: tipoVenta,
+        DiasAtraso: diasAtraso,
+      };
+    });
+
+    // Resumen
+    const facturasContadoSet = new Set();
+    const facturasCreditoSet = new Set();
+    const diasAtrasoCredito = [];
+    const diasAtrasoCreditoVencidas = [];
+
+    for (const c of cuotas) {
+      if (c.TipoVenta === 'Contado') {
+        if (c.DocEntry !== null) facturasContadoSet.add(c.DocEntry);
+      } else {
+        if (c.DocEntry !== null) facturasCreditoSet.add(c.DocEntry);
+        diasAtrasoCredito.push(c.DiasAtraso);
+        if (c.DiasAtraso > 0) diasAtrasoCreditoVencidas.push(c.DiasAtraso);
+      }
+    }
+
+    const promedio = (arr) => {
+      if (!arr.length) return 0;
+      const sum = arr.reduce((a, b) => a + b, 0);
+      return Math.round((sum / arr.length) * 10) / 10;
+    };
+
+    const resumen = {
+      limiteCredito: ficha.CreditLine,
+      saldoActual: ficha.Balance,
+      disponible: ficha.CreditLine - ficha.Balance,
+      facturasContado: facturasContadoSet.size,
+      facturasCredito: facturasCreditoSet.size,
+      promedioDiasAtraso: promedio(diasAtrasoCreditoVencidas),
+      promedioDiasAtrasoGlobal: promedio(diasAtrasoCredito),
+    };
+
+    return res.json({ ficha, cuotas, resumen });
+  } catch (err) {
+    console.error('Error en /api/creditos/historial-cliente:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar el historial crediticio en HANA' } });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Solicitudes de Crédito (Vendedores)

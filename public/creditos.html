@@ -111,6 +111,56 @@
       margin-bottom: 3px;
     }
     .paralelos-cell { min-width: 220px; max-width: 320px; }
+    .cond-cell { min-width: 200px; }
+    .cond-line { font-size: 0.78rem; line-height: 1.3; }
+    .cond-line .lbl { color: #6b7280; }
+    .cond-line .val { font-weight: 600; }
+    .cond-warn {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #fef3c7;
+      color: #92400e;
+      margin-left: 4px;
+    }
+    .kpi-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .kpi-card .kpi-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    .kpi-card .kpi-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-top: 4px;
+    }
+    .kpi-card.ok .kpi-value { color: #16a34a; }
+    .kpi-card.warn .kpi-value { color: #d97706; }
+    .kpi-card.danger .kpi-value { color: #dc2626; }
+    .kpi-card.info .kpi-value { color: #0d6efd; }
+    .dias-badge {
+      display: inline-block;
+      font-weight: 700;
+      font-size: 0.78rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .dias-badge.ok { background: #dcfce7; color: #166534; }
+    .dias-badge.warn { background: #fef3c7; color: #92400e; }
+    .dias-badge.danger { background: #fee2e2; color: #991b1b; }
+    .cuota-row td { font-size: 0.85rem; }
+    .cuota-row.contado td { background: #f8fafc; }
   </style>
 </head>
 <body>
@@ -236,6 +286,7 @@
                     <th>Cliente</th>
                     <th>Vendedor</th>
                     <th class="text-end">Total</th>
+                    <th>Cond. Pago / Límite</th>
                     <th>Procesos Paralelos</th>
                     <th class="text-center">Requisitos</th>
                     <th class="text-center">Acciones</th>
@@ -243,7 +294,7 @@
                 </thead>
                 <tbody id="aprobBody">
                   <tr>
-                    <td colspan="9" class="text-center py-4 text-muted">
+                    <td colspan="10" class="text-center py-4 text-muted">
                       <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                       Cargando aprobaciones...
                     </td>
@@ -382,6 +433,62 @@
     </div>
   </div>
 
+  <!-- Modal: Historial Crediticio -->
+  <div class="modal fade" id="modalHistorial" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-clock-history me-2"></i>Historial Crediticio en SAP B1
+            <span id="histClienteNombre" class="text-muted small ms-2"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="histLoading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2 text-muted">Cargando historial...</div>
+          </div>
+          <div id="histContent" class="d-none">
+            <div class="row g-2 mb-3" id="histKpis"></div>
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+              <label class="form-label small mb-0 text-muted">Filtrar:</label>
+              <select id="histFiltro" class="form-select form-select-sm" style="max-width: 220px;">
+                <option value="">Todas</option>
+                <option value="atraso">Con atraso</option>
+                <option value="pendientes">Pendientes</option>
+                <option value="contado">Contado</option>
+                <option value="credito">Crédito</option>
+              </select>
+              <span id="histCount" class="text-muted small ms-auto"></span>
+            </div>
+            <div class="table-responsive" style="max-height: 55vh;">
+              <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Factura</th>
+                    <th>Cuota</th>
+                    <th>Vencimiento</th>
+                    <th class="text-end">Importe</th>
+                    <th class="text-end">Saldo</th>
+                    <th>Fecha Pago</th>
+                    <th>N° Recibo</th>
+                    <th class="text-center">Días Atraso</th>
+                  </tr>
+                </thead>
+                <tbody id="histBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="histError" class="alert alert-danger d-none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Aprobar/Rechazar -->
   <div class="modal fade" id="modalResolver" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -451,6 +558,19 @@
     const modalRequisitosEl = document.getElementById('modalRequisitos');
     const modalRequisitos = modalRequisitosEl ? new bootstrap.Modal(modalRequisitosEl) : null;
     const modalRequisitosBody = document.getElementById('modalRequisitosBody');
+    const modalHistorialEl = document.getElementById('modalHistorial');
+    const modalHistorial = modalHistorialEl ? new bootstrap.Modal(modalHistorialEl) : null;
+    const histClienteNombre = document.getElementById('histClienteNombre');
+    const histLoading = document.getElementById('histLoading');
+    const histContent = document.getElementById('histContent');
+    const histError = document.getElementById('histError');
+    const histKpis = document.getElementById('histKpis');
+    const histFiltro = document.getElementById('histFiltro');
+    const histCount = document.getElementById('histCount');
+    const histBody = document.getElementById('histBody');
+    let histCuotas = [];
+    let histResumen = null;
+
     const modalResolverEl = document.getElementById('modalResolver');
     const modalResolver = modalResolverEl ? new bootstrap.Modal(modalResolverEl) : null;
     const modalResolverHeader = document.getElementById('modalResolverHeader');
@@ -546,6 +666,36 @@
       }
     }
 
+    function renderCondPagoCell(a) {
+      const condDoc = a.CondPagoDoc || '';
+      const condCli = a.CondPagoCliente || '';
+      const difieren = condDoc && condCli && condDoc !== condCli;
+      const limite = Number(a.LimiteCredito) || 0;
+      const saldo = Number(a.SaldoActual) || 0;
+      const disponible = limite - saldo;
+      const dispClass = disponible < 0 ? 'text-danger' : 'text-success';
+      return `
+        <div class="cond-cell">
+          <div class="cond-line">
+            <span class="lbl">Doc:</span> <span class="val">${escapeHtml(condDoc || '—')}</span>
+            ${difieren ? `<span class="cond-warn" title="La condición del documento difiere de la ficha del cliente">≠ Cliente</span>` : ''}
+          </div>
+          <div class="cond-line">
+            <span class="lbl">Cliente:</span> <span class="val">${escapeHtml(condCli || '—')}</span>
+          </div>
+          <div class="cond-line">
+            <span class="lbl">Límite:</span> <span class="val">${formatMoney(limite, 'GS')}</span>
+          </div>
+          <div class="cond-line">
+            <span class="lbl">Saldo:</span> <span class="val">${formatMoney(saldo, 'GS')}</span>
+            <span class="${dispClass} small ms-1">(Disp: ${formatMoney(disponible, 'GS')})</span>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-historial="${escapeHtml(a.CardCode || '')}" data-hist-nombre="${escapeHtml(a.CardName || '')}">
+            <i class="bi bi-clock-history me-1"></i>Historial SAP
+          </button>
+        </div>`;
+    }
+
     function renderParalelosCell(a) {
       const modeloActual = a.ModeloActual || '';
       const paralelas = Array.isArray(a.autorizacionesParalelas)
@@ -636,6 +786,7 @@
               </td>
               <td>${escapeHtml(a.Vendedor || '')}</td>
               <td class="text-end">${formatMoney(a.DocTotal, a.DocCur)}</td>
+              <td>${renderCondPagoCell(a)}</td>
               <td>${renderParalelosCell(a)}</td>
               <td class="text-center">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-ver-req="${a.WddCode}">
@@ -675,6 +826,147 @@
           abrirResolver(wdd, 'RECHAZAR');
         });
       });
+      aprobBody.querySelectorAll('button[data-historial]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cardCode = btn.getAttribute('data-historial');
+          const nombre = btn.getAttribute('data-hist-nombre');
+          abrirHistorial(cardCode, nombre);
+        });
+      });
+    }
+
+    function renderHistKpis() {
+      if (!histResumen) {
+        histKpis.innerHTML = '';
+        return;
+      }
+      const r = histResumen;
+      const dispClass = r.disponible < 0 ? 'danger' : 'ok';
+      const promClass = r.promedioDiasAtraso > 30 ? 'danger' : (r.promedioDiasAtraso > 0 ? 'warn' : 'ok');
+      histKpis.innerHTML = `
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card info">
+            <div class="kpi-label">Límite de Crédito</div>
+            <div class="kpi-value">${formatMoney(r.limiteCredito, 'GS')}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card warn">
+            <div class="kpi-label">Saldo Deudor</div>
+            <div class="kpi-value">${formatMoney(r.saldoActual, 'GS')}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card ${dispClass}">
+            <div class="kpi-label">Disponible</div>
+            <div class="kpi-value">${formatMoney(r.disponible, 'GS')}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card ${promClass}">
+            <div class="kpi-label">Prom. Días Atraso</div>
+            <div class="kpi-value">${r.promedioDiasAtraso}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card ok">
+            <div class="kpi-label">Facturas Contado</div>
+            <div class="kpi-value">${r.facturasContado}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="kpi-card info">
+            <div class="kpi-label">Facturas Crédito</div>
+            <div class="kpi-value">${r.facturasCredito}</div>
+          </div>
+        </div>`;
+    }
+
+    function renderHistCuotas() {
+      const filtro = histFiltro ? histFiltro.value : '';
+      let list = histCuotas;
+      if (filtro === 'atraso') list = list.filter((c) => c.DiasAtraso > 0);
+      else if (filtro === 'pendientes') list = list.filter((c) => c.EstadoCuota === 'O');
+      else if (filtro === 'contado') list = list.filter((c) => c.TipoVenta === 'Contado');
+      else if (filtro === 'credito') list = list.filter((c) => c.TipoVenta === 'Crédito');
+
+      if (histCount) {
+        histCount.textContent = `${list.length} cuota${list.length === 1 ? '' : 's'}`;
+      }
+
+      if (!list.length) {
+        histBody.innerHTML = `<tr><td colspan="8" class="text-center py-3 text-muted">Sin cuotas para el filtro seleccionado.</td></tr>`;
+        return;
+      }
+
+      // Agrupar por factura para mostrar la cuota como "N/M"
+      const totalPorFactura = {};
+      for (const c of histCuotas) {
+        if (c.DocEntry !== null) {
+          totalPorFactura[c.DocEntry] = (totalPorFactura[c.DocEntry] || 0) + 1;
+        }
+      }
+
+      histBody.innerHTML = list
+        .map((c) => {
+          const total = c.DocEntry !== null ? totalPorFactura[c.DocEntry] || 1 : 1;
+          const cuotaLabel = `${c.InstNum}/${total}`;
+          let diasCls = 'ok';
+          if (c.DiasAtraso > 30) diasCls = 'danger';
+          else if (c.DiasAtraso > 0) diasCls = 'warn';
+          const rowCls = c.TipoVenta === 'Contado' ? 'cuota-row contado' : 'cuota-row';
+          return `
+            <tr class="${rowCls}">
+              <td>
+                <strong>${escapeHtml(String(c.DocNum || ''))}</strong>
+                <div class="small text-muted">${formatDate(c.DocDate)}</div>
+              </td>
+              <td>${escapeHtml(cuotaLabel)}</td>
+              <td>${formatDate(c.DueDate)}</td>
+              <td class="text-end">${formatMoney(c.MontoCuota, c.DocCur)}</td>
+              <td class="text-end">${formatMoney(c.SaldoCuota, c.DocCur)}</td>
+              <td>${c.UltimoPagoFecha ? formatDate(c.UltimoPagoFecha) : '<span class="text-muted">—</span>'}</td>
+              <td>${escapeHtml(c.Recibos || '—')}</td>
+              <td class="text-center"><span class="dias-badge ${diasCls}">${c.DiasAtraso}</span></td>
+            </tr>`;
+        })
+        .join('');
+    }
+
+    async function abrirHistorial(cardCode, nombre) {
+      if (!cardCode) return;
+      if (histClienteNombre) histClienteNombre.textContent = nombre ? `— ${nombre}` : '';
+      if (histLoading) histLoading.classList.remove('d-none');
+      if (histContent) histContent.classList.add('d-none');
+      if (histError) {
+        histError.classList.add('d-none');
+        histError.textContent = '';
+      }
+      if (modalHistorial) modalHistorial.show();
+
+      try {
+        const res = await apiFetch(`/api/creditos/historial-cliente/${encodeURIComponent(cardCode)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = (data && data.error && data.error.message) || 'No se pudo cargar el historial';
+          if (histError) {
+            histError.textContent = msg;
+            histError.classList.remove('d-none');
+          }
+          if (histLoading) histLoading.classList.add('d-none');
+          return;
+        }
+        histCuotas = Array.isArray(data.cuotas) ? data.cuotas : [];
+        histResumen = data.resumen || null;
+        if (data.ficha && data.ficha.CardName && histClienteNombre) {
+          histClienteNombre.textContent = `— ${data.ficha.CardName}`;
+        }
+        renderHistKpis();
+        if (histFiltro) histFiltro.value = '';
+        renderHistCuotas();
+        if (histLoading) histLoading.classList.add('d-none');
+        if (histContent) histContent.classList.remove('d-none');
+      } catch (err) { /* ignorar */ }
     }
 
     function abrirRequisitos(a) {
@@ -1080,6 +1372,9 @@
     filterTipoDoc.addEventListener('change', renderAprobaciones);
     if (filterProcesos) {
       filterProcesos.addEventListener('change', renderAprobaciones);
+    }
+    if (histFiltro) {
+      histFiltro.addEventListener('change', renderHistCuotas);
     }
     modalResolverConfirm.addEventListener('click', resolverAprobacion);
     btnEnviarSol.addEventListener('click', enviarSolicitud);
