@@ -163,6 +163,33 @@
     .dias-badge.danger { background: #fee2e2; color: #991b1b; }
     .cuota-row td { font-size: 0.85rem; }
     .cuota-row.contado td { background: #f8fafc; }
+    .btn-row-action {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .filtros-toolbar {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .filtros-toolbar .form-control-sm,
+    .filtros-toolbar .form-select-sm {
+      font-size: 0.82rem;
+    }
+    .filtros-toolbar .form-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: #6b7280;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .contador-filtros {
+      font-size: 0.8rem;
+      color: #6b7280;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -242,34 +269,79 @@
       <!-- Pestaña: Bandeja de Aprobación -->
       <div class="tab-pane fade show active" id="tabAprobaciones" role="tabpanel">
         <div class="card shadow-sm mb-3">
-          <div class="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between">
-            <div class="d-flex align-items-center gap-2">
-              <span id="sapBadge" class="sap-badge disconnected">
-                <i class="bi bi-plug"></i><span id="sapBadgeText">SAP no conectado</span>
-              </span>
-              <button id="btnConectarSap" class="btn btn-primary btn-sm">
-                <i class="bi bi-key me-1"></i>Conectar Usuario SAP
-              </button>
-              <button id="btnDesconectarSap" class="btn btn-outline-secondary btn-sm d-none">
-                <i class="bi bi-box-arrow-right me-1"></i>Desconectar SAP
-              </button>
+          <div class="card-body">
+            <div class="filtros-toolbar d-flex flex-wrap gap-2 align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <span id="sapBadge" class="sap-badge disconnected">
+                  <i class="bi bi-plug"></i><span id="sapBadgeText">SAP no conectado</span>
+                </span>
+                <button id="btnConectarSap" class="btn btn-primary btn-sm">
+                  <i class="bi bi-key me-1"></i>Conectar Usuario SAP
+                </button>
+                <button id="btnDesconectarSap" class="btn btn-outline-secondary btn-sm d-none">
+                  <i class="bi bi-box-arrow-right me-1"></i>Desconectar SAP
+                </button>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="contadorFiltros" class="contador-filtros">Mostrando 0 de 0</span>
+                <button id="btnLimpiarFiltros" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-x-circle me-1"></i>Limpiar filtros
+                </button>
+                <button id="btnRefreshAprob" class="btn btn-dark btn-sm">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                </button>
+              </div>
             </div>
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <select id="filterTipoDoc" class="form-select form-select-sm" style="max-width: 240px;">
-                <option value="">Todos los tipos</option>
-                <option value="Oferta de Ventas">Oferta de Ventas</option>
-                <option value="Orden de Ventas">Orden de Ventas</option>
-                <option value="Factura de Reserva">Factura de Reserva</option>
-                <option value="Factura de Deudores">Factura de Deudores</option>
-              </select>
-              <select id="filterProcesos" class="form-select form-select-sm" style="max-width: 260px;">
-                <option value="">Todos los procesos</option>
-                <option value="listos">Listos (otras aprobaciones OK)</option>
-                <option value="esperando">Esperando otras aprobaciones</option>
-              </select>
-              <button id="btnRefreshAprob" class="btn btn-dark btn-sm">
-                <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
-              </button>
+
+            <div class="row g-2 align-items-end mt-1">
+              <div class="col-12 col-md-4 col-lg-3">
+                <label class="form-label" for="filterTexto">Buscar</label>
+                <input
+                  type="text"
+                  id="filterTexto"
+                  class="form-control form-control-sm"
+                  placeholder="Buscar cliente, vendedor o N° doc..."
+                  autocomplete="off"
+                />
+              </div>
+              <div class="col-12 col-md-4 col-lg-2">
+                <label class="form-label" for="filterTipoDoc">Tipo de Documento</label>
+                <select id="filterTipoDoc" class="form-select form-select-sm">
+                  <option value="">Todos los tipos</option>
+                  <option value="Oferta de Ventas">Oferta de Ventas</option>
+                  <option value="Orden de Ventas">Orden de Ventas</option>
+                  <option value="Factura de Reserva">Factura de Reserva</option>
+                  <option value="Factura de Deudores">Factura de Deudores</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4 col-lg-2">
+                <label class="form-label" for="filterProcesos">Procesos Paralelos</label>
+                <select id="filterProcesos" class="form-select form-select-sm">
+                  <option value="">Todos los procesos</option>
+                  <option value="listos">Listos (otras aprobaciones OK)</option>
+                  <option value="esperando">Esperando otras aprobaciones</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4 col-lg-2">
+                <label class="form-label" for="filterPeriodo">Período</label>
+                <select id="filterPeriodo" class="form-select form-select-sm">
+                  <option value="">Todas las fechas</option>
+                  <option value="hoy">Hoy</option>
+                  <option value="ayer">Ayer</option>
+                  <option value="semana">Esta semana</option>
+                  <option value="mes">Este mes</option>
+                  <option value="anio">Este año</option>
+                  <option value="rango">Rango de fechas</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3 col-lg-1 d-none" id="wrapFechaDesde">
+                <label class="form-label" for="filterFechaDesde">Desde</label>
+                <input type="date" id="filterFechaDesde" class="form-control form-control-sm" />
+              </div>
+              <div class="col-6 col-md-3 col-lg-1 d-none" id="wrapFechaHasta">
+                <label class="form-label" for="filterFechaHasta">Hasta</label>
+                <input type="date" id="filterFechaHasta" class="form-control form-control-sm" />
+              </div>
             </div>
           </div>
         </div>
@@ -607,6 +679,14 @@
     const btnDesconectarSap = document.getElementById('btnDesconectarSap');
     const filterTipoDoc = document.getElementById('filterTipoDoc');
     const filterProcesos = document.getElementById('filterProcesos');
+    const filterTexto = document.getElementById('filterTexto');
+    const filterPeriodo = document.getElementById('filterPeriodo');
+    const filterFechaDesde = document.getElementById('filterFechaDesde');
+    const filterFechaHasta = document.getElementById('filterFechaHasta');
+    const wrapFechaDesde = document.getElementById('wrapFechaDesde');
+    const wrapFechaHasta = document.getElementById('wrapFechaHasta');
+    const contadorFiltros = document.getElementById('contadorFiltros');
+    const btnLimpiarFiltros = document.getElementById('btnLimpiarFiltros');
     const btnRefreshAprob = document.getElementById('btnRefreshAprob');
     const alertAprob = document.getElementById('alertAprob');
     const aprobBody = document.getElementById('aprobBody');
@@ -761,7 +841,7 @@
             <span class="lbl">Saldo:</span> <span class="val">${formatMoney(saldo, 'GS')}</span>
             <span class="${dispClass} small ms-1">(Disp: ${formatMoney(disponible, 'GS')})</span>
           </div>
-          <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-historial="${escapeHtml(a.CardCode || '')}" data-hist-nombre="${escapeHtml(a.CardName || '')}">
+          <button type="button" class="btn btn-outline-primary btn-row-action mt-1" data-historial="${escapeHtml(a.CardCode || '')}" data-hist-nombre="${escapeHtml(a.CardName || '')}">
             <i class="bi bi-clock-history me-1"></i>Historial SAP
           </button>
         </div>`;
@@ -824,17 +904,153 @@
       return true;
     }
 
+    // Normaliza texto para búsqueda: minúsculas y sin acentos
+    function normalizarTexto(value) {
+      if (value === null || value === undefined) return '';
+      return String(value)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    // Convierte un valor de fecha (string, /Date(...)/ o Date) a un Date local
+    // sin desfase de zona horaria. Devuelve null si no es válido.
+    function parseFechaLocal(value) {
+      if (!value) return null;
+      if (value instanceof Date) {
+        return isNaN(value.getTime()) ? null : value;
+      }
+      const s = String(value);
+      const m = /\/Date\((\d+)\)\//.exec(s);
+      if (m) {
+        const d = new Date(parseInt(m[1], 10));
+        return isNaN(d.getTime()) ? null : d;
+      }
+      // Formato YYYY-MM-DD (o con hora): construir en local
+      const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+      if (iso) {
+        const d = new Date(
+          parseInt(iso[1], 10),
+          parseInt(iso[2], 10) - 1,
+          parseInt(iso[3], 10)
+        );
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function inicioDelDia(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    function finDelDia(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    }
+
+    // Devuelve { desde, hasta } en base al período seleccionado
+    function rangoPeriodo(periodo) {
+      if (!periodo) return null;
+      const hoy = new Date();
+      if (periodo === 'hoy') {
+        return { desde: inicioDelDia(hoy), hasta: finDelDia(hoy) };
+      }
+      if (periodo === 'ayer') {
+        const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+        return { desde: inicioDelDia(ayer), hasta: finDelDia(ayer) };
+      }
+      if (periodo === 'semana') {
+        // Semana desde lunes
+        const dia = hoy.getDay(); // 0=domingo
+        const offset = dia === 0 ? 6 : dia - 1;
+        const lunes = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - offset);
+        return { desde: inicioDelDia(lunes), hasta: finDelDia(hoy) };
+      }
+      if (periodo === 'mes') {
+        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        return { desde: inicioDelDia(inicio), hasta: finDelDia(hoy) };
+      }
+      if (periodo === 'anio') {
+        const inicio = new Date(hoy.getFullYear(), 0, 1);
+        return { desde: inicioDelDia(inicio), hasta: finDelDia(hoy) };
+      }
+      if (periodo === 'rango') {
+        const desde = filterFechaDesde && filterFechaDesde.value
+          ? parseFechaLocal(filterFechaDesde.value)
+          : null;
+        const hasta = filterFechaHasta && filterFechaHasta.value
+          ? parseFechaLocal(filterFechaHasta.value)
+          : null;
+        if (!desde && !hasta) return null;
+        return {
+          desde: desde ? inicioDelDia(desde) : null,
+          hasta: hasta ? finDelDia(hasta) : null,
+        };
+      }
+      return null;
+    }
+
+    function cumpleFiltroFecha(a, rango) {
+      if (!rango) return true;
+      const fecha = parseFechaLocal(a.DocDate);
+      if (!fecha) return false;
+      if (rango.desde && fecha < rango.desde) return false;
+      if (rango.hasta && fecha > rango.hasta) return false;
+      return true;
+    }
+
+    function cumpleFiltroTexto(a, texto) {
+      if (!texto) return true;
+      const needle = normalizarTexto(texto);
+      if (!needle) return true;
+      const campos = [
+        a.CardCode,
+        a.CardName,
+        a.Vendedor,
+        a.DocNum !== undefined && a.DocNum !== null ? String(a.DocNum) : '',
+      ];
+      return campos.some((c) => normalizarTexto(c).includes(needle));
+    }
+
+    function compararPorFechaDesc(a, b) {
+      const fa = parseFechaLocal(a.DocDate);
+      const fb = parseFechaLocal(b.DocDate);
+      const ta = fa ? fa.getTime() : 0;
+      const tb = fb ? fb.getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      const na = Number(a.DocNum) || 0;
+      const nb = Number(b.DocNum) || 0;
+      return nb - na;
+    }
+
+    function actualizarContador(mostrados, total) {
+      if (contadorFiltros) {
+        contadorFiltros.textContent = `Mostrando ${mostrados} de ${total}`;
+      }
+    }
+
     function renderAprobaciones() {
       const tipo = filterTipoDoc.value;
       const filtroProc = filterProcesos ? filterProcesos.value : '';
-      const list = aprobaciones.filter(
-        (a) =>
-          (!tipo || a.TipoDocumento === tipo) &&
-          cumpleFiltroProcesos(a, filtroProc)
-      );
+      const texto = filterTexto ? filterTexto.value.trim() : '';
+      const periodo = filterPeriodo ? filterPeriodo.value : '';
+      const rango = rangoPeriodo(periodo);
+
+      const list = aprobaciones
+        .filter(
+          (a) =>
+            (!tipo || a.TipoDocumento === tipo) &&
+            cumpleFiltroProcesos(a, filtroProc) &&
+            cumpleFiltroTexto(a, texto) &&
+            cumpleFiltroFecha(a, rango)
+        )
+        .sort(compararPorFechaDesc);
+
+      actualizarContador(list.length, aprobaciones.length);
+
       if (!list.length) {
         aprobBody.innerHTML = `
-          <tr><td colspan="9" class="text-center py-4 text-muted">
+          <tr><td colspan="10" class="text-center py-4 text-muted">
             <i class="bi bi-inbox me-1"></i>No hay aprobaciones pendientes.
           </td></tr>`;
         return;
@@ -858,7 +1074,7 @@
               <td>${escapeHtml(a.Vendedor || '')}</td>
               <td class="text-end">
                 <div>${formatMoney(a.DocTotal, a.DocCur)}</div>
-                <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-ver-items="${a.DraftEntry}">
+                <button type="button" class="btn btn-outline-primary btn-row-action mt-1" data-ver-items="${a.DraftEntry}">
                   <i class="bi bi-list-ul me-1"></i>Ver Ítems
                 </button>
               </td>
@@ -1204,7 +1420,7 @@
     async function cargarAprobaciones() {
       alertAprob.innerHTML = '';
       aprobBody.innerHTML = `
-        <tr><td colspan="9" class="text-center py-4 text-muted">
+        <tr><td colspan="10" class="text-center py-4 text-muted">
           <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
           Cargando aprobaciones...
         </td></tr>`;
@@ -1221,8 +1437,9 @@
           sapConectado = false;
           updateSapBadge();
           aprobaciones = [];
+          actualizarContador(0, 0);
           aprobBody.innerHTML = `
-            <tr><td colspan="9" class="text-center py-4 text-muted">
+            <tr><td colspan="10" class="text-center py-4 text-muted">
               <i class="bi bi-key me-1"></i>Conecte su usuario SAP para ver las aprobaciones pendientes.
             </td></tr>`;
           return;
@@ -1284,8 +1501,9 @@
       if (currentUser) currentUser.sapPersonalUser = null;
       updateSapBadge();
       aprobaciones = [];
+      actualizarContador(0, 0);
       aprobBody.innerHTML = `
-        <tr><td colspan="9" class="text-center py-4 text-muted">
+        <tr><td colspan="10" class="text-center py-4 text-muted">
           <i class="bi bi-key me-1"></i>Conecte su usuario SAP para ver las aprobaciones pendientes.
         </td></tr>`;
     }
@@ -1563,6 +1781,36 @@
     filterTipoDoc.addEventListener('change', renderAprobaciones);
     if (filterProcesos) {
       filterProcesos.addEventListener('change', renderAprobaciones);
+    }
+    if (filterTexto) {
+      filterTexto.addEventListener('input', renderAprobaciones);
+    }
+    if (filterPeriodo) {
+      filterPeriodo.addEventListener('change', () => {
+        const esRango = filterPeriodo.value === 'rango';
+        if (wrapFechaDesde) wrapFechaDesde.classList.toggle('d-none', !esRango);
+        if (wrapFechaHasta) wrapFechaHasta.classList.toggle('d-none', !esRango);
+        renderAprobaciones();
+      });
+    }
+    if (filterFechaDesde) {
+      filterFechaDesde.addEventListener('change', renderAprobaciones);
+    }
+    if (filterFechaHasta) {
+      filterFechaHasta.addEventListener('change', renderAprobaciones);
+    }
+    if (btnLimpiarFiltros) {
+      btnLimpiarFiltros.addEventListener('click', () => {
+        if (filterTexto) filterTexto.value = '';
+        if (filterTipoDoc) filterTipoDoc.value = '';
+        if (filterProcesos) filterProcesos.value = '';
+        if (filterPeriodo) filterPeriodo.value = '';
+        if (filterFechaDesde) filterFechaDesde.value = '';
+        if (filterFechaHasta) filterFechaHasta.value = '';
+        if (wrapFechaDesde) wrapFechaDesde.classList.add('d-none');
+        if (wrapFechaHasta) wrapFechaHasta.classList.add('d-none');
+        renderAprobaciones();
+      });
     }
     if (histFiltro) {
       histFiltro.addEventListener('change', renderHistCuotas);

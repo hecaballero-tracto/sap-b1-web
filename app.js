@@ -2986,7 +2986,7 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       AND W."ObjType" IN ('23', '17', '13')
       AND D."DocStatus" = 'O'
       AND D."CANCELED" = 'N'
-    ORDER BY D."DocDate" ASC, D."DocNum" ASC`;
+    ORDER BY D."DocDate" DESC, D."DocNum" DESC`;
 
   try {
     const rows = await hanaExec(sql, [sapPersonal.userId]);
