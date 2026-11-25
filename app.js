@@ -3273,7 +3273,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
         COALESCE(NULLIF(I."DocCur", ''), 'GS') AS "DocCur",
         COALESCE(PG."PymntGroup", '') AS "PymntGroup",
         Q."InstlmntID" AS "InstId",
-        Q."InstNum" AS "InstNum",
+        Q."InstlmntID" AS "InstNum",
         Q."ExtraMonth" AS "ExtraMonth",
         Q."ExtraDays" AS "ExtraDays",
         Q."DueDate" AS "DueDate",
@@ -3309,7 +3309,7 @@ app.get('/api/creditos/historial-cliente/:cardCode', requireAuth, async (req, re
       ) P ON P."DocEntry" = I."DocEntry" AND P."InstId" = Q."InstlmntID"
       WHERE I."CardCode" = ?
         AND I."CANCELED" = 'N'
-      ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstNum" ASC`;
+      ORDER BY I."DocDate" ASC, I."DocNum" ASC, Q."InstlmntID" ASC`;
 
     const facturasRows = await hanaExec(sqlFacturas, [cardCode]);
 
