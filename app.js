@@ -2984,6 +2984,8 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
     LEFT JOIN "TRACTOAGRO".OCTG PCli ON PCli."GroupNum" = C."GroupNum"
     WHERE W."Status" = 'W'
       AND W."ObjType" IN ('23', '17', '13')
+      AND D."DocStatus" = 'O'
+      AND D."CANCELED" = 'N'
     ORDER BY D."DocDate" ASC, D."DocNum" ASC`;
 
   try {
@@ -3217,9 +3219,22 @@ app.post(
         req.session.sapPersonal = null;
         return res.status(428).json({ requireSapLogin: true });
       }
+      const sapMessage = extractSapErrorMessage(data);
+      if (
+        /3622-1/.test(sapMessage) ||
+        /Authorization process has been canceled/i.test(sapMessage)
+      ) {
+        return res.status(409).json({
+          error: {
+            message:
+              'Este documento preliminar ya fue cancelado o cerrado en SAP B1 y no requiere aprobación',
+          },
+          yaCancelado: true,
+        });
+      }
       console.error('Error resolviendo aprobación:', status, data);
       return res.status(status >= 400 && status < 600 ? status : 500).json({
-        error: { message: extractSapErrorMessage(data) },
+        error: { message: sapMessage },
       });
     }
   }
