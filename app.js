@@ -561,7 +561,7 @@ function writeSolicitudesCredito(list) {
 // ---------------------------------------------------------------------------
 // Plantillas de Contratos (persistencia + plantillas base)
 // ---------------------------------------------------------------------------
-const CONTRATOS_TEMPLATES_VERSION = 4;
+const CONTRATOS_TEMPLATES_VERSION = 5;
 
 function buildContratoTemplateChequesDiferidos() {
   return {
@@ -627,23 +627,19 @@ SEGUNDA — PRECIO: El precio total de la operación asciende a la suma de {{MON
 
 TERCERA — MODALIDAD, FORMA DE PAGO, DEPÓSITO Y PRENDA: La modalidad pactada es {{MODALIDAD}}. {{CASILLA_CONTADO}} CONTADO {{CASILLA_FINANCIADO}} FINANCIADO.
 
-a) Pago inicial: {{CASILLA_INICIAL_EFECTIVO}} Efectivo ({{INICIAL_EFECTIVO}}) {{CASILLA_INICIAL_TRANSFERENCIA}} Transferencia {{CASILLA_INICIAL_CHEQUE}} Cheque. Detalle: {{PAGO_INICIAL_TEXTO}}
+{{BLOQUE_INICIAL}}
 
 {{BLOQUE_USADO}}
 
-b) DATOS DE TRANSFERENCIA BANCARIA:
+{{BLOQUE_TRANSFERENCIAS}}
 
-{{TABLA_TRANSFERENCIAS}}
-
-c) DATOS DE CHEQUES:
-
-{{TABLA_CHEQUES}}
+{{BLOQUE_CHEQUES}}
 
 d) DATOS DE PAGARES — Moneda: Dólares {{CASILLA_MONEDA_PAGARES_USD}} Guaraníes {{CASILLA_MONEDA_PAGARES_GS}}:
 
 {{TABLA_PAGARES}}
 
-(Tipo de cambio aplicado a la operación: 1 USD = {{TIPO_CAMBIO}} Gs)
+{{BLOQUE_TIPO_CAMBIO}}
 
 Los equipos objeto del presente contrato quedarán en calidad de depositario en poder de EL COMPRADOR hasta la cancelación total del precio, constituyéndose prenda sobre los mismos a favor de LA VENDEDORA en garantía del saldo adeudado.
 

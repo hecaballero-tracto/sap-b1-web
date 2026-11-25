@@ -274,7 +274,14 @@
       color: #000;
       background: #fff;
     }
-    .contrato-doc .casilla.marcada::before { content: 'X'; font-weight: bold; }
+    .contrato-doc .casilla.marcada::before {
+      content: 'X';
+      font-weight: bold;
+      font-size: 11px;
+      line-height: 1;
+      display: block;
+      text-align: center;
+    }
     .contrato-doc .clausula-item {
       text-align: justify;
       margin: 0 0 10px 0;
@@ -369,10 +376,10 @@
     }
 
     #contratoPrintArea {
-      width: 100%;
-      max-width: 185mm;
-      margin: 0 auto;
-      padding: 8mm 10mm;
+      width: 180mm;
+      max-width: 180mm;
+      margin: 0;
+      padding: 0;
       box-sizing: border-box;
       overflow-wrap: break-word;
       word-wrap: break-word;
@@ -419,10 +426,10 @@
         position: absolute;
         left: 0;
         top: 0;
-        width: 100%;
-        max-width: 185mm;
-        padding: 8mm 10mm;
-        margin: 0 auto;
+        width: 180mm;
+        max-width: 180mm;
+        padding: 0;
+        margin: 0;
         box-sizing: border-box;
       }
       .contrato-doc {
@@ -2491,22 +2498,20 @@
       return `<span class="casilla${marcada ? ' marcada' : ''}"></span>`;
     }
 
-    function construirCuoteroGrid(pagarés, monedaPagares) {
+    function construirCuoteroTabla(pagarés, monedaPagares) {
       if (!pagarés.length) {
         return '';
       }
-      // Distribuir en 3 columnas paralelas
-      const cols = [[], [], []];
-      pagarés.forEach((p, i) => {
-        cols[i % 3].push(p);
-      });
-      const renderCol = (items) => {
-        const rows = items
-          .map((p) => `<tr><td>${escapeHtml(p.num || '')}</td><td class="num">${formatearMonto(p.importe, p.moneda || monedaPagares)}</td><td>${escapeHtml(formatearFechaCorta(p.venc))}</td></tr>`)
-          .join('');
-        return `<table class="doc-table"><thead><tr><th>N°</th><th class="num">Importe</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table>`;
-      };
-      return `<div class="cuotero-grid">${cols.map(renderCol).join('')}</div>`;
+      const total = pagarés.reduce((a, p) => a + (Number(p.importe) || 0), 0);
+      const moneda = monedaPagares || (pagarés[0] && pagarés[0].moneda) || 'USD';
+      const rows = pagarés
+        .map((p, i) => {
+          const num = p.num || String(i + 1).padStart(2, '0');
+          return `<tr><td>${escapeHtml(num)}</td><td class="num">${formatearMonto(p.importe, p.moneda || moneda)}</td><td>${escapeHtml(formatearFechaCorta(p.venc))}</td></tr>`;
+        })
+        .join('');
+      const tfoot = `<tfoot><tr><td><strong>TOTAL</strong></td><td class="num"><strong>${formatearMonto(total, moneda)}</strong></td><td></td></tr></tfoot>`;
+      return `<table class="doc-table"><thead><tr><th>N° Cuota</th><th class="num">Importe</th><th>Fecha de Vencimiento</th></tr></thead><tbody>${rows}</tbody>${tfoot}</table>`;
     }
 
     function construirContratoHtml(template, datos) {
@@ -2539,7 +2544,7 @@
           totales: ['', 'TOTAL', formatearMonto(totalTransferencias, datos.moneda), datos.moneda, '', ''],
         }
       );
-      const cuoteroGrid = construirCuoteroGrid(pagarés, datos.monedaPagares || datos.moneda);
+      const cuoteroTabla = construirCuoteroTabla(pagarés, datos.monedaPagares || datos.moneda);
 
       const montoNumero = formatearMonto(datos.monto, datos.moneda);
       const montoLetras = numeroALetras(datos.monto);
@@ -2550,14 +2555,34 @@
       const modalidadFinanciado = String(datos.modalidad || '').toUpperCase() === 'FINANCIADO';
 
       const inicialEfectivo = Number(datos.inicialEfectivo) || 0;
-      const inicialTexto = datos.pagoInicial
-        ? escapeHtml(datos.pagoInicial)
-        : (inicialEfectivo > 0
-            ? `${formatearMonto(inicialEfectivo, datos.moneda)} ${datos.moneda}`
-            : '—');
       const inicialEfectivoTexto = inicialEfectivo > 0
         ? `${formatearMonto(inicialEfectivo, datos.moneda)} ${datos.moneda}`
-        : '—';
+        : '';
+      const inicialTransferencia = datos.inicialTransferencia === true;
+      const inicialCheque = datos.inicialCheque === true;
+      const pagoInicialTexto = (datos.pagoInicial || '').trim();
+
+      // Bloque de pago inicial: solo muestra "Detalle:" si hay texto real
+      const partesInicial = [];
+      partesInicial.push(`${casilla(inicialEfectivo > 0)} Efectivo${inicialEfectivo > 0 ? ` (${inicialEfectivoTexto})` : ''}`);
+      partesInicial.push(`${casilla(inicialTransferencia)} Transferencia`);
+      partesInicial.push(`${casilla(inicialCheque)} Cheque`);
+      const bloqueInicial = `a) Pago inicial: ${partesInicial.join(' ')}${pagoInicialTexto ? `. Detalle: ${escapeHtml(pagoInicialTexto)}` : '.'}`;
+
+      // Bloques condicionales de transferencias y cheques
+      const bloqueTransferencias = transferencias.length
+        ? `b) DATOS DE TRANSFERENCIA BANCARIA:<br>${tablaTransferencias}`
+        : '';
+      const bloqueCheques = cheques.length
+        ? `c) DATOS DE CHEQUES:<br>${tablaCheques}`
+        : '';
+
+      // Línea de tipo de cambio: solo si hay tipo de cambio o moneda USD
+      const tipoCambioTexto = (datos.tipoCambio || '').trim();
+      const mostrarTipoCambio = tipoCambioTexto !== '' || (datos.monedaPagares || 'USD') === 'USD';
+      const bloqueTipoCambio = mostrarTipoCambio
+        ? `(Tipo de cambio aplicado a la operación: 1 USD = ${escapeHtml(tipoCambioTexto || '____')} Gs)`
+        : '';
 
       const usadoMontoUsd = Number(datos.usadoMontoUsd) || 0;
       const usadoLetras = datos.usadoMontoLetras || (usadoMontoUsd > 0 ? numeroALetras(usadoMontoUsd) + ' DÓLARES AMERICANOS' : '');
@@ -2593,8 +2618,8 @@
         '{{CASILLA_MONEDA_PAGARES_USD}}': casilla((datos.monedaPagares || 'USD') === 'USD'),
         '{{CASILLA_MONEDA_PAGARES_GS}}': casilla((datos.monedaPagares || 'USD') === 'GS'),
         '{{INICIAL_EFECTIVO}}': inicialEfectivoTexto,
-        '{{PAGO_INICIAL_TEXTO}': inicialTexto,
-        '{{PAGO_INICIAL_TEXTO}}': inicialTexto,
+        '{{PAGO_INICIAL_TEXTO}}': escapeHtml(pagoInicialTexto),
+        '{{BLOQUE_INICIAL}}': bloqueInicial,
         '{{USADO_MONTO_USD}}': usadoMontoUsd > 0 ? formatearMonto(usadoMontoUsd, 'USD') : '',
         '{{USADO_MONTO_LETRAS}}': escapeHtml(usadoLetras || ''),
         '{{USADO_FACTURA}}': escapeHtml(usadoFactura || ''),
@@ -2602,8 +2627,11 @@
         '{{DATOS_BANCO_CHEQUES}}': escapeHtml(datos.datosBanco || '').replace(/\n/g, '<br>'),
         '{{TABLA_CHEQUES}}': tablaCheques,
         '{{TABLA_TRANSFERENCIAS}}': tablaTransferencias,
-        '{{TABLA_PAGARES}}': cuoteroGrid,
-        '{{TIPO_CAMBIO}}': escapeHtml(datos.tipoCambio || '____'),
+        '{{BLOQUE_TRANSFERENCIAS}}': bloqueTransferencias,
+        '{{BLOQUE_CHEQUES}}': bloqueCheques,
+        '{{TABLA_PAGARES}}': cuoteroTabla,
+        '{{BLOQUE_TIPO_CAMBIO}}': bloqueTipoCambio,
+        '{{TIPO_CAMBIO}}': escapeHtml(tipoCambioTexto || '____'),
         '{{MONEDA_PAGARES}}': escapeHtml(datos.monedaPagares === 'USD' ? 'DÓLARES AMERICANOS' : 'GUARANÍES'),
         '{{CIUDAD_FIRMA}}': escapeHtml(datos.ciudad || ''),
         '{{FECHA_FIRMA_LARGA}}': escapeHtml(fechaLarga),
@@ -2885,12 +2913,13 @@
       const datos = leerDatosContrato();
       const html = construirContratoHtml(tpl, datos);
 
-      // Contenedor temporal con márgenes legales A4
+      // Contenedor temporal sin padding (los márgenes los aplica html2pdf)
       const wrapper = document.createElement('div');
-      wrapper.style.padding = '8mm 10mm';
+      wrapper.style.padding = '0';
+      wrapper.style.margin = '0';
       wrapper.style.background = '#fff';
-      wrapper.style.width = '185mm';
-      wrapper.style.maxWidth = '185mm';
+      wrapper.style.width = '180mm';
+      wrapper.style.maxWidth = '180mm';
       wrapper.style.boxSizing = 'border-box';
       wrapper.style.overflowWrap = 'break-word';
       wrapper.style.wordWrap = 'break-word';
@@ -2906,12 +2935,12 @@
       try {
         const nombreArchivo = `Contrato_${(datos.clienteNombre || 'Cliente').replace(/[^\w]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
         await html2pdf().set({
-          margin: [10, 10, 12, 10],
+          margin: [20, 20, 15, 10],
           filename: nombreArchivo,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, scrollX: 0, scrollY: 0, logging: false, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'], avoid: ['.clausula', '.doc-table', '.firmas', '.firma-bloque'] },
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['.clausula', '.clausula-item', '.doc-table', '.firmas', '.firma-bloque'] },
         }).from(wrapper).save();
       } catch (err) {
         console.error('Error generando PDF:', err);
