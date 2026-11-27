@@ -3006,6 +3006,30 @@ function buildPersonalCookieHeader(sapPersonal) {
   return parts.join('; ');
 }
 
+// Verifica si la sesión SAP personal corresponde a un usuario manager/superuser
+// (SUPERUSER = 'Y' en OUSR o USER_CODE = 'manager').
+async function esSapManager(sapPersonal) {
+  if (!sapPersonal || !sapPersonal.sapUser) return false;
+  const sapUser = String(sapPersonal.sapUser).trim();
+  if (!sapUser) return false;
+  if (sapUser.toLowerCase() === 'manager') return true;
+  try {
+    const rows = await hanaExec(
+      `SELECT COALESCE("SUPERUSER", 'N') AS "SUPERUSER" FROM "TRACTOAGRO".OUSR WHERE UPPER("USER_CODE") = UPPER(?)`,
+      [sapUser]
+    );
+    if (rows && rows.length) {
+      const su = rows[0].SUPERUSER !== undefined && rows[0].SUPERUSER !== null
+        ? String(rows[0].SUPERUSER).trim().toUpperCase()
+        : 'N';
+      return su === 'Y';
+    }
+  } catch (err) {
+    console.warn('No se pudo verificar SUPERUSER en OUSR:', err.message);
+  }
+  return false;
+}
+
 app.post('/api/sap-personal/login', requireAuth, async (req, res) => {
   const body = req.body || {};
   const sapUser = String(body.sapUser || '').trim();
@@ -3066,11 +3090,14 @@ app.post('/api/sap-personal/login', requireAuth, async (req, res) => {
       loginAt: new Date().toISOString(),
     };
 
+    const esManager = await esSapManager(req.session.sapPersonal);
+
     return res.json({
       ok: true,
       sapUser,
       userId,
       userName,
+      esManager,
     });
   } catch (err) {
     const status = err.response ? err.response.status : 500;
@@ -3085,6 +3112,20 @@ app.post('/api/sap-personal/login', requireAuth, async (req, res) => {
       .status(500)
       .json({ error: { message: 'Error al conectar con SAP Service Layer' } });
   }
+});
+
+app.get('/api/sap-personal/status', requireAuth, async (req, res) => {
+  const sapPersonal = req.session && req.session.sapPersonal;
+  if (!sapPersonal || !sapPersonal.b1session) {
+    return res.json({ conectado: false, esManager: false, sapUser: null });
+  }
+  const esManager = await esSapManager(sapPersonal);
+  return res.json({
+    conectado: true,
+    esManager,
+    sapUser: sapPersonal.sapUser || null,
+    userName: sapPersonal.userName || null,
+  });
 });
 
 app.post('/api/sap-personal/logout', requireAuth, (req, res) => {
@@ -3114,6 +3155,59 @@ function mapTipoDocumento(objType, isIns) {
   return 'Documento';
 }
 
+// Lista de aprobadores con circuitos pendientes (solo manager/superuser)
+app.get('/api/creditos/aprobadores-activos', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para consultar aprobadores' } });
+  }
+
+  const sapPersonal = req.session && req.session.sapPersonal;
+  if (!sapPersonal || !sapPersonal.b1session) {
+    return res.status(428).json({ requireSapLogin: true });
+  }
+
+  const esManager = await esSapManager(sapPersonal);
+  if (!esManager) {
+    return res
+      .status(403)
+      .json({ error: { message: 'Solo el usuario manager/superuser puede consultar aprobadores' } });
+  }
+
+  const sql = `SELECT
+      U."USER_CODE" AS "userCode",
+      COALESCE(U."U_NAME", U."USER_CODE") AS "userName",
+      COUNT(DISTINCT W."WddCode") AS "pendientes"
+    FROM "TRACTOAGRO".OUSR U
+    INNER JOIN "TRACTOAGRO".WDD1 D1 ON D1."UserID" = U."USERID"
+    INNER JOIN "TRACTOAGRO".OWDD W ON W."WddCode" = D1."WddCode"
+    INNER JOIN "TRACTOAGRO".ODRF D ON D."DocEntry" = W."DraftEntry"
+    WHERE W."Status" = 'W'
+      AND D1."Status" = 'W'
+      AND W."ObjType" IN ('23', '17', '13')
+      AND D."DocStatus" = 'O'
+      AND D."CANCELED" = 'N'
+    GROUP BY U."USER_CODE", U."U_NAME"
+    ORDER BY U."U_NAME" ASC`;
+
+  try {
+    const rows = await hanaExec(sql);
+    const data = (rows || []).map((r) => ({
+      userCode: r.userCode !== undefined && r.userCode !== null ? String(r.userCode) : '',
+      userName: r.userName !== undefined && r.userName !== null ? String(r.userName) : '',
+      pendientes: r.pendientes !== undefined && r.pendientes !== null ? Number(r.pendientes) : 0,
+    }));
+    return res.json({ data });
+  } catch (err) {
+    console.error('Error en /api/creditos/aprobadores-activos:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar aprobadores activos en HANA' } });
+  }
+});
+
 app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) => {
   const user = req.session && req.session.user;
   if (!esAnalistaCredito(user)) {
@@ -3125,6 +3219,37 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
   const sapPersonal = req.session && req.session.sapPersonal;
   if (!sapPersonal || !sapPersonal.b1session || !sapPersonal.userId) {
     return res.json({ requireSapLogin: true, data: [] });
+  }
+
+  // Modo supervisión: solo manager/superuser puede consultar otros aprobadores
+  const targetUserRaw = req.query && req.query.targetUser
+    ? String(req.query.targetUser).trim()
+    : '';
+  let targetUser = '';
+  if (targetUserRaw) {
+    const esManager = await esSapManager(sapPersonal);
+    if (!esManager) {
+      return res
+        .status(403)
+        .json({ error: { message: 'Solo el usuario manager/superuser puede consultar otros aprobadores' } });
+    }
+    targetUser = targetUserRaw;
+  }
+
+  // Filtro por aprobador:
+  //  - targetUser === 'ALL'  => todos los circuitos pendientes (sin filtro por aprobador)
+  //  - targetUser === 'CODE' => solo los circuitos donde ese USER_CODE está pendiente
+  //  - targetUser === ''     => comportamiento normal (usuario SAP conectado)
+  let filtroAprobador = '';
+  const params = [];
+  if (targetUser === 'ALL') {
+    filtroAprobador = '';
+  } else if (targetUser) {
+    filtroAprobador = `AND UPPER(U."USER_CODE") = UPPER(?)`;
+    params.push(targetUser);
+  } else {
+    filtroAprobador = `AND W1."UserID" = ?`;
+    params.push(sapPersonal.userId);
   }
 
   const sql = `SELECT DISTINCT
@@ -3154,8 +3279,8 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
     INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
     INNER JOIN "TRACTOAGRO".WDD1 W1
       ON W1."WddCode" = W."WddCode"
-      AND W1."UserID" = ?
       AND W1."Status" = 'W'
+    INNER JOIN "TRACTOAGRO".OUSR U ON U."USERID" = W1."UserID"
     INNER JOIN "TRACTOAGRO".ODRF D ON D."DocEntry" = W."DraftEntry"
     LEFT JOIN "TRACTOAGRO".OSLP S ON S."SlpCode" = D."SlpCode"
     LEFT JOIN "TRACTOAGRO".OCRD C ON C."CardCode" = D."CardCode"
@@ -3165,10 +3290,11 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       AND W."ObjType" IN ('23', '17', '13')
       AND D."DocStatus" = 'O'
       AND D."CANCELED" = 'N'
+      ${filtroAprobador}
     ORDER BY D."DocDate" DESC, D."DocNum" DESC`;
 
   try {
-    const rows = await hanaExec(sql, [sapPersonal.userId]);
+    const rows = await hanaExec(sql, params);
     const solicitudes = readSolicitudesCredito();
 
     // Segunda consulta: procesos paralelos por DraftEntry (todos los modelos)
@@ -3288,6 +3414,22 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         ? Number(r.WddCode)
         : null;
 
+      // ¿El usuario SAP conectado está pendiente de aprobar este WddCode?
+      // Se resuelve con el mapa de autorizadores paralelos (que incluye a
+      // todos los aprobadores del circuito, incluido el actual).
+      let puedeAprobar = false;
+      if (Number.isFinite(draftEntry) && paralelasPorDraft.has(draftEntry)) {
+        const porWdd = paralelasPorDraft.get(draftEntry);
+        const item = porWdd.get(wddCode);
+        if (item && Array.isArray(item.autorizadores)) {
+          const sapUserLower = String(sapPersonal.sapUser || '').toLowerCase();
+          puedeAprobar = item.autorizadores.some((a) => {
+            const nombre = String(a.nombre || '').toLowerCase();
+            return nombre === sapUserLower && String(a.estado || '').toUpperCase() === 'W';
+          });
+        }
+      }
+
       // Autorizaciones paralelas del mismo DraftEntry (excluyendo la actual)
       let autorizacionesParalelas = [];
       if (Number.isFinite(draftEntry) && paralelasPorDraft.has(draftEntry)) {
@@ -3333,6 +3475,7 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         solicitudId: sol ? sol.id : null,
         requisitos,
         autorizacionesParalelas,
+        puedeAprobar,
       };
     });
 

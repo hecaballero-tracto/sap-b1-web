@@ -525,10 +525,18 @@
         <div class="card shadow-sm mb-3">
           <div class="card-body">
             <div class="filtros-toolbar d-flex flex-wrap gap-2 align-items-center justify-content-between">
-              <div class="d-flex align-items-center gap-2">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="sapBadge" class="sap-badge disconnected">
                   <i class="bi bi-plug"></i><span id="sapBadgeText">SAP no conectado</span>
                 </span>
+                <div id="wrapTargetUser" class="d-none align-items-center gap-1">
+                  <label for="selectTargetUser" class="form-label small mb-0 text-muted">
+                    <i class="bi bi-person-badge me-1"></i>Analizar aprobador:
+                  </label>
+                  <select id="selectTargetUser" class="form-select form-select-sm" style="max-width: 260px;">
+                    <option value="ALL">Todos los circuitos pendientes</option>
+                  </select>
+                </div>
                 <button id="btnConectarSap" class="btn btn-primary btn-sm">
                   <i class="bi bi-key me-1"></i>Conectar Usuario SAP
                 </button>
@@ -1288,6 +1296,8 @@
     let currentUser = null;
     let aprobaciones = [];
     let sapConectado = false;
+    let sapEsManager = false;
+    let targetUserActual = '';
     let resolverState = null;
 
     const numberFmtPy = new Intl.NumberFormat('es-PY', {
@@ -1304,6 +1314,8 @@
     const sapBadgeText = document.getElementById('sapBadgeText');
     const btnConectarSap = document.getElementById('btnConectarSap');
     const btnDesconectarSap = document.getElementById('btnDesconectarSap');
+    const wrapTargetUser = document.getElementById('wrapTargetUser');
+    const selectTargetUser = document.getElementById('selectTargetUser');
     const filterTipoDoc = document.getElementById('filterTipoDoc');
     const filterProcesos = document.getElementById('filterProcesos');
     const filterTexto = document.getElementById('filterTexto');
@@ -1441,6 +1453,39 @@
         sapBadgeText.textContent = 'SAP no conectado';
         btnConectarSap.classList.remove('d-none');
         btnDesconectarSap.classList.add('d-none');
+      }
+      // Selector de aprobador (solo manager/superuser con SAP conectado)
+      if (wrapTargetUser) {
+        if (sapConectado && sapEsManager) {
+          wrapTargetUser.classList.remove('d-none');
+          wrapTargetUser.classList.add('d-flex');
+        } else {
+          wrapTargetUser.classList.add('d-none');
+          wrapTargetUser.classList.remove('d-flex');
+        }
+      }
+    }
+
+    async function cargarAprobadoresActivos() {
+      if (!selectTargetUser) return;
+      try {
+        const res = await apiFetch('/api/creditos/aprobadores-activos');
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.data) ? data.data : [];
+        const opts = ['<option value="ALL">Todos los circuitos pendientes</option>'];
+        for (const a of list) {
+          const label = `${a.userName || a.userCode} (${a.pendientes})`;
+          opts.push(
+            `<option value="${escapeHtml(a.userCode)}">${escapeHtml(label)}</option>`
+          );
+        }
+        selectTargetUser.innerHTML = opts.join('');
+        if (targetUserActual) {
+          selectTargetUser.value = targetUserActual;
+        }
+      } catch (_) {
+        /* silencioso */
       }
     }
 
@@ -1713,14 +1758,23 @@
                 </button>
               </td>
               <td class="text-center">
-                <div class="btn-group btn-group-sm mb-1">
-                  <button type="button" class="btn btn-success" data-aprobar="${a.WddCode}">
-                    <i class="bi bi-check2"></i> Aprobar
-                  </button>
-                  <button type="button" class="btn btn-danger" data-rechazar="${a.WddCode}">
-                    <i class="bi bi-x"></i> Rechazar
-                  </button>
-                </div>
+                ${a.puedeAprobar === false
+                  ? `<div class="btn-group btn-group-sm mb-1">
+                      <button type="button" class="btn btn-secondary opacity-50" disabled title="Modo lectura: el usuario conectado no es aprobador de este documento en SAP B1">
+                        <i class="bi bi-check2"></i> Aprobar
+                      </button>
+                      <button type="button" class="btn btn-secondary opacity-50" disabled title="Modo lectura: el usuario conectado no es aprobador de este documento en SAP B1">
+                        <i class="bi bi-x"></i> Rechazar
+                      </button>
+                    </div>`
+                  : `<div class="btn-group btn-group-sm mb-1">
+                      <button type="button" class="btn btn-success" data-aprobar="${a.WddCode}">
+                        <i class="bi bi-check2"></i> Aprobar
+                      </button>
+                      <button type="button" class="btn btn-danger" data-rechazar="${a.WddCode}">
+                        <i class="bi bi-x"></i> Rechazar
+                      </button>
+                    </div>`}
                 <div>
                   <button type="button" class="btn btn-outline-dark btn-row-action" data-contrato="${a.WddCode}">
                     <i class="bi bi-file-earmark-text me-1"></i>Contrato PDF
@@ -2064,7 +2118,10 @@
           Cargando aprobaciones...
         </td></tr>`;
       try {
-        const res = await apiFetch('/api/creditos/aprobaciones-pendientes');
+        const url = targetUserActual
+          ? `/api/creditos/aprobaciones-pendientes?targetUser=${encodeURIComponent(targetUserActual)}`
+          : '/api/creditos/aprobaciones-pendientes';
+        const res = await apiFetch(url);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           const msg = (data && data.error && data.error.message) || 'No se pudieron cargar las aprobaciones';
@@ -2118,10 +2175,14 @@
           return;
         }
         sapConectado = true;
+        sapEsManager = data.esManager === true;
         if (currentUser) currentUser.sapPersonalUser = data.sapUser;
         updateSapBadge();
         if (modalSapLogin) modalSapLogin.hide();
         sapPassInput.value = '';
+        if (sapEsManager) {
+          await cargarAprobadoresActivos();
+        }
         await cargarAprobaciones();
       } catch (err) {
         if (err && err.message === 'Sesión expirada') return;
@@ -2137,6 +2198,11 @@
         await apiFetch('/api/sap-personal/logout', { method: 'POST', credentials: 'same-origin' });
       } catch (_) { /* ignorar */ }
       sapConectado = false;
+      sapEsManager = false;
+      targetUserActual = '';
+      if (selectTargetUser) {
+        selectTargetUser.innerHTML = '<option value="ALL">Todos los circuitos pendientes</option>';
+      }
       if (currentUser) currentUser.sapPersonalUser = null;
       updateSapBadge();
       aprobaciones = [];
@@ -3376,6 +3442,19 @@
           }
           sapConectado = user.sapPersonalConectado === true;
           updateSapBadge();
+          if (sapConectado) {
+            try {
+              const resStatus = await apiFetch('/api/sap-personal/status');
+              if (resStatus.ok) {
+                const st = await resStatus.json().catch(() => ({}));
+                sapEsManager = st.esManager === true;
+                updateSapBadge();
+                if (sapEsManager) {
+                  await cargarAprobadoresActivos();
+                }
+              }
+            } catch (_) { /* silencioso */ }
+          }
         }
       } catch (_) {
         /* silencioso */
@@ -3419,6 +3498,12 @@
     btnDesconectarSap.addEventListener('click', desconectarSap);
     btnSapLoginSubmit.addEventListener('click', conectarSap);
     btnRefreshAprob.addEventListener('click', cargarAprobaciones);
+    if (selectTargetUser) {
+      selectTargetUser.addEventListener('change', () => {
+        targetUserActual = selectTargetUser.value || '';
+        cargarAprobaciones();
+      });
+    }
     filterTipoDoc.addEventListener('change', renderAprobaciones);
     if (filterProcesos) {
       filterProcesos.addEventListener('change', renderAprobaciones);
