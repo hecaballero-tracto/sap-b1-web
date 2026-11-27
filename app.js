@@ -3006,28 +3006,32 @@ function buildPersonalCookieHeader(sapPersonal) {
   return parts.join('; ');
 }
 
-// Verifica si la sesión SAP personal corresponde a un usuario manager/superuser
-// (SUPERUSER = 'Y' en OUSR o USER_CODE = 'manager').
+// Verifica si la sesión SAP personal corresponde a un usuario manager/superuser.
+// Regla: esManager = (USER_CODE === 'manager') OR (OUSR.SUPERUSER === 'Y').
+// Se consulta siempre HANA para combinar ambos criterios.
 async function esSapManager(sapPersonal) {
   if (!sapPersonal || !sapPersonal.sapUser) return false;
   const sapUser = String(sapPersonal.sapUser).trim();
   if (!sapUser) return false;
-  if (sapUser.toLowerCase() === 'manager') return true;
+
+  const esManagerPorNombre = sapUser.toLowerCase() === 'manager';
+
+  let superuser = 'N';
   try {
     const rows = await hanaExec(
       `SELECT COALESCE("SUPERUSER", 'N') AS "SUPERUSER" FROM "TRACTOAGRO".OUSR WHERE UPPER("USER_CODE") = UPPER(?)`,
       [sapUser]
     );
     if (rows && rows.length) {
-      const su = rows[0].SUPERUSER !== undefined && rows[0].SUPERUSER !== null
+      superuser = rows[0].SUPERUSER !== undefined && rows[0].SUPERUSER !== null
         ? String(rows[0].SUPERUSER).trim().toUpperCase()
         : 'N';
-      return su === 'Y';
     }
   } catch (err) {
     console.warn('No se pudo verificar SUPERUSER en OUSR:', err.message);
   }
-  return false;
+
+  return esManagerPorNombre || superuser === 'Y';
 }
 
 app.post('/api/sap-personal/login', requireAuth, async (req, res) => {
@@ -3320,6 +3324,7 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
           COALESCE(M."Name", '') AS "Modelo",
           W1."StepCode" AS "StepCode",
           W1."Status" AS "EstadoAutorizador",
+          W1."UserID" AS "UserId",
           COALESCE(U."U_NAME", U."USER_CODE", '') AS "Autorizador",
           COALESCE(W1."Remarks", '') AS "Comentario"
         FROM "TRACTOAGRO".OWDD W
@@ -3356,6 +3361,10 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
           }
           const item = porWdd.get(wdd);
           item.autorizadores.push({
+            userId:
+              p.UserId !== undefined && p.UserId !== null
+                ? Number(p.UserId)
+                : null,
             nombre:
               p.Autorizador !== undefined && p.Autorizador !== null
                 ? String(p.Autorizador)
@@ -3417,15 +3426,21 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       // ¿El usuario SAP conectado está pendiente de aprobar este WddCode?
       // Se resuelve con el mapa de autorizadores paralelos (que incluye a
       // todos los aprobadores del circuito, incluido el actual).
+      // Se compara por USERID (más confiable) con fallback por nombre.
       let puedeAprobar = false;
       if (Number.isFinite(draftEntry) && paralelasPorDraft.has(draftEntry)) {
         const porWdd = paralelasPorDraft.get(draftEntry);
         const item = porWdd.get(wddCode);
         if (item && Array.isArray(item.autorizadores)) {
           const sapUserLower = String(sapPersonal.sapUser || '').toLowerCase();
+          const sapUserId = Number(sapPersonal.userId);
           puedeAprobar = item.autorizadores.some((a) => {
+            if (String(a.estado || '').toUpperCase() !== 'W') return false;
+            if (Number.isFinite(sapUserId) && Number.isFinite(Number(a.userId))) {
+              return Number(a.userId) === sapUserId;
+            }
             const nombre = String(a.nombre || '').toLowerCase();
-            return nombre === sapUserLower && String(a.estado || '').toUpperCase() === 'W';
+            return nombre === sapUserLower;
           });
         }
       }

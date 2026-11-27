@@ -1442,9 +1442,12 @@
       if (sapConectado) {
         sapBadge.classList.remove('disconnected');
         sapBadge.classList.add('connected');
-        sapBadgeText.textContent = currentUser && currentUser.sapPersonalUser
-          ? `SAP: ${currentUser.sapPersonalUser}`
-          : 'SAP conectado';
+        const sapUserLabel = currentUser && currentUser.sapPersonalUser
+          ? currentUser.sapPersonalUser
+          : 'conectado';
+        sapBadgeText.textContent = sapEsManager
+          ? `SAP: ${sapUserLabel} (supervisión)`
+          : `SAP: ${sapUserLabel}`;
         btnConectarSap.classList.add('d-none');
         btnDesconectarSap.classList.remove('d-none');
       } else {
@@ -1463,6 +1466,25 @@
           wrapTargetUser.classList.add('d-none');
           wrapTargetUser.classList.remove('d-flex');
         }
+      }
+    }
+
+    // Modo Supervisión / Auditoría: solo visible para manager/superuser.
+    // Muestra un selector compacto para analizar los circuitos pendientes
+    // de cualquier aprobador (o todos) sin poder aprobar en su nombre.
+    function renderModoSupervision() {
+      if (!wrapTargetUser) return;
+      if (!(sapConectado && sapEsManager)) {
+        wrapTargetUser.classList.add('d-none');
+        wrapTargetUser.classList.remove('d-flex');
+        return;
+      }
+      wrapTargetUser.classList.remove('d-none');
+      wrapTargetUser.classList.add('d-flex');
+      // Asegurar que exista la opción "Todos" al menos
+      if (!selectTargetUser.querySelector('option[value="ALL"]')) {
+        selectTargetUser.innerHTML =
+          '<option value="ALL">Todos los circuitos pendientes</option>';
       }
     }
 
@@ -2178,6 +2200,7 @@
         sapEsManager = data.esManager === true;
         if (currentUser) currentUser.sapPersonalUser = data.sapUser;
         updateSapBadge();
+        renderModoSupervision();
         if (modalSapLogin) modalSapLogin.hide();
         sapPassInput.value = '';
         if (sapEsManager) {
@@ -2205,6 +2228,7 @@
       }
       if (currentUser) currentUser.sapPersonalUser = null;
       updateSapBadge();
+      renderModoSupervision();
       aprobaciones = [];
       actualizarContador(0, 0);
       aprobBody.innerHTML = `
@@ -3449,6 +3473,7 @@
                 const st = await resStatus.json().catch(() => ({}));
                 sapEsManager = st.esManager === true;
                 updateSapBadge();
+                renderModoSupervision();
                 if (sapEsManager) {
                   await cargarAprobadoresActivos();
                 }
