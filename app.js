@@ -3464,6 +3464,15 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       .json({ error: { message: 'No tiene permisos para aprobar solicitudes de crédito' } });
   }
 
+  // Delegación: ?estado=FINALIZADOS devuelve el historial de aprobaciones
+  // finalizadas (Aprobadas / Rechazadas) usando el mismo endpoint interno.
+  const estadoQuery = req.query && req.query.estado
+    ? String(req.query.estado).trim().toUpperCase()
+    : '';
+  if (estadoQuery === 'FINALIZADOS') {
+    return res.redirect(307, '/api/creditos/aprobaciones-finalizadas');
+  }
+
   const sapPersonal = req.session && req.session.sapPersonal;
   if (!sapPersonal || !sapPersonal.b1session || !sapPersonal.userId) {
     return res.json({ requireSapLogin: true, data: [] });

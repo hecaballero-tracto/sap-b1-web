@@ -144,13 +144,13 @@
     .tabla-aprobaciones .col-acciones { width: 10%; }
     .tabla-aprobaciones th,
     .tabla-aprobaciones td {
-      padding-left: 4px !important;
-      padding-right: 4px !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
     }
     .tabla-aprobaciones td.px-1,
     .tabla-aprobaciones th.px-1 {
-      padding-left: 4px !important;
-      padding-right: 4px !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
     }
     .prom-atraso {
       display: inline-block;
@@ -2476,7 +2476,7 @@
 
       if (esFinalizados) {
         try {
-          const res = await apiFetch('/api/creditos/aprobaciones-finalizadas');
+          const res = await apiFetch('/api/creditos/aprobaciones-pendientes?estado=FINALIZADOS');
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             const msg = (data && data.error && data.error.message) || 'No se pudieron cargar los finalizados';
