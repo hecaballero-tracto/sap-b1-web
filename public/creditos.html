@@ -110,7 +110,68 @@
       color: #3730a3;
       margin-bottom: 3px;
     }
-    .paralelos-cell { min-width: 220px; max-width: 320px; }
+    .paralelos-cell { min-width: 0; max-width: none; }
+    .paralelos-cell .paralelo-badge {
+      display: block;
+      width: 100%;
+      margin: 2px 0;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      font-size: 0.72rem;
+      line-height: 1.25;
+      text-align: left;
+    }
+    .tabla-aprobaciones {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .tabla-aprobaciones th,
+    .tabla-aprobaciones td {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      vertical-align: top;
+    }
+    .tabla-aprobaciones .col-tipo { width: 9%; }
+    .tabla-aprobaciones .col-docnum { width: 7%; }
+    .tabla-aprobaciones .col-fecha { width: 8%; }
+    .tabla-aprobaciones .col-cliente { width: 14%; }
+    .tabla-aprobaciones .col-vendedor { width: 11%; }
+    .tabla-aprobaciones .col-total { width: 10%; }
+    .tabla-aprobaciones .col-cond { width: 13%; }
+    .tabla-aprobaciones .col-paralelos { width: 15%; }
+    .tabla-aprobaciones .col-req { width: 5%; }
+    .tabla-aprobaciones .col-acciones { width: 8%; }
+    .proceso-badge {
+      display: block;
+      width: 100%;
+      margin: 2px 0;
+      padding: 3px 6px;
+      border-radius: 8px;
+      font-size: 0.72rem;
+      line-height: 1.25;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      text-align: left;
+      background: #e0e7ff;
+      color: #3730a3;
+      font-weight: 600;
+    }
+    .proceso-badge.pending { background: #fef3c7; color: #92400e; }
+    .proceso-badge.ok { background: #dcfce7; color: #166534; }
+    .proceso-badge.rejected { background: #fee2e2; color: #991b1b; }
+    .acciones-cell .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .acciones-cell .btn {
+      font-size: 0.72rem;
+      padding: 2px 4px;
+      white-space: normal;
+      word-break: break-word;
+    }
     .cond-cell { min-width: 200px; }
     .cond-line { font-size: 0.78rem; line-height: 1.3; }
     .cond-line .lbl { color: #6b7280; }
@@ -613,19 +674,19 @@
         <div class="card shadow-sm">
           <div class="card-body p-0">
             <div class="table-responsive" style="max-height: calc(100vh - 320px); overflow-y: auto;">
-              <table class="table table-sm table-hover mb-0">
+              <table class="table table-sm table-hover mb-0 tabla-aprobaciones">
                 <thead class="table-light">
                   <tr>
-                    <th>Tipo</th>
-                    <th>N° Doc</th>
-                    <th>Fecha</th>
-                    <th>Cliente</th>
-                    <th>Vendedor</th>
-                    <th class="text-end">Total</th>
-                    <th>Cond. Pago / Límite</th>
-                    <th>Procesos Paralelos</th>
-                    <th class="text-center">Requisitos</th>
-                    <th class="text-center">Acciones</th>
+                    <th class="col-tipo">Tipo</th>
+                    <th class="col-docnum">N° Doc</th>
+                    <th class="col-fecha">Fecha</th>
+                    <th class="col-cliente">Cliente</th>
+                    <th class="col-vendedor">Vendedor</th>
+                    <th class="col-total text-end">Total</th>
+                    <th class="col-cond">Cond. Pago / Límite</th>
+                    <th class="col-paralelos">Procesos Paralelos</th>
+                    <th class="col-req text-center">Requisitos</th>
+                    <th class="col-acciones text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="aprobBody">
@@ -1400,6 +1461,29 @@
         .replace(/'/g, '&#39;');
     }
 
+    // Devuelve "Primer Nombre + Primer Apellido".
+    // - Si recibe firstName/lastName (OHEM), toma la primera palabra de cada uno.
+    // - Si recibe un nombre completo en un solo string, toma la primera palabra
+    //   como nombre y la primera palabra del apellido (penúltima si hay 3+).
+    function formatNombreCorto(nombreCompleto, firstName, lastName) {
+      const firstWord = (s) => {
+        const t = String(s || '').trim();
+        if (!t) return '';
+        return t.split(/\s+/)[0];
+      };
+      const fn = firstWord(firstName);
+      const ln = firstWord(lastName);
+      if (fn || ln) {
+        return [fn, ln].filter(Boolean).join(' ').trim();
+      }
+      const full = String(nombreCompleto || '').trim();
+      if (!full) return '';
+      const parts = full.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0];
+      if (parts.length === 2) return `${parts[0]} ${parts[1]}`;
+      return `${parts[0]} ${parts[parts.length - 2]}`;
+    }
+
     function formatDate(value) {
       if (!value) return '';
       const m = /\/Date\((\d+)\)\//.exec(String(value));
@@ -1497,7 +1581,8 @@
         const list = Array.isArray(data.data) ? data.data : [];
         const opts = ['<option value="ALL">Todos los circuitos pendientes</option>'];
         for (const a of list) {
-          const label = `${a.userName || a.userCode} (${a.pendientes})`;
+          const nombreCorto = formatNombreCorto(a.userName || a.userCode);
+          const label = `${nombreCorto || a.userCode} (${a.pendientes})`;
           opts.push(
             `<option value="${escapeHtml(a.userCode)}">${escapeHtml(label)}</option>`
           );
@@ -1546,15 +1631,29 @@
       const paralelas = Array.isArray(a.autorizacionesParalelas)
         ? a.autorizacionesParalelas
         : [];
+      const procesos = Array.isArray(a.procesos) ? a.procesos : [];
       const parts = [];
-      if (modeloActual) {
+
+      // Procesos asignados al mismo borrador (agrupados por DraftEntry)
+      if (procesos.length) {
+        for (const p of procesos) {
+          const modelo = p.modelo ? String(p.modelo) : 'Proceso';
+          const puede = p.puedeAprobar === true;
+          const cls = puede ? 'pending' : 'ok';
+          const prefijo = puede ? 'Pendiente' : 'Asignado';
+          const texto = `${prefijo}: ${modelo}`;
+          parts.push(
+            `<span class="proceso-badge ${cls}" title="${escapeHtml(texto)}">${escapeHtml(texto)}</span>`
+          );
+        }
+      } else if (modeloActual) {
         parts.push(
-          `<div><span class="modelo-actual" title="Modelo de autorización actual"><i class="bi bi-person-badge me-1"></i>${escapeHtml(modeloActual)}</span></div>`
+          `<span class="proceso-badge" title="Modelo de autorización actual"><i class="bi bi-person-badge me-1"></i>${escapeHtml(modeloActual)}</span>`
         );
       }
-      if (!paralelas.length) {
-        parts.push('<span class="text-muted small">Sin otros procesos</span>');
-      } else {
+
+      // Otros circuitos paralelos del mismo borrador (informativo)
+      if (paralelas.length) {
         for (const p of paralelas) {
           const nombres = (p.autorizadores || [])
             .map((x) => x.nombre)
@@ -1577,7 +1676,11 @@
           );
         }
       }
-      return `<div class="paralelos-cell">${parts.join('')}</div>`;
+
+      if (!parts.length) {
+        parts.push('<span class="text-muted small">Sin procesos</span>');
+      }
+      return `<div class="paralelos-cell" style="white-space: normal; word-break: break-word; overflow-wrap: anywhere; font-size: 0.72rem; line-height: 1.25;">${parts.join('')}</div>`;
     }
 
     function cumpleFiltroProcesos(a, filtro) {
@@ -1756,6 +1859,32 @@
           const reqBadge = adjuntos === total
             ? `<span class="badge bg-success">${adjuntos}/${total}</span>`
             : `<span class="badge bg-warning text-dark">${adjuntos}/${total}</span>`;
+
+          // Procesos asignados al mismo borrador (agrupados por DraftEntry)
+          const procesos = Array.isArray(a.procesos) && a.procesos.length
+            ? a.procesos
+            : [{ wddCode: a.WddCode, modelo: a.ModeloActual || '', puedeAprobar: a.puedeAprobar === true }];
+
+          const accionesHtml = procesos
+            .map((p) => {
+              const wdd = p.wddCode;
+              const modelo = p.modelo ? escapeHtml(p.modelo) : `Wdd ${wdd}`;
+              if (p.puedeAprobar !== true) {
+                return `<div class="small text-muted" title="Modo lectura: no es aprobador de este circuito">
+                  <i class="bi bi-lock me-1"></i>${modelo}
+                </div>`;
+              }
+              return `<div class="btn-group btn-group-sm mb-1" role="group" aria-label="${modelo}">
+                <button type="button" class="btn btn-success" data-aprobar="${wdd}" title="Aprobar ${modelo}">
+                  <i class="bi bi-check2"></i> ${modelo}
+                </button>
+                <button type="button" class="btn btn-danger" data-rechazar="${wdd}" title="Rechazar ${modelo}">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>`;
+            })
+            .join('');
+
           return `
             <tr>
               <td><span class="badge badge-tipo ${tipoBadgeClass(a.TipoDocumento)}">${escapeHtml(a.TipoDocumento)}</span></td>
@@ -1779,24 +1908,8 @@
                   ${reqBadge}
                 </button>
               </td>
-              <td class="text-center">
-                ${a.puedeAprobar === false
-                  ? `<div class="btn-group btn-group-sm mb-1">
-                      <button type="button" class="btn btn-secondary opacity-50" disabled title="Modo lectura: el usuario conectado no es aprobador de este documento en SAP B1">
-                        <i class="bi bi-check2"></i> Aprobar
-                      </button>
-                      <button type="button" class="btn btn-secondary opacity-50" disabled title="Modo lectura: el usuario conectado no es aprobador de este documento en SAP B1">
-                        <i class="bi bi-x"></i> Rechazar
-                      </button>
-                    </div>`
-                  : `<div class="btn-group btn-group-sm mb-1">
-                      <button type="button" class="btn btn-success" data-aprobar="${a.WddCode}">
-                        <i class="bi bi-check2"></i> Aprobar
-                      </button>
-                      <button type="button" class="btn btn-danger" data-rechazar="${a.WddCode}">
-                        <i class="bi bi-x"></i> Rechazar
-                      </button>
-                    </div>`}
+              <td class="text-center acciones-cell">
+                ${accionesHtml}
                 <div>
                   <button type="button" class="btn btn-outline-dark btn-row-action" data-contrato="${a.WddCode}">
                     <i class="bi bi-file-earmark-text me-1"></i>Contrato PDF
@@ -1810,7 +1923,9 @@
       aprobBody.querySelectorAll('button[data-ver-req]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const wdd = parseInt(btn.getAttribute('data-ver-req'), 10);
-          const a = aprobaciones.find((x) => x.WddCode === wdd);
+          const a = aprobaciones.find(
+            (x) => x.WddCode === wdd || (Array.isArray(x.wddCodes) && x.wddCodes.includes(wdd))
+          );
           if (a) abrirRequisitos(a);
         });
       });
@@ -1843,7 +1958,9 @@
       aprobBody.querySelectorAll('button[data-contrato]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const wdd = parseInt(btn.getAttribute('data-contrato'), 10);
-          const a = aprobaciones.find((x) => x.WddCode === wdd);
+          const a = aprobaciones.find(
+            (x) => x.WddCode === wdd || (Array.isArray(x.wddCodes) && x.wddCodes.includes(wdd))
+          );
           if (a) abrirContrato(a);
         });
       });
@@ -2120,14 +2237,20 @@
         modalSapLogin.show();
         return;
       }
-      const a = aprobaciones.find((x) => x.WddCode === wddCode);
+      const a = aprobaciones.find(
+        (x) => x.WddCode === wddCode || (Array.isArray(x.wddCodes) && x.wddCodes.includes(wddCode))
+      );
       if (!a) return;
+      const proceso = Array.isArray(a.procesos)
+        ? a.procesos.find((p) => p.wddCode === wddCode)
+        : null;
+      const modeloLabel = proceso && proceso.modelo ? ` — ${proceso.modelo}` : '';
       resolverState = { wddCode, accion };
       modalResolverTitle.textContent = accion === 'APROBAR' ? 'Aprobar solicitud' : 'Rechazar solicitud';
       modalResolverHeader.className = 'modal-header ' + (accion === 'APROBAR' ? 'bg-success-subtle' : 'bg-danger-subtle');
       modalResolverConfirm.className = 'btn btn-sm fw-bold ' + (accion === 'APROBAR' ? 'btn-success' : 'btn-danger');
       modalResolverConfirm.textContent = accion === 'APROBAR' ? 'Aprobar' : 'Rechazar';
-      modalResolverInfo.innerHTML = `<strong>${escapeHtml(a.TipoDocumento)}</strong> N° ${escapeHtml(String(a.DocNum || ''))} — ${escapeHtml(a.CardName || '')}`;
+      modalResolverInfo.innerHTML = `<strong>${escapeHtml(a.TipoDocumento)}</strong> N° ${escapeHtml(String(a.DocNum || ''))} — ${escapeHtml(a.CardName || '')}${escapeHtml(modeloLabel)}`;
       modalResolverComentario.value = '';
       modalResolver.show();
     }

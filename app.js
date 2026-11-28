@@ -80,6 +80,34 @@ const REQUISITOS_AGRICULTURA = [
   'Solicitud de Crédito Firmada y Completa',
 ];
 
+// Devuelve "Primer Nombre + Primer Apellido" a partir de:
+//  - firstName/lastName (OHEM): toma la primera palabra de cada uno.
+//  - nombre completo en un solo string (U_NAME, SlpName, etc.): toma la
+//    primera palabra como nombre y la primera palabra del apellido.
+//    Para 2 palabras => "Nombre Apellido".
+//    Para 3+ palabras => "Nombre <penúltima>" (asume último = 2do apellido).
+function formatNombreCorto(nombreCompleto, firstName, lastName) {
+  const firstWord = (s) => {
+    const t = String(s || '').trim();
+    if (!t) return '';
+    return t.split(/\s+/)[0];
+  };
+
+  const fn = firstWord(firstName);
+  const ln = firstWord(lastName);
+  if (fn || ln) {
+    return [fn, ln].filter(Boolean).join(' ').trim();
+  }
+
+  const full = String(nombreCompleto || '').trim();
+  if (!full) return '';
+  const parts = full.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} ${parts[1]}`;
+  // 3+ palabras: nombre + penúltima (primer apellido)
+  return `${parts[0]} ${parts[parts.length - 2]}`;
+}
+
 // Verifica si el usuario pertenece al grupo de Analistas de Crédito (o TI)
 function esAnalistaCredito(user) {
   if (!user) return false;
@@ -145,9 +173,10 @@ async function obtenerDatosVendedor(identificadorUsuario) {
     const rows = await hanaExec(sql, [raw, prefix, raw]);
     if (!rows || !rows.length) return getDefaultVendedor();
     const r = rows[0];
+    const slpNameRaw = r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '';
     return {
       slpCode: r.slpCode !== undefined && r.slpCode !== null ? Number(r.slpCode) : null,
-      slpName: r.slpName !== undefined && r.slpName !== null ? String(r.slpName) : '',
+      slpName: formatNombreCorto(slpNameRaw) || slpNameRaw,
       empId: r.empId !== undefined && r.empId !== null ? Number(r.empId) : null,
       sucursalDefault: '01',
       slpAsignadoManual: false,
@@ -3198,11 +3227,14 @@ app.get('/api/creditos/aprobadores-activos', requireAuth, async (req, res) => {
 
   try {
     const rows = await hanaExec(sql);
-    const data = (rows || []).map((r) => ({
-      userCode: r.userCode !== undefined && r.userCode !== null ? String(r.userCode) : '',
-      userName: r.userName !== undefined && r.userName !== null ? String(r.userName) : '',
-      pendientes: r.pendientes !== undefined && r.pendientes !== null ? Number(r.pendientes) : 0,
-    }));
+    const data = (rows || []).map((r) => {
+      const userNameRaw = r.userName !== undefined && r.userName !== null ? String(r.userName) : '';
+      return {
+        userCode: r.userCode !== undefined && r.userCode !== null ? String(r.userCode) : '',
+        userName: formatNombreCorto(userNameRaw) || userNameRaw,
+        pendientes: r.pendientes !== undefined && r.pendientes !== null ? Number(r.pendientes) : 0,
+      };
+    });
     return res.json({ data });
   } catch (err) {
     console.error('Error en /api/creditos/aprobadores-activos:', err.message);
@@ -3360,15 +3392,16 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
             });
           }
           const item = porWdd.get(wdd);
+          const autorizadorRaw =
+            p.Autorizador !== undefined && p.Autorizador !== null
+              ? String(p.Autorizador)
+              : '';
           item.autorizadores.push({
             userId:
               p.UserId !== undefined && p.UserId !== null
                 ? Number(p.UserId)
                 : null,
-            nombre:
-              p.Autorizador !== undefined && p.Autorizador !== null
-                ? String(p.Autorizador)
-                : '',
+            nombre: formatNombreCorto(autorizadorRaw) || autorizadorRaw,
             estado:
               p.EstadoAutorizador !== undefined && p.EstadoAutorizador !== null
                 ? String(p.EstadoAutorizador)
@@ -3454,6 +3487,9 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         );
       }
 
+      const vendedorRaw =
+        r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '';
+
       return {
         WddCode: wddCode,
         DraftEntry: draftEntry,
@@ -3465,7 +3501,7 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
         DocTotal: r.DocTotal !== undefined && r.DocTotal !== null ? Number(r.DocTotal) : 0,
         DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
-        Vendedor: r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '',
+        Vendedor: formatNombreCorto(vendedorRaw) || vendedorRaw,
         Remarks: r.Remarks !== undefined && r.Remarks !== null ? String(r.Remarks) : '',
         ModeloActual:
           r.ModeloActual !== undefined && r.ModeloActual !== null
@@ -3494,7 +3530,36 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
       };
     });
 
-    return res.json({ requireSapLogin: false, data });
+    // Agrupar por DraftEntry: si un mismo borrador tiene varios WddCode
+    // pendientes (ej. 101_VentasCreditoOV y 102_CambioCond_OV), se devuelve
+    // una sola fila con todos los circuitos asignados en "procesos".
+    const gruposPorDraft = new Map();
+    for (const item of data) {
+      const key = Number.isFinite(item.DraftEntry) && item.DraftEntry > 0
+        ? `D:${item.DraftEntry}`
+        : `W:${item.WddCode}`;
+      if (!gruposPorDraft.has(key)) {
+        gruposPorDraft.set(key, {
+          ...item,
+          procesos: [],
+          wddCodes: [],
+        });
+      }
+      const grupo = gruposPorDraft.get(key);
+      grupo.procesos.push({
+        wddCode: item.WddCode,
+        modelo: item.ModeloActual || '',
+        puedeAprobar: item.puedeAprobar === true,
+        remarks: item.Remarks || '',
+      });
+      grupo.wddCodes.push(item.WddCode);
+      // Si al menos un circuito es aprobable por el usuario, la fila lo es
+      if (item.puedeAprobar === true) grupo.puedeAprobar = true;
+    }
+
+    const dataAgrupada = Array.from(gruposPorDraft.values());
+
+    return res.json({ requireSapLogin: false, data: dataAgrupada });
   } catch (err) {
     console.error('Error en /api/creditos/aprobaciones-pendientes:', err.message);
     return res
