@@ -132,16 +132,56 @@
       word-break: break-word;
       vertical-align: top;
     }
-    .tabla-aprobaciones .col-tipo { width: 9%; }
-    .tabla-aprobaciones .col-docnum { width: 7%; }
-    .tabla-aprobaciones .col-fecha { width: 8%; }
-    .tabla-aprobaciones .col-cliente { width: 14%; }
+    .tabla-aprobaciones .col-tipo { width: 7%; }
+    .tabla-aprobaciones .col-docnum { width: 6%; }
+    .tabla-aprobaciones .col-fecha { width: 7%; }
+    .tabla-aprobaciones .col-cliente { width: 15%; }
     .tabla-aprobaciones .col-vendedor { width: 11%; }
     .tabla-aprobaciones .col-total { width: 10%; }
-    .tabla-aprobaciones .col-cond { width: 13%; }
-    .tabla-aprobaciones .col-paralelos { width: 15%; }
+    .tabla-aprobaciones .col-cond { width: 18%; }
+    .tabla-aprobaciones .col-paralelos { width: 21%; }
     .tabla-aprobaciones .col-req { width: 5%; }
-    .tabla-aprobaciones .col-acciones { width: 8%; }
+    .tabla-aprobaciones .col-acciones { width: 10%; }
+    .tabla-aprobaciones th,
+    .tabla-aprobaciones td {
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+    }
+    .tabla-aprobaciones td.px-1,
+    .tabla-aprobaciones th.px-1 {
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+    }
+    .prom-atraso {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-top: 2px;
+    }
+    .prom-atraso.ok { background: #dcfce7; color: #166534; }
+    .prom-atraso.warn { background: #fef3c7; color: #92400e; }
+    .prom-atraso.danger { background: #fee2e2; color: #991b1b; }
+    .finalizado-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin: 1px 2px 1px 0;
+    }
+    .finalizado-badge.aprobado { background: #dcfce7; color: #166534; }
+    .finalizado-badge.rechazado { background: #fee2e2; color: #991b1b; }
+    .duracion-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
     .proceso-badge {
       display: block;
       width: 100%;
@@ -643,6 +683,7 @@
                   <option value="">Todos los procesos</option>
                   <option value="listos">Listos (otras aprobaciones OK)</option>
                   <option value="esperando">Esperando otras aprobaciones</option>
+                  <option value="FINALIZADOS">Finalizados (Aprobados / Rechazados)</option>
                 </select>
               </div>
               <div class="col-12 col-md-4 col-lg-2">
@@ -675,18 +716,18 @@
           <div class="card-body p-0">
             <div class="table-responsive" style="max-height: calc(100vh - 320px); overflow-y: auto;">
               <table class="table table-sm table-hover mb-0 tabla-aprobaciones">
-                <thead class="table-light">
+                <thead class="table-light" id="aprobThead">
                   <tr>
-                    <th class="col-tipo">Tipo</th>
-                    <th class="col-docnum">N° Doc</th>
-                    <th class="col-fecha">Fecha</th>
-                    <th class="col-cliente">Cliente</th>
-                    <th class="col-vendedor">Vendedor</th>
-                    <th class="col-total text-end">Total</th>
-                    <th class="col-cond">Cond. Pago / Límite</th>
-                    <th class="col-paralelos">Procesos Paralelos</th>
-                    <th class="col-req text-center">Requisitos</th>
-                    <th class="col-acciones text-center">Acciones</th>
+                    <th class="col-tipo px-1">Tipo</th>
+                    <th class="col-docnum px-1">N° Doc</th>
+                    <th class="col-fecha px-1">Fecha</th>
+                    <th class="col-cliente px-1">Cliente</th>
+                    <th class="col-vendedor px-1">Vendedor</th>
+                    <th class="col-total text-end px-1">Total</th>
+                    <th class="col-cond px-1">Cond. Pago / Límite</th>
+                    <th class="col-paralelos px-1">Procesos Paralelos</th>
+                    <th class="col-req text-center px-1">Requisitos</th>
+                    <th class="col-acciones text-center px-1">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="aprobBody">
@@ -1604,6 +1645,10 @@
       const saldo = Number(a.SaldoActual) || 0;
       const disponible = limite - saldo;
       const dispClass = disponible < 0 ? 'text-danger' : 'text-success';
+      const prom = Number(a.promDiasAtraso) || 0;
+      let promCls = 'ok';
+      if (prom > 30) promCls = 'danger';
+      else if (prom > 5) promCls = 'warn';
       return `
         <div class="cond-cell">
           <div class="cond-line">
@@ -1619,6 +1664,9 @@
           <div class="cond-line">
             <span class="lbl">Saldo:</span> <span class="val">${formatMoney(saldo, 'GS')}</span>
             <span class="${dispClass} small ms-1">(Disp: ${formatMoney(disponible, 'GS')})</span>
+          </div>
+          <div class="cond-line">
+            <span class="prom-atraso ${promCls}" title="Promedio de días de atraso del cliente">Prom. atraso: ${prom} día${prom === 1 ? '' : 's'}</span>
           </div>
           <button type="button" class="btn btn-outline-primary btn-row-action mt-1" data-historial="${escapeHtml(a.CardCode || '')}" data-hist-nombre="${escapeHtml(a.CardName || '')}">
             <i class="bi bi-clock-history me-1"></i>Historial SAP
@@ -1655,25 +1703,37 @@
       // Otros circuitos paralelos del mismo borrador (informativo)
       if (paralelas.length) {
         for (const p of paralelas) {
-          const nombres = (p.autorizadores || [])
-            .map((x) => x.nombre)
-            .filter((n) => n)
-            .join(', ');
           const estado = String(p.estadoGeneral || '').toUpperCase();
-          let cls = 'pending';
-          let prefijo = 'Pendiente';
-          if (estado === 'Y') {
-            cls = 'ok';
-            prefijo = 'Aprobado';
-          } else if (estado === 'N') {
-            cls = 'rejected';
-            prefijo = 'Rechazado';
-          }
+          const autorizadores = Array.isArray(p.autorizadores) ? p.autorizadores : [];
           const modelo = p.modelo ? `${p.modelo}: ` : '';
-          const texto = `${prefijo}: ${modelo}${nombres || '—'}`;
-          parts.push(
-            `<span class="paralelo-badge ${cls}" title="${escapeHtml(texto)}">${escapeHtml(texto)}</span>`
-          );
+
+          if (estado === 'Y' || estado === 'N') {
+            // Proceso finalizado: mostrar SOLO al usuario que resolvió
+            const resolutor = autorizadores.find(
+              (x) => String(x.estado || '').toUpperCase() === 'Y' || String(x.estado || '').toUpperCase() === 'N'
+            );
+            const nombre = resolutor ? resolutor.nombre : '';
+            const fecha = resolutor ? resolutor.fechaResolucion : '';
+            const hora = resolutor ? resolutor.horaResolucion : '';
+            const fechaHora = [fecha, hora].filter(Boolean).join(' ');
+            const prefijo = estado === 'Y' ? 'Aprobado' : 'Rechazado';
+            const cls = estado === 'Y' ? 'ok' : 'rejected';
+            const texto = `${prefijo}: ${modelo}${nombre || '—'}${fechaHora ? ` (${fechaHora})` : ''}`;
+            parts.push(
+              `<span class="paralelo-badge ${cls}" title="${escapeHtml(texto)}">${escapeHtml(texto)}</span>`
+            );
+          } else {
+            // Proceso pendiente: mostrar posibles aprobadores pendientes
+            const nombres = autorizadores
+              .filter((x) => String(x.estado || '').toUpperCase() === 'W')
+              .map((x) => x.nombre)
+              .filter((n) => n)
+              .join(', ');
+            const texto = `Pendiente: ${modelo}${nombres || '—'}`;
+            parts.push(
+              `<span class="paralelo-badge pending" title="${escapeHtml(texto)}">${escapeHtml(texto)}</span>`
+            );
+          }
         }
       }
 
@@ -1826,12 +1886,160 @@
       }
     }
 
+    // Cambia dinámicamente el encabezado de la tabla según el modo
+    function renderTheadAprobaciones(modo) {
+      const thead = document.getElementById('aprobThead');
+      if (!thead) return;
+      if (modo === 'FINALIZADOS') {
+        thead.innerHTML = `
+          <tr>
+            <th class="col-tipo px-1">Tipo</th>
+            <th class="col-docnum px-1">N° Doc</th>
+            <th class="col-fecha px-1">Creación Borrador</th>
+            <th class="col-cliente px-1">Cliente</th>
+            <th class="col-vendedor px-1">Vendedor</th>
+            <th class="col-total text-end px-1">Total</th>
+            <th class="col-paralelos px-1">Modelos y Quién Resolvió</th>
+            <th class="col-cond px-1">Tiempo Transcurrido</th>
+            <th class="col-acciones text-center px-1" colspan="2">Acciones</th>
+          </tr>`;
+      } else {
+        thead.innerHTML = `
+          <tr>
+            <th class="col-tipo px-1">Tipo</th>
+            <th class="col-docnum px-1">N° Doc</th>
+            <th class="col-fecha px-1">Fecha</th>
+            <th class="col-cliente px-1">Cliente</th>
+            <th class="col-vendedor px-1">Vendedor</th>
+            <th class="col-total text-end px-1">Total</th>
+            <th class="col-cond px-1">Cond. Pago / Límite</th>
+            <th class="col-paralelos px-1">Procesos Paralelos</th>
+            <th class="col-req text-center px-1">Requisitos</th>
+            <th class="col-acciones text-center px-1">Acciones</th>
+          </tr>`;
+      }
+    }
+
+    function renderFinalizados() {
+      const tipo = filterTipoDoc.value;
+      const texto = filterTexto ? filterTexto.value.trim() : '';
+      const periodo = filterPeriodo ? filterPeriodo.value : '';
+      const rango = rangoPeriodo(periodo);
+
+      const list = aprobaciones
+        .filter(
+          (a) =>
+            (!tipo || a.TipoDocumento === tipo) &&
+            cumpleFiltroTexto(a, texto) &&
+            cumpleFiltroFecha(a, rango)
+        )
+        .sort(compararPorFechaDesc);
+
+      actualizarContador(list.length, aprobaciones.length);
+
+      if (!list.length) {
+        aprobBody.innerHTML = `
+          <tr><td colspan="10" class="text-center py-4 text-muted">
+            <i class="bi bi-inbox me-1"></i>No hay aprobaciones finalizadas.
+          </td></tr>`;
+        return;
+      }
+
+      aprobBody.innerHTML = list
+        .map((a) => {
+          const estadoFinal = String(a.estadoFinal || '').toUpperCase();
+          const cls = estadoFinal === 'APROBADO' ? 'aprobado' : 'rechazado';
+          const label = estadoFinal === 'APROBADO' ? 'Aprobado' : 'Rechazado';
+          const fechaHoraRes = [a.resolutorFecha, a.resolutorHora].filter(Boolean).join(' ');
+          const fechaHoraCre = [a.fechaCreacion, a.horaCreacion].filter(Boolean).join(' ');
+          const procesos = Array.isArray(a.procesos) ? a.procesos : [];
+          const modelosHtml = procesos
+            .map((p) => {
+              const modelo = p.modelo ? escapeHtml(p.modelo) : `Wdd ${p.wddCode}`;
+              const est = String(p.estadoAutorizador || '').toUpperCase();
+              const estCls = est === 'Y' ? 'ok' : (est === 'N' ? 'rejected' : 'pending');
+              const estLabel = est === 'Y' ? 'Aprobado' : (est === 'N' ? 'Rechazado' : 'Pendiente');
+              const fh = [p.fechaResolucion, p.horaResolucion].filter(Boolean).join(' ');
+              return `<span class="paralelo-badge ${estCls}" title="${escapeHtml(modelo + ' — ' + estLabel + (fh ? ' (' + fh + ')' : ''))}">${escapeHtml(modelo)} — ${estLabel}${fh ? ` (${escapeHtml(fh)})` : ''}</span>`;
+            })
+            .join('');
+
+          return `
+            <tr>
+              <td class="px-1"><span class="badge badge-tipo ${tipoBadgeClass(a.TipoDocumento)}">${escapeHtml(a.TipoDocumento)}</span></td>
+              <td class="px-1"><strong>${escapeHtml(String(a.DocNum || ''))}</strong></td>
+              <td class="px-1">
+                <div>${escapeHtml(a.fechaCreacion || '—')}</div>
+                <div class="small text-muted">${escapeHtml(a.horaCreacion || '')}</div>
+              </td>
+              <td class="px-1">
+                <div class="fw-semibold">${escapeHtml(a.CardCode || '')}</div>
+                <div class="small text-muted">${escapeHtml(a.CardName || '')}</div>
+              </td>
+              <td class="px-1">${escapeHtml(a.Vendedor || '')}</td>
+              <td class="px-1 text-end">${formatMoney(a.DocTotal, a.DocCur)}</td>
+              <td class="px-1">
+                <div class="mb-1">
+                  <span class="finalizado-badge ${cls}">${label}: ${escapeHtml(a.resolutorNombre || '—')}${fechaHoraRes ? ` (${escapeHtml(fechaHoraRes)})` : ''}</span>
+                </div>
+                <div>${modelosHtml || '<span class="text-muted small">Sin procesos</span>'}</div>
+              </td>
+              <td class="px-1">
+                <span class="duracion-badge" title="Desde la creación del borrador hasta la resolución">${escapeHtml(a.duracionTexto || '—')}</span>
+              </td>
+              <td class="px-1 text-center" colspan="2">
+                <div class="d-flex flex-column gap-1">
+                  <button type="button" class="btn btn-outline-primary btn-row-action" data-ver-items="${a.DraftEntry}">
+                    <i class="bi bi-list-ul me-1"></i>Ver Ítems
+                  </button>
+                  <button type="button" class="btn btn-outline-primary btn-row-action" data-historial="${escapeHtml(a.CardCode || '')}" data-hist-nombre="${escapeHtml(a.CardName || '')}">
+                    <i class="bi bi-clock-history me-1"></i>Historial SAP
+                  </button>
+                  <button type="button" class="btn btn-outline-dark btn-row-action" data-contrato="${a.DraftEntry}">
+                    <i class="bi bi-file-earmark-text me-1"></i>Contrato PDF
+                  </button>
+                </div>
+              </td>
+            </tr>`;
+        })
+        .join('');
+
+      aprobBody.querySelectorAll('button[data-historial]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cardCode = btn.getAttribute('data-historial');
+          const nombre = btn.getAttribute('data-hist-nombre');
+          abrirHistorial(cardCode, nombre);
+        });
+      });
+      aprobBody.querySelectorAll('button[data-ver-items]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const draftEntry = parseInt(btn.getAttribute('data-ver-items'), 10);
+          const a = aprobaciones.find((x) => x.DraftEntry === draftEntry);
+          abrirDetalleDocumento(draftEntry, a);
+        });
+      });
+      aprobBody.querySelectorAll('button[data-contrato]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const draftEntry = parseInt(btn.getAttribute('data-contrato'), 10);
+          const a = aprobaciones.find((x) => x.DraftEntry === draftEntry);
+          if (a) abrirContrato(a);
+        });
+      });
+    }
+
     function renderAprobaciones() {
       const tipo = filterTipoDoc.value;
       const filtroProc = filterProcesos ? filterProcesos.value : '';
       const texto = filterTexto ? filterTexto.value.trim() : '';
       const periodo = filterPeriodo ? filterPeriodo.value : '';
       const rango = rangoPeriodo(periodo);
+
+      if (filtroProc === 'FINALIZADOS') {
+        renderTheadAprobaciones('FINALIZADOS');
+        renderFinalizados();
+        return;
+      }
+      renderTheadAprobaciones('PENDIENTES');
 
       const list = aprobaciones
         .filter(
@@ -2257,11 +2465,35 @@
 
     async function cargarAprobaciones() {
       alertAprob.innerHTML = '';
+      const filtroProc = filterProcesos ? filterProcesos.value : '';
+      const esFinalizados = filtroProc === 'FINALIZADOS';
+
       aprobBody.innerHTML = `
         <tr><td colspan="10" class="text-center py-4 text-muted">
           <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-          Cargando aprobaciones...
+          Cargando ${esFinalizados ? 'finalizados' : 'aprobaciones'}...
         </td></tr>`;
+
+      if (esFinalizados) {
+        try {
+          const res = await apiFetch('/api/creditos/aprobaciones-finalizadas');
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg = (data && data.error && data.error.message) || 'No se pudieron cargar los finalizados';
+            alertAprob.innerHTML = `<div class="alert alert-danger">${escapeHtml(msg)}</div>`;
+            aprobBody.innerHTML = '';
+            return;
+          }
+          aprobaciones = Array.isArray(data.data) ? data.data : [];
+          renderAprobaciones();
+        } catch (err) {
+          if (err && err.message === 'Sesión expirada') return;
+          alertAprob.innerHTML = `<div class="alert alert-danger">Error de conexión al cargar finalizados.</div>`;
+          aprobBody.innerHTML = '';
+        }
+        return;
+      }
+
       try {
         const url = targetUserActual
           ? `/api/creditos/aprobaciones-pendientes?targetUser=${encodeURIComponent(targetUserActual)}`
@@ -3654,7 +3886,14 @@
     }
     filterTipoDoc.addEventListener('change', renderAprobaciones);
     if (filterProcesos) {
-      filterProcesos.addEventListener('change', renderAprobaciones);
+      filterProcesos.addEventListener('change', () => {
+        const val = filterProcesos.value;
+        if (val === 'FINALIZADOS') {
+          cargarAprobaciones();
+        } else {
+          renderAprobaciones();
+        }
+      });
     }
     if (filterTexto) {
       filterTexto.addEventListener('input', renderAprobaciones);
@@ -3675,6 +3914,7 @@
     }
     if (btnLimpiarFiltros) {
       btnLimpiarFiltros.addEventListener('click', () => {
+        const eraFinalizados = filterProcesos && filterProcesos.value === 'FINALIZADOS';
         if (filterTexto) filterTexto.value = '';
         if (filterTipoDoc) filterTipoDoc.value = '';
         if (filterProcesos) filterProcesos.value = '';
@@ -3683,7 +3923,11 @@
         if (filterFechaHasta) filterFechaHasta.value = '';
         if (wrapFechaDesde) wrapFechaDesde.classList.add('d-none');
         if (wrapFechaHasta) wrapFechaHasta.classList.add('d-none');
-        renderAprobaciones();
+        if (eraFinalizados) {
+          cargarAprobaciones();
+        } else {
+          renderAprobaciones();
+        }
       });
     }
     if (histFiltro) {

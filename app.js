@@ -3012,6 +3012,68 @@ app.post('/api/ordenes-cierre-auto/ejecutar-cierre', requireAuth, async (req, re
   }
 });
 
+// Convierte un entero HHMM de SAP B1 (ej. 935, 1430) a 'HH:MM'
+function formatSapTime(value) {
+  if (value === undefined || value === null || value === '') return '';
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0) return '';
+  const hh = Math.floor(n / 100);
+  const mm = n % 100;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return '';
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+// Convierte una fecha SAP (YYYY-MM-DD o ISO) a 'DD/MM/YYYY'
+function formatSapDate(value) {
+  if (value === undefined || value === null || value === '') return '';
+  const s = String(value).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// Combina fecha + hora SAP en un Date local. Devuelve null si no es válido.
+function parseSapDateTime(dateValue, timeValue) {
+  if (!dateValue) return null;
+  const s = String(dateValue).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10) - 1;
+  const d = parseInt(m[3], 10);
+  let hh = 0;
+  let mi = 0;
+  if (timeValue !== undefined && timeValue !== null && timeValue !== '') {
+    const n = parseInt(timeValue, 10);
+    if (Number.isFinite(n) && n >= 0) {
+      hh = Math.floor(n / 100);
+      mi = n % 100;
+      if (hh > 23) hh = 23;
+      if (mi > 59) mi = 59;
+    }
+  }
+  const dt = new Date(y, mo, d, hh, mi, 0, 0);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+// Formatea una duración en ms como '2d 3h', '1h 25m', '45m' o '30s'
+function formatDuracion(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const totalMin = Math.floor(ms / 60000);
+  const dias = Math.floor(totalMin / (60 * 24));
+  const horas = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  if (dias > 0) return `${dias}d ${horas}h`;
+  if (horas > 0) return `${horas}h ${mins}m`;
+  if (mins > 0) return `${mins}m`;
+  return `${Math.floor(ms / 1000)}s`;
+}
+
 function extractSapErrorMessage(data) {
   if (!data) return 'Error desconocido';
   if (data.error && data.error.message && data.error.message.value) {
@@ -3244,6 +3306,156 @@ app.get('/api/creditos/aprobadores-activos', requireAuth, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Historial de aprobaciones finalizadas (Aprobadas / Rechazadas)
+// ---------------------------------------------------------------------------
+app.get('/api/creditos/aprobaciones-finalizadas', requireAuth, async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!esAnalistaCredito(user)) {
+    return res
+      .status(403)
+      .json({ error: { message: 'No tiene permisos para consultar aprobaciones finalizadas' } });
+  }
+
+  const sql = `SELECT TOP 150
+      W."WddCode" AS "WddCode",
+      W."DraftEntry" AS "DraftEntry",
+      W."ObjType" AS "ObjType",
+      W."Status" AS "EstadoGeneral",
+      W."CreateDate" AS "CreateDate",
+      W."CreateTime" AS "CreateTime",
+      COALESCE(M."Name", '') AS "Modelo",
+      D."isIns" AS "isIns",
+      D."DocNum" AS "DocNum",
+      D."DocDate" AS "DocDate",
+      D."CardCode" AS "CardCode",
+      D."CardName" AS "CardName",
+      CASE
+        WHEN COALESCE(D."DocCur", 'GS') NOT IN ('GS', 'PYG')
+          AND COALESCE(D."DocTotalFC", 0) > 0
+        THEN D."DocTotalFC"
+        ELSE D."DocTotal"
+      END AS "DocTotal",
+      COALESCE(NULLIF(D."DocCur", ''), 'GS') AS "DocCur",
+      COALESCE(S."SlpName", '') AS "Vendedor",
+      W1."StepCode" AS "StepCode",
+      W1."Status" AS "EstadoAutorizador",
+      W1."UserID" AS "UserId",
+      COALESCE(U."U_NAME", U."USER_CODE", '') AS "Autorizador",
+      COALESCE(W1."Remarks", '') AS "Comentario",
+      W1."UpdateDate" AS "UpdateDate",
+      W1."UpdateTime" AS "UpdateTime"
+    FROM "TRACTOAGRO".OWDD W
+    INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
+    INNER JOIN "TRACTOAGRO".ODRF D ON D."DocEntry" = W."DraftEntry"
+    INNER JOIN "TRACTOAGRO".WDD1 W1 ON W1."WddCode" = W."WddCode"
+    INNER JOIN "TRACTOAGRO".OUSR U ON U."USERID" = W1."UserID"
+    LEFT JOIN "TRACTOAGRO".OSLP S ON S."SlpCode" = D."SlpCode"
+    WHERE W."Status" IN ('Y', 'N')
+      AND W."ObjType" IN ('23', '17', '13')
+    ORDER BY W."CreateDate" DESC, W."CreateTime" DESC, W."WddCode" DESC`;
+
+  try {
+    const rows = await hanaExec(sql);
+
+    // Agrupar por DraftEntry
+    const gruposPorDraft = new Map();
+    for (const r of rows || []) {
+      const draftEntry = r.DraftEntry !== undefined && r.DraftEntry !== null
+        ? Number(r.DraftEntry)
+        : null;
+      if (!Number.isFinite(draftEntry)) continue;
+
+      if (!gruposPorDraft.has(draftEntry)) {
+        const objType = r.ObjType !== undefined && r.ObjType !== null ? String(r.ObjType) : '';
+        const isIns = r.isIns !== undefined && r.isIns !== null ? String(r.isIns) : '';
+        const vendedorRaw =
+          r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '';
+        const createDate =
+          r.CreateDate !== undefined && r.CreateDate !== null ? String(r.CreateDate) : null;
+        const createTime =
+          r.CreateTime !== undefined && r.CreateTime !== null ? Number(r.CreateTime) : null;
+        gruposPorDraft.set(draftEntry, {
+          DraftEntry: draftEntry,
+          ObjType: objType,
+          TipoDocumento: mapTipoDocumento(objType, isIns),
+          DocNum: r.DocNum !== undefined && r.DocNum !== null ? Number(r.DocNum) : null,
+          DocDate: r.DocDate !== undefined && r.DocDate !== null ? String(r.DocDate) : null,
+          CardCode: r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : '',
+          CardName: r.CardName !== undefined && r.CardName !== null ? String(r.CardName) : '',
+          DocTotal: r.DocTotal !== undefined && r.DocTotal !== null ? Number(r.DocTotal) : 0,
+          DocCur: r.DocCur !== undefined && r.DocCur !== null ? String(r.DocCur) : '',
+          Vendedor: formatNombreCorto(vendedorRaw) || vendedorRaw,
+          CreateDate: createDate,
+          CreateTime: createTime,
+          fechaCreacion: createDate ? formatSapDate(createDate) : '',
+          horaCreacion: formatSapTime(createTime),
+          procesos: [],
+          estadoFinal: '',
+          resolutorNombre: '',
+          resolutorFecha: '',
+          resolutorHora: '',
+          duracionMs: null,
+          duracionTexto: '',
+        });
+      }
+
+      const grupo = gruposPorDraft.get(draftEntry);
+      const estadoGeneral =
+        r.EstadoGeneral !== undefined && r.EstadoGeneral !== null
+          ? String(r.EstadoGeneral)
+          : '';
+      const estadoAutorizador =
+        r.EstadoAutorizador !== undefined && r.EstadoAutorizador !== null
+          ? String(r.EstadoAutorizador)
+          : '';
+      const autorizadorRaw =
+        r.Autorizador !== undefined && r.Autorizador !== null ? String(r.Autorizador) : '';
+      const updateDate =
+        r.UpdateDate !== undefined && r.UpdateDate !== null ? String(r.UpdateDate) : null;
+      const updateTime =
+        r.UpdateTime !== undefined && r.UpdateTime !== null ? Number(r.UpdateTime) : null;
+
+      grupo.procesos.push({
+        wddCode: r.WddCode !== undefined && r.WddCode !== null ? Number(r.WddCode) : null,
+        modelo: r.Modelo !== undefined && r.Modelo !== null ? String(r.Modelo) : '',
+        estadoGeneral,
+        autorizador: formatNombreCorto(autorizadorRaw) || autorizadorRaw,
+        estadoAutorizador,
+        fechaResolucion: updateDate ? formatSapDate(updateDate) : '',
+        horaResolucion: formatSapTime(updateTime),
+        comentario: r.Comentario !== undefined && r.Comentario !== null ? String(r.Comentario) : '',
+      });
+
+      // Determinar el resolutor: el autorizador con estado Y o N
+      if (
+        (estadoAutorizador === 'Y' || estadoAutorizador === 'N') &&
+        !grupo.resolutorNombre
+      ) {
+        grupo.estadoFinal = estadoAutorizador === 'Y' ? 'APROBADO' : 'RECHAZADO';
+        grupo.resolutorNombre = formatNombreCorto(autorizadorRaw) || autorizadorRaw;
+        grupo.resolutorFecha = updateDate ? formatSapDate(updateDate) : '';
+        grupo.resolutorHora = formatSapTime(updateTime);
+        const dtCreacion = parseSapDateTime(createDate, createTime);
+        const dtResolucion = parseSapDateTime(updateDate, updateTime);
+        if (dtCreacion && dtResolucion) {
+          const diff = dtResolucion.getTime() - dtCreacion.getTime();
+          grupo.duracionMs = diff >= 0 ? diff : 0;
+          grupo.duracionTexto = formatDuracion(grupo.duracionMs);
+        }
+      }
+    }
+
+    const data = Array.from(gruposPorDraft.values());
+    return res.json({ data });
+  } catch (err) {
+    console.error('Error en /api/creditos/aprobaciones-finalizadas:', err.message);
+    return res
+      .status(500)
+      .json({ error: { message: 'Error al consultar aprobaciones finalizadas en HANA' } });
+  }
+});
+
 app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) => {
   const user = req.session && req.session.user;
   if (!esAnalistaCredito(user)) {
@@ -3358,7 +3570,9 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
           W1."Status" AS "EstadoAutorizador",
           W1."UserID" AS "UserId",
           COALESCE(U."U_NAME", U."USER_CODE", '') AS "Autorizador",
-          COALESCE(W1."Remarks", '') AS "Comentario"
+          COALESCE(W1."Remarks", '') AS "Comentario",
+          W1."UpdateDate" AS "UpdateDate",
+          W1."UpdateTime" AS "UpdateTime"
         FROM "TRACTOAGRO".OWDD W
         INNER JOIN "TRACTOAGRO".OWTM M ON M."WtmCode" = W."WtmCode"
         INNER JOIN "TRACTOAGRO".WDD1 W1 ON W1."WddCode" = W."WddCode"
@@ -3396,6 +3610,14 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
             p.Autorizador !== undefined && p.Autorizador !== null
               ? String(p.Autorizador)
               : '';
+          const updateDate =
+            p.UpdateDate !== undefined && p.UpdateDate !== null
+              ? String(p.UpdateDate)
+              : null;
+          const updateTime =
+            p.UpdateTime !== undefined && p.UpdateTime !== null
+              ? Number(p.UpdateTime)
+              : null;
           item.autorizadores.push({
             userId:
               p.UserId !== undefined && p.UserId !== null
@@ -3410,6 +3632,10 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
               p.Comentario !== undefined && p.Comentario !== null
                 ? String(p.Comentario)
                 : '',
+            updateDate,
+            updateTime,
+            fechaResolucion: updateDate ? formatSapDate(updateDate) : '',
+            horaResolucion: formatSapTime(updateTime),
           });
         }
       } catch (errParalelas) {
@@ -3417,6 +3643,65 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
           'No se pudieron obtener procesos paralelos:',
           errParalelas.message
         );
+      }
+    }
+
+    // Calcular en lote el promedio de días de atraso por CardCode
+    const cardCodesUnicos = Array.from(
+      new Set(
+        (rows || [])
+          .map((r) => (r.CardCode !== undefined && r.CardCode !== null ? String(r.CardCode) : ''))
+          .filter((c) => c !== '')
+      )
+    );
+    const promAtrasoPorCliente = new Map();
+    if (cardCodesUnicos.length) {
+      try {
+        const placeholdersCC = cardCodesUnicos.map(() => '?').join(', ');
+        const sqlPromAtraso = `SELECT
+            I."CardCode" AS "CardCode",
+            AVG(
+              CASE
+                WHEN Q."Status" = 'C' THEN
+                  GREATEST(0, DAYS_BETWEEN(Q."DueDate", COALESCE(REC."UltimaFechaReconciliacion", Q."DueDate")))
+                WHEN Q."Status" = 'O' AND Q."DueDate" < CURRENT_DATE THEN
+                  DAYS_BETWEEN(Q."DueDate", CURRENT_DATE)
+                ELSE 0
+              END
+            ) AS "PromDiasAtraso"
+          FROM "TRACTOAGRO".OINV I
+          INNER JOIN "TRACTOAGRO".INV6 Q ON Q."DocEntry" = I."DocEntry"
+          LEFT JOIN (
+            SELECT
+              JInv."CreatedBy" AS "DocEntry",
+              COALESCE(NULLIF(JInv."SourceLine", 0), 1) AS "InstId",
+              MAX(RHead."ReconDate") AS "UltimaFechaReconciliacion"
+            FROM "TRACTOAGRO".JDT1 JInv
+            INNER JOIN "TRACTOAGRO".ITR1 RDetInv
+              ON RDetInv."TransId" = JInv."TransId"
+              AND RDetInv."TransRowId" = JInv."Line_ID"
+            INNER JOIN "TRACTOAGRO".OITR RHead
+              ON RHead."ReconNum" = RDetInv."ReconNum"
+              AND RHead."Canceled" = 'N'
+            WHERE JInv."TransType" = '13'
+            GROUP BY JInv."CreatedBy", COALESCE(NULLIF(JInv."SourceLine", 0), 1)
+          ) REC
+            ON REC."DocEntry" = I."DocEntry"
+            AND REC."InstId" = Q."InstlmntID"
+          WHERE I."CANCELED" = 'N'
+            AND I."CardCode" IN (${placeholdersCC})
+          GROUP BY I."CardCode"`;
+        const rowsProm = await hanaExec(sqlPromAtraso, cardCodesUnicos);
+        for (const rp of rowsProm || []) {
+          const cc = rp.CardCode !== undefined && rp.CardCode !== null ? String(rp.CardCode) : '';
+          if (!cc) continue;
+          const val = rp.PromDiasAtraso !== undefined && rp.PromDiasAtraso !== null
+            ? Number(rp.PromDiasAtraso)
+            : 0;
+          promAtrasoPorCliente.set(cc, Number.isFinite(val) ? Math.round(val * 10) / 10 : 0);
+        }
+      } catch (errProm) {
+        console.warn('No se pudo calcular el promedio de días de atraso:', errProm.message);
       }
     }
 
@@ -3527,6 +3812,9 @@ app.get('/api/creditos/aprobaciones-pendientes', requireAuth, async (req, res) =
         requisitos,
         autorizacionesParalelas,
         puedeAprobar,
+        promDiasAtraso: promAtrasoPorCliente.has(cardCode)
+          ? promAtrasoPorCliente.get(cardCode)
+          : 0,
       };
     });
 
