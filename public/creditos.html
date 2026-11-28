@@ -122,9 +122,16 @@
       line-height: 1.25;
       text-align: left;
     }
+    .tabla-aprobaciones-wrap {
+      max-height: calc(100vh - 250px);
+      overflow-y: auto;
+      overflow-x: auto;
+      position: relative;
+    }
     .tabla-aprobaciones {
       table-layout: fixed;
       width: 100%;
+      min-width: 1200px;
     }
     .tabla-aprobaciones th,
     .tabla-aprobaciones td {
@@ -132,16 +139,31 @@
       word-break: break-word;
       vertical-align: top;
     }
-    .tabla-aprobaciones .col-tipo { width: 7%; }
-    .tabla-aprobaciones .col-docnum { width: 6%; }
-    .tabla-aprobaciones .col-fecha { width: 7%; }
-    .tabla-aprobaciones .col-cliente { width: 15%; }
-    .tabla-aprobaciones .col-vendedor { width: 11%; }
-    .tabla-aprobaciones .col-total { width: 10%; }
-    .tabla-aprobaciones .col-cond { width: 18%; }
-    .tabla-aprobaciones .col-paralelos { width: 21%; }
-    .tabla-aprobaciones .col-req { width: 5%; }
-    .tabla-aprobaciones .col-acciones { width: 10%; }
+    .tabla-aprobaciones thead th {
+      position: sticky;
+      top: 0;
+      z-index: 15;
+      background-color: #f8fafc;
+      box-shadow: 0 2px 3px rgba(15, 23, 42, 0.08);
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+      line-height: 1.2;
+      vertical-align: middle;
+      font-size: 0.78rem;
+      padding: 8px 10px 8px 6px !important;
+      position: sticky;
+    }
+    .tabla-aprobaciones .col-tipo { min-width: 115px; }
+    .tabla-aprobaciones .col-docnum { min-width: 75px; }
+    .tabla-aprobaciones .col-fecha { min-width: 105px; }
+    .tabla-aprobaciones .col-cliente { min-width: 160px; }
+    .tabla-aprobaciones .col-vendedor { min-width: 130px; }
+    .tabla-aprobaciones .col-total { min-width: 115px; }
+    .tabla-aprobaciones .col-cond { min-width: 175px; }
+    .tabla-aprobaciones .col-paralelos { min-width: 220px; }
+    .tabla-aprobaciones .col-req { min-width: 75px; }
+    .tabla-aprobaciones .col-acciones { min-width: 125px; }
     .tabla-aprobaciones th,
     .tabla-aprobaciones td {
       padding-left: 3px !important;
@@ -151,6 +173,24 @@
     .tabla-aprobaciones th.px-1 {
       padding-left: 3px !important;
       padding-right: 3px !important;
+    }
+    .tabla-aprobaciones thead th {
+      position: relative;
+    }
+    .tabla-aprobaciones .col-resizer {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 5px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      z-index: 20;
+      background: transparent;
+    }
+    .tabla-aprobaciones .col-resizer:hover,
+    .tabla-aprobaciones .col-resizer.resizing {
+      background: rgba(13, 110, 253, 0.35);
     }
     .prom-atraso {
       display: inline-block;
@@ -714,7 +754,7 @@
 
         <div class="card shadow-sm">
           <div class="card-body p-0">
-            <div class="table-responsive" style="max-height: calc(100vh - 320px); overflow-y: auto;">
+            <div class="tabla-aprobaciones-wrap">
               <table class="table table-sm table-hover mb-0 tabla-aprobaciones">
                 <thead class="table-light" id="aprobThead">
                   <tr>
@@ -1918,6 +1958,118 @@
             <th class="col-acciones text-center px-1">Acciones</th>
           </tr>`;
       }
+      const table = thead.closest('table');
+      if (table) initResizableColumns(table);
+    }
+
+    // Inserta tiradores arrastrables en el borde derecho de cada <th>
+    // para redimensionar columnas manualmente. Doble clic autoajusta al
+    // contenido más ancho de la columna.
+    function initResizableColumns(tableEl) {
+      if (!tableEl) return;
+      const thead = tableEl.querySelector('thead');
+      if (!thead) return;
+      const ths = Array.from(thead.querySelectorAll('tr:first-child th'));
+      if (!ths.length) return;
+
+      // Aplicar min-width como width inicial si aún no tiene width fijo
+      ths.forEach((th) => {
+        if (!th.style.width) {
+          const cs = window.getComputedStyle(th);
+          const minW = parseFloat(cs.minWidth) || 0;
+          if (minW > 0) th.style.width = `${minW}px`;
+        }
+      });
+
+      ths.forEach((th, idx) => {
+        // Evitar duplicar tiradores si ya existen
+        if (th.querySelector('.col-resizer')) return;
+        // No agregar tirador en la última columna (no tiene sentido)
+        if (idx === ths.length - 1) return;
+
+        const resizer = document.createElement('div');
+        resizer.className = 'col-resizer';
+        resizer.title = 'Arrastrar para redimensionar · Doble clic para autoajustar';
+        th.appendChild(resizer);
+
+        let startX = 0;
+        let startWidth = 0;
+        let resizing = false;
+
+        const onMouseMove = (e) => {
+          if (!resizing) return;
+          const delta = e.clientX - startX;
+          const newWidth = Math.max(50, startWidth + delta);
+          th.style.width = `${newWidth}px`;
+        };
+
+        const onMouseUp = () => {
+          if (!resizing) return;
+          resizing = false;
+          resizer.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        resizer.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          resizing = true;
+          startX = e.clientX;
+          startWidth = th.getBoundingClientRect().width;
+          resizer.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        });
+
+        // Doble clic: autoajustar al contenido más ancho de la columna
+        resizer.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          autoajustarColumna(tableEl, idx);
+        });
+      });
+    }
+
+    // Calcula el ancho máximo del contenido de una columna y lo aplica
+    function autoajustarColumna(tableEl, colIndex) {
+      if (!tableEl) return;
+      const rows = Array.from(tableEl.querySelectorAll('tbody tr'));
+      const theadTh = tableEl.querySelector(`thead tr:first-child th:nth-child(${colIndex + 1})`);
+      if (!theadTh) return;
+
+      // Medir el ancho del encabezado
+      const clone = theadTh.cloneNode(true);
+      clone.style.position = 'absolute';
+      clone.style.visibility = 'hidden';
+      clone.style.width = 'auto';
+      clone.style.whiteSpace = 'nowrap';
+      clone.style.padding = '8px 10px 8px 6px';
+      clone.querySelectorAll('.col-resizer').forEach((r) => r.remove());
+      document.body.appendChild(clone);
+      let maxWidth = clone.getBoundingClientRect().width;
+      document.body.removeChild(clone);
+
+      // Medir el ancho de cada celda de la columna
+      for (const row of rows) {
+        const cell = row.children[colIndex];
+        if (!cell) continue;
+        const cellClone = cell.cloneNode(true);
+        cellClone.style.position = 'absolute';
+        cellClone.style.visibility = 'hidden';
+        cellClone.style.width = 'auto';
+        cellClone.style.whiteSpace = 'nowrap';
+        cellClone.style.padding = '8px 10px 8px 6px';
+        document.body.appendChild(cellClone);
+        const w = cellClone.getBoundingClientRect().width;
+        if (w > maxWidth) maxWidth = w;
+        document.body.removeChild(cellClone);
+      }
+
+      // Aplicar con un pequeño margen
+      theadTh.style.width = `${Math.ceil(maxWidth) + 12}px`;
     }
 
     function renderFinalizados() {
