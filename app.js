@@ -3366,15 +3366,16 @@ app.get('/api/creditos/aprobaciones-finalizadas', requireAuth, async (req, res) 
         : null;
       if (!Number.isFinite(draftEntry)) continue;
 
+      const createDate =
+        r.CreateDate !== undefined && r.CreateDate !== null ? String(r.CreateDate) : null;
+      const createTime =
+        r.CreateTime !== undefined && r.CreateTime !== null ? Number(r.CreateTime) : null;
+
       if (!gruposPorDraft.has(draftEntry)) {
         const objType = r.ObjType !== undefined && r.ObjType !== null ? String(r.ObjType) : '';
         const isIns = r.isIns !== undefined && r.isIns !== null ? String(r.isIns) : '';
         const vendedorRaw =
           r.Vendedor !== undefined && r.Vendedor !== null ? String(r.Vendedor) : '';
-        const createDate =
-          r.CreateDate !== undefined && r.CreateDate !== null ? String(r.CreateDate) : null;
-        const createTime =
-          r.CreateTime !== undefined && r.CreateTime !== null ? Number(r.CreateTime) : null;
         gruposPorDraft.set(draftEntry, {
           DraftEntry: draftEntry,
           ObjType: objType,
